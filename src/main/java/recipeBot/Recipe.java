@@ -1,4 +1,4 @@
-package tutorial;
+package recipeBot;
 
 public class Recipe {
     private String name;
@@ -6,14 +6,14 @@ public class Recipe {
     private String description;
     private boolean favorite = false; // default value
     private String[] ingredients;
-    private String[] steps;
+    private String[] instructions;
 
-    public Recipe(String name, Category category, String description, String[] ingredients, String[] steps) {
+    public Recipe(String name, Category category, String description, String[] ingredients, String[] instructions) {
         this.name = name;
         this.category = category;
         this.description = description;
         this.ingredients = ingredients;
-        this.steps = steps;
+        this.instructions = instructions;
     }
 
     public Recipe(){
@@ -21,7 +21,17 @@ public class Recipe {
         this.category = null;
         this.description = null;
         this.ingredients = null;
-        this.steps = null;
+        this.instructions = null;
+    }
+
+    public Recipe(String text) {
+        // constructor to parse recipe from SQL text input
+        String[] parts = text.split(",");
+        this.name = parts[0];
+        this.category = Category.valueOf(parts[1].toUpperCase());
+        this.description = parts[2];
+        this.ingredients = parts[3].split(";"); //  ingredients are separated by semicolons
+        this.instructions = parts[4].split(";"); //  instructions are separated by semicolons
     }
 
     // add recipe to favorite list
@@ -38,13 +48,13 @@ public class Recipe {
     public Category getCategory() { return this.category; }
     public String getDescription() { return this.description; }
     public String[] getIngredients() { return this.ingredients; }
-    public String[] getSteps() { return this.steps; }
+    public String[] getInstructions() { return this.instructions; }
 
     public void setName(String newName) { this.name = newName; }
     public void setCategory(Category category) { this.category = category; }
     public void setDescription(String description) { this.description = description; }
     public void setIngredients(String[] ingredients) { this.ingredients = ingredients; }
-    public void setSteps(String[] steps) { this.steps = steps; }
+    public void setInstructions(String[] instructions) { this.instructions = instructions; }
 
     public boolean isFavorite() { return this.favorite; }
 

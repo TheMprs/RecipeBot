@@ -1,4 +1,4 @@
-package tutorial;
+package recipeBot;
 
 public enum State {
     WAITING_FOR_NAME,
