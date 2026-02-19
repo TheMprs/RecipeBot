@@ -59,6 +59,9 @@ public class DatabaseHandler {
         // prep the recipe data for SQL insertion
         String name = recipe.getName();
         String category = recipe.getCategory().toString();
+        String description = recipe.getDescription();
+        String[] ingredients = recipe.getIngredients();
+        String[] instructions = recipe.getInstructions();
 
         String sql = "INSERT INTO recipes(name, category, description, ingredients, instructions) VALUES(?, ?, ?, ?, ?)";
         try (Connection conn = connect();
@@ -66,9 +69,9 @@ public class DatabaseHandler {
             pstmt.setString(1, name);
             pstmt.setString(2, category);
 
-            pstmt.setString(3, "");
-            pstmt.setString(4, "");
-            pstmt.setString(5, "");
+            pstmt.setString(3, description);
+            pstmt.setString(4, String.join(";", ingredients));
+            pstmt.setString(5, String.join(";", instructions));
 
             pstmt.executeUpdate();
         } catch (java.sql.SQLException e) {
@@ -103,7 +106,12 @@ public class DatabaseHandler {
                     String description = rs.getString("description");
                     String ingredients = rs.getString("ingredients");
                     String instructions = rs.getString("instructions");
-                    return new Recipe(name, Category.parse(category), description, ingredients.split(";"), instructions.split(";"));
+                    
+                    // convert the ingredients and instructions back to arrays and create a Recipe object
+                    String[] ingredientsArray = ingredients.split(";");
+                    String[] instructionsArray = instructions.split(";");
+                    
+                    return new Recipe(name, Category.parse(category), description, ingredientsArray, instructionsArray);
                 }
             }
         } catch (java.sql.SQLException e) {
@@ -113,25 +121,19 @@ public class DatabaseHandler {
     }
 
     // method to retrieve all recipes from the database
-    public List<Recipe> getAllRecipes() {
-        List<Recipe> recipes = new ArrayList<>();
-        String sql = "SELECT * FROM recipes";
+    public List<String> getAllRecipesNames() {
+        List<String> recipes = new ArrayList<>();
+        String sql = "SELECT name FROM recipes";
         try (Connection conn = connect();
              java.sql.Statement stmt = conn.createStatement();
              java.sql.ResultSet rs = stmt.executeQuery(sql)) {
             
             // init recipe fields
-            String name, description, ingredients, instructions;
-            Category category;
+            String name;
 
             while (rs.next()) {
                 name = rs.getString("name");
-                category = Category.parse(rs.getString("category"));
-                description = rs.getString("description");
-                ingredients = rs.getString("ingredients");
-                instructions = rs.getString("instructions");
-                Recipe recipe = new Recipe(name, category, description, ingredients.split(";"), instructions.split(";"));
-                recipes.add(recipe);
+                recipes.add(name);
             }
         } catch (java.sql.SQLException e) {
             e.printStackTrace();
@@ -153,7 +155,12 @@ public class DatabaseHandler {
                     String description = rs.getString("description");
                     String ingredients = rs.getString("ingredients");
                     String instructions = rs.getString("instructions");
-                    Recipe recipe = new Recipe(name, cat, description, ingredients.split(";"), instructions.split(";"));
+
+                    // convert the ingredients and instructions back to arrays and create a Recipe object
+                    String[] ingredientsArray = ingredients.split(";");
+                    String[] instructionsArray = instructions.split(";");
+                    
+                    Recipe recipe = new Recipe(name, cat, description, ingredientsArray, instructionsArray);
                     recipes.add(recipe);
                 }
             }

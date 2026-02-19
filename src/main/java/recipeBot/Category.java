@@ -19,6 +19,19 @@ public enum Category {
             default:
                 throw new IllegalArgumentException("Unknown category: " + text);
         }
-
+    }
+    public String toString() {
+        switch (this) {
+            case MAIN:
+                return "Main";
+            case DESSERT:
+                return "Dessert";
+            case SNACK:
+                return "Snack";
+            case SPECIAL:
+                return "Special";
+            default:
+                return super.toString();
+        }
     }
 }
