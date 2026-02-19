@@ -20,18 +20,18 @@ public class GeminiHandler {
     }
 
     public Recipe extractRecipeFromText(String rawText) {
-        String url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" + apiKey;
-
+        String url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" + apiKey;
         String allowedCategories = java.util.Arrays.toString(Category.values());
-
-        // The prompt forcing the AI to return exactly what your Recipe object expects
-        String prompt = "Extract the recipe from this text. " + 
-                "Return ONLY a valid JSON object. Do not include markdown formatting: " +
-                "the category must be one of: " + allowedCategories + ", " +
-                "the recipe must match this exact structure" +
-                "{\"name\": \"Recipe Name\", \"category\": \"MAIN\", \"description\": \"Short description\", \"ingredients\": [\"item 1\", \"item 2\"], \"instructions\": [\"step 1\", \"step 2\"]}. " +
-                "Text to parse: " + rawText;
-
+        String prompt = "Extract the recipe from the provided text. " + 
+            "CRITICAL: All values (name, description, ingredients, instructions) MUST be in the same language as the source text (e.g., if the source is Hebrew, the output values must be Hebrew). " +
+            "Return ONLY a valid JSON object without markdown formatting. " +
+            "The 'name' and 'description' should be short and concise. " +
+            "The 'category' MUST be exactly one of: " + allowedCategories + ". " +
+            "Ensure no details are missed in the instructions. " +
+            "Use this exact JSON structure with English keys: " +
+            "{\"name\": \"...\", \"category\": \"...\", \"description\": \"...\", \"ingredients\": [], \"instructions\": []}. " +
+            "Text to parse: " + rawText;
+        
         // Safely build the JSON request body
         JsonObject textPart = new JsonObject();
         textPart.addProperty("text", prompt);
@@ -60,6 +60,8 @@ public class GeminiHandler {
         try {
             HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
             
+            System.out.println("Gemini Response: " + response.body());
+
             // Extract the generated JSON string from Gemini's response wrapper
             JsonObject jsonResponse = gson.fromJson(response.body(), JsonObject.class);
             String recipeJsonString = jsonResponse.getAsJsonArray("candidates")

@@ -11,6 +11,8 @@ public class DatabaseHandler {
     // db file path
     private static final String DB_URL = "jdbc:sqlite:data/recipes.db";
     
+    // *** INIT METHODS ***
+
     // Initialize the database connection and create tables
     public DatabaseHandler() {
         try (Connection conn = connect();
@@ -42,17 +44,7 @@ public class DatabaseHandler {
         }
     }
 
-    // method to add a new category to the database
-    public void addCategory(String categoryName) {
-        String sql = "INSERT INTO categories(name) VALUES(?)";
-        try (Connection conn = connect();
-             java.sql.PreparedStatement pstmt = conn.prepareStatement(sql)) {
-            pstmt.setString(1, categoryName);
-            pstmt.executeUpdate();
-        } catch (java.sql.SQLException e) {
-            e.printStackTrace();
-        }
-    }
+    // *** DATABASE METHODS ***
 
     // method to add a new recipe to the database
     public void addRecipe(Recipe recipe) {
@@ -77,22 +69,6 @@ public class DatabaseHandler {
         } catch (java.sql.SQLException e) {
             e.printStackTrace();
         }
-    }
-
-    // method to retrieve all categories from the database
-    public java.util.List<String> getCategories() {
-        java.util.List<String> categories = new java.util.ArrayList<>();
-        String sql = "SELECT name FROM categories";
-        try (Connection conn = connect();
-             java.sql.Statement stmt = conn.createStatement();
-             java.sql.ResultSet rs = stmt.executeQuery(sql)) {
-            while (rs.next()) {
-                categories.add(rs.getString("name"));
-            }
-        } catch (java.sql.SQLException e) {
-            e.printStackTrace();
-        }
-        return categories;
     }
 
     public Recipe getRecipeByName(String name) {
@@ -120,6 +96,47 @@ public class DatabaseHandler {
         return null; // return null if recipe not found
     }
 
+    public int getIdOf(String name) {
+        String sql = "SELECT id FROM recipes WHERE name = ?";
+        try (Connection conn = connect();
+             java.sql.PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setString(1, name);
+            try (java.sql.ResultSet rs = pstmt.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getInt("id");
+                }
+            }
+        } catch (java.sql.SQLException e) {
+            e.printStackTrace();
+        }
+        return -1; // return -1 if recipe not found or error occurs
+    }
+
+    public Recipe getRecipeById(String id) {
+        String sql = "SELECT name, category, description, ingredients, instructions FROM recipes WHERE id = ?";
+        try (Connection conn = connect();
+             java.sql.PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setString(1, id);
+            try (java.sql.ResultSet rs = pstmt.executeQuery()) {
+                if (rs.next()) {
+                    String name = rs.getString("name");
+                    String category = rs.getString("category");
+                    String description = rs.getString("description");
+                    String ingredients = rs.getString("ingredients");
+                    String instructions = rs.getString("instructions");
+                    
+                    // convert the ingredients and instructions back to arrays and create a Recipe object
+                    String[] ingredientsArray = ingredients.split(";");
+                    String[] instructionsArray = instructions.split(";");
+                    
+                    return new Recipe(name, Category.parse(category), description, ingredientsArray, instructionsArray);
+                }
+            }
+        } catch (java.sql.SQLException e) {
+            e.printStackTrace();
+        }
+        return null; // return null if recipe not found
+    }
     // method to retrieve all recipes from the database
     public List<String> getAllRecipesNames() {
         List<String> recipes = new ArrayList<>();
@@ -142,8 +159,8 @@ public class DatabaseHandler {
     }
 
     // method to retrieve recipes by category from the database
-    public java.util.List<Recipe> getRecipesByCategory(String category) {
-        java.util.List<Recipe> recipes = new java.util.ArrayList<>();
+    public List<Recipe> getRecipesByCategory(String category) {
+        List<Recipe> recipes = new ArrayList<>();
         String sql = "SELECT name, category, description, ingredients, instructions FROM recipes WHERE category = ?";
         try (Connection conn = connect();
              java.sql.PreparedStatement pstmt = conn.prepareStatement(sql)) {
@@ -183,17 +200,18 @@ public class DatabaseHandler {
         return true;
     }
 
-        // method to delete a category from the database
-    public boolean deleteCategory(String name) {
-        String sql = "DELETE FROM categories WHERE name = ?";
+    public void updateRecipe(int recipeId, String entry, String newValue){
+        if(!entry.equals("name") && !entry.equals("category") && !entry.equals("description") && !entry.equals("ingredients") && !entry.equals("instructions")) {
+            throw new IllegalArgumentException("Invalid entry: " + entry);
+        }
+        String sql = "UPDATE recipes SET " + entry + " = ? WHERE id = ?";
         try (Connection conn = connect();
              java.sql.PreparedStatement pstmt = conn.prepareStatement(sql)) {
-            pstmt.setString(1, name);
+            pstmt.setString(1, newValue);
+            pstmt.setInt(2, recipeId);
             pstmt.executeUpdate();
         } catch (java.sql.SQLException e) {
-            return false;
+            e.printStackTrace();
         }
-        return true;
     }
-
 }
