@@ -174,7 +174,7 @@ public class Bot extends TelegramLongPollingBot {
             replaceMessageWithTextAndAddCancel(id, callbackQuery.getMessage().getMessageId()," Insert recipe description:");
             userState.put(id, State.WAITING_FOR_DESCRIPTION); // move to next step in recipe addition process
         }
-
+        // handles category selection during recipe editing process
         if(userState.get(id) == State.EDITING_CATEGORY) {
             Recipe recipe = tempRecipes.get(id);
             Category category = Category.parse(data.toString());
@@ -186,6 +186,27 @@ public class Bot extends TelegramLongPollingBot {
 
             return;
         }
+        // handles choosing all recipes from specific category
+        if(data.equals("DESSERT") || data.equals("MAIN") 
+            || data.equals("DESSERT") || data.equals("SPECIAL")) {
+            List<Recipe> recipes = db.getRecipesByCategory(data);
+            if(recipes.isEmpty()) {
+                sendText(id, "No recipes found in this category.");
+            } else {
+                StringBuilder sb = new StringBuilder("<b><u>Recipes in category " + data + ":</u></b>\n");
+                String botName = getBotUsername().replace("@", ""); // remove @ from bot username for link formatting
+
+                for(Recipe recipe : recipes){
+                    int idOfRecipe = db.getIdOf(recipe.getName());
+
+                    String recipeLink = "https://t.me/" + botName + "?start=show_" + idOfRecipe;
+                    
+                    sb.append("<a href=\"" + recipeLink + "\">" + recipe.getName() + "</a>\n");
+                }
+                sendText(id, sb.toString());
+            }
+        }
+        
         // acknowledge button press to remove loading state
         AnswerCallbackQuery answer = new AnswerCallbackQuery();
         answer.setCallbackQueryId(callbackQuery.getId());
@@ -216,6 +237,10 @@ public class Bot extends TelegramLongPollingBot {
                 sendText(chatId, "Hello I am Recipe Book Bot! 🍽️");
             }   
             return;
+        }
+        
+        if(text.equals("/listCategories")){
+            sendCategoryMenu(chatId, text);
         }
         
         // code to add new recipe    
