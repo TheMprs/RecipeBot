@@ -159,12 +159,12 @@ public class DatabaseHandler {
     }
 
     // method to retrieve recipes by category from the database
-    public List<Recipe> getRecipesByCategory(String category) {
+    public List<Recipe> getRecipesByCategory(Category category) {
         List<Recipe> recipes = new ArrayList<>();
         String sql = "SELECT name, category, description, ingredients, instructions FROM recipes WHERE category = ?";
         try (Connection conn = connect();
              java.sql.PreparedStatement pstmt = conn.prepareStatement(sql)) {
-            pstmt.setString(1, category);
+            pstmt.setString(1, category.toString());
             try (java.sql.ResultSet rs = pstmt.executeQuery()) {
                 while (rs.next()) {
                     String name = rs.getString("name");

@@ -11,15 +11,14 @@ import org.telegram.telegrambots.meta.api.methods.AnswerCallbackQuery;
 import org.telegram.telegrambots.meta.api.objects.Message;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.ReplyKeyboardMarkup;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.KeyboardRow;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 
 import io.github.cdimascio.dotenv.Dotenv;
 import recipeBot.database.DatabaseHandler;
 
-import java.net.URLDecoder;
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedList;
@@ -58,7 +57,10 @@ public class Bot extends TelegramLongPollingBot {
     public void onUpdateReceived(Update update) {            
         // handle button presses here
         if(update.hasCallbackQuery()) {
-            handleCallback(update.getCallbackQuery());
+            var callbackQuery = update.getCallbackQuery();
+            var id = callbackQuery.getMessage().getChatId();
+            removePreviousKeyboard(id);
+            handleCallback(callbackQuery);
         }
         // handle messages here
         else if(update.hasMessage()) {
@@ -174,6 +176,7 @@ public class Bot extends TelegramLongPollingBot {
             replaceMessageWithTextAndAddCancel(id, callbackQuery.getMessage().getMessageId()," Insert recipe description:");
             userState.put(id, State.WAITING_FOR_DESCRIPTION); // move to next step in recipe addition process
         }
+        
         // handles category selection during recipe editing process
         if(userState.get(id) == State.EDITING_CATEGORY) {
             Recipe recipe = tempRecipes.get(id);
@@ -186,14 +189,15 @@ public class Bot extends TelegramLongPollingBot {
 
             return;
         }
+        
         // handles choosing all recipes from specific category
-        if(data.equals("DESSERT") || data.equals("MAIN") 
-            || data.equals("DESSERT") || data.equals("SPECIAL")) {
-            List<Recipe> recipes = db.getRecipesByCategory(data);
+        if(userState.get(id) == State.SHOW_CATEGORIES) {
+            Category category = Category.parse(data.toString());
+            List<Recipe> recipes = db.getRecipesByCategory(category);
             if(recipes.isEmpty()) {
-                sendText(id, "No recipes found in this category.");
+                sendText(id, "No recipes found in "+category+".");
             } else {
-                StringBuilder sb = new StringBuilder("<b><u>Recipes in category " + data + ":</u></b>\n");
+                StringBuilder sb = new StringBuilder("<b><u>Recipes in " + category + "s:</u></b>\n");
                 String botName = getBotUsername().replace("@", ""); // remove @ from bot username for link formatting
 
                 for(Recipe recipe : recipes){
@@ -205,6 +209,8 @@ public class Bot extends TelegramLongPollingBot {
                 }
                 sendText(id, sb.toString());
             }
+            userState.remove(id); // reset progress after showing category recipes
+            return;
         }
         
         // acknowledge button press to remove loading state
@@ -240,6 +246,7 @@ public class Bot extends TelegramLongPollingBot {
         }
         
         if(text.equals("/listCategories")){
+            userState.put(chatId, State.SHOW_CATEGORIES);
             sendCategoryMenu(chatId, text);
         }
         
@@ -335,6 +342,7 @@ public class Bot extends TelegramLongPollingBot {
             tempRecipes.remove(id);
 
             sendText(id, "Recipe added successfully!");
+            sendRecipePreview(id, recipe.getName());
             return;
         }
     
@@ -409,6 +417,7 @@ public class Bot extends TelegramLongPollingBot {
                                     .chatId(Who.toString())
                                     .text(message)
                                     .parseMode("HTML")
+                                    .replyMarkup(getMainMenuKeyboard())
                                     .build();
         try {
             Message sentMessage = execute(sendMessage);
@@ -447,6 +456,31 @@ public class Bot extends TelegramLongPollingBot {
     // -======== PRIVATE METHODS ========-
 
     // LOGIC METHODS
+
+    private ReplyKeyboardMarkup getMainMenuKeyboard() {
+        ReplyKeyboardMarkup keyboardMarkup = new ReplyKeyboardMarkup();
+        keyboardMarkup.setSelective(true);
+        keyboardMarkup.setResizeKeyboard(true);
+        keyboardMarkup.setOneTimeKeyboard(false); 
+
+        List<KeyboardRow> keyboard = new ArrayList<>();
+        
+        // Row 1: Primary actions
+        KeyboardRow row1 = new KeyboardRow();
+        row1.add("/recipe");
+        row1.add("/list");
+        
+        // Row 2: Secondary actions
+        KeyboardRow row2 = new KeyboardRow();
+        row2.add("/help");
+        
+        keyboard.add(row1);
+        keyboard.add(row2);
+        keyboardMarkup.setKeyboard(keyboard);
+        
+        return keyboardMarkup;
+    }
+
     private void sendRecipePreview(Long id, String recipeName) {
     Recipe recipe = db.getRecipeByName(recipeName);
         if (recipe == null) {
@@ -456,13 +490,13 @@ public class Bot extends TelegramLongPollingBot {
 
         StringBuilder sb = new StringBuilder();
         sb.append("<b><u>" + recipe.getName() +"</u></b>\n");
-        sb.append("Category: " + recipe.getCategory() + "\n");
+        sb.append(recipe.getCategory() + "\n\n");
         sb.append("<u>Description: </u>\n" + recipe.getDescription() + "\n");
-        sb.append("<u>Ingredients: </u>\n");
+        sb.append("🛒 <u>Ingredients: </u>\n");
         for(String ingredient : recipe.getIngredients()) {
             sb.append("• " + ingredient + "\n");
         }
-        sb.append("<u>Instructions: </u>\n");
+        sb.append("\n📝 <u>Instructions: </u>\n");
         for(int i = 0; i < recipe.getInstructions().length; i++) {
             sb.append(i+1+". " + recipe.getInstructions()[i] + "\n");
         }
@@ -528,8 +562,8 @@ public class Bot extends TelegramLongPollingBot {
         // create a row of buttons
         List<InlineKeyboardButton> row = new LinkedList<>();
         row.add(createButton("Manually", "MANUAL"));
-        row.add(createButton("Import from URL", "IMPORT_URL"));
-        row.add(createButton("Import from image", "IMPORT_IMAGE"));
+        row.add(createButton("🔗", "IMPORT_URL"));
+        row.add(createButton("🖼️", "IMPORT_IMAGE"));
 
         rows.add(row);
         markup.setKeyboard(rows);
