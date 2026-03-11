@@ -47,7 +47,7 @@ public class DatabaseHandler {
     // *** DATABASE METHODS ***
 
     // method to add a new recipe to the database
-    public void addRecipe(Recipe recipe) {
+    public void addRecipe(Recipe recipe, String language) {
         // prep the recipe data for SQL insertion
         String name = recipe.getName();
         String category = recipe.getCategory().toString();
@@ -138,7 +138,7 @@ public class DatabaseHandler {
         return null; // return null if recipe not found
     }
     // method to retrieve all recipes from the database
-    public List<String> getAllRecipesNames() {
+    public List<String> getAllRecipeNames() {
         List<String> recipes = new ArrayList<>();
         String sql = "SELECT name FROM recipes";
         try (Connection conn = connect();
@@ -200,7 +200,7 @@ public class DatabaseHandler {
         return true;
     }
 
-    public void updateRecipe(int recipeId, String entry, String newValue){
+    public void updateRecipe(int recipeId, String entry, String newValue, String language){
         if(!entry.equals("name") && !entry.equals("category") && !entry.equals("description") && !entry.equals("ingredients") && !entry.equals("instructions")) {
             throw new IllegalArgumentException("Invalid entry: " + entry);
         }

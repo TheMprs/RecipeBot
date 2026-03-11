@@ -11,7 +11,7 @@
 
 ## 📖 About The Project
 
-**Yuval's Recipe Bot** is a Java-based Telegram bot designed to replace your messy notes and bookmarks. It uses a local SQLite database to store your recipes and provides a sleek, button-based interface to interact with them. 
+**Recipe Bot** is a Java-based Telegram bot designed to replace your messy notes and bookmarks. It uses a local SQLite database to store your recipes and provides a sleek, button-based interface to interact with them. 
 
 Whether you're looking for that specific pasta sauce or need a checklist while shopping for ingredients, this bot has you covered.
 

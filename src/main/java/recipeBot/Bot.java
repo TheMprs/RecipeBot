@@ -262,7 +262,7 @@ public class Bot extends TelegramLongPollingBot {
 
         if(text.equals("/list")){
             // code to list all recipes
-            List<String> recipes = db.getAllRecipesNames();
+            List<String> recipes = db.getAllRecipeNames();
             
             if(recipes.isEmpty()) {
                 sendText(chatId, "No recipes found. Add some with /recipe!");

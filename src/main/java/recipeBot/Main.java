@@ -5,7 +5,6 @@ import org.telegram.telegrambots.meta.TelegramBotsApi;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import org.telegram.telegrambots.updatesreceivers.DefaultBotSession;
 import io.javalin.Javalin;
-import recipeBot.database.DatabaseHandler;
 
 public class Main {
     public static void main(String[] args) throws TelegramApiException {
@@ -23,8 +22,9 @@ public class Main {
             config.bundledPlugins.enableCors(cors -> cors.addRule(it -> it.anyHost()));
         }).start(8080);
 
-        app.get("/api/recipes", ctx -> {
-            ctx.json(db.getAllRecipesNames());
-        });
+        // init web manager
+        webManager webManager = new webManager(db);
+        app.get("/api/recipes", webManager::getAllRecipes);
+        app.get("/api/recipes/{name}", webManager::getOneRecipe);
     }
 }

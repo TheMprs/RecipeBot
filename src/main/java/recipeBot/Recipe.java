@@ -7,6 +7,7 @@ public class Recipe {
     private boolean favorite = false; // default value
     private String[] ingredients;
     private String[] instructions;
+    private String language;
 
     public Recipe(String name, Category category, String description, String[] ingredients, String[] instructions) {
         this.name = name;
@@ -22,6 +23,7 @@ public class Recipe {
         this.description = null;
         this.ingredients = null;
         this.instructions = null;
+        this.language = null;
     }
 
     public Recipe(String text) {
@@ -32,6 +34,7 @@ public class Recipe {
         this.description = parts[2];
         this.ingredients = parts[3].split(";"); //  ingredients are separated by semicolons
         this.instructions = parts[4].split(";"); //  instructions are separated by semicolons
+        
     }
 
     // add recipe to favorite list
