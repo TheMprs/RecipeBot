@@ -27,9 +27,10 @@ public class GeminiHandler {
             "Return ONLY a valid JSON object without markdown formatting. " +
             "The 'name' and 'description' should be short and concise. " +
             "The 'category' MUST be exactly one of: " + allowedCategories + ". " +
+            "CRITICAL: Set 'direction' to 'rtl' or 'ltr' according to the recipe's language.\"" +
             "Ensure no details are missed in the instructions. " +
             "Use this exact JSON structure with English keys: " +
-            "{\"name\": \"...\", \"category\": \"...\", \"description\": \"...\", \"ingredients\": [], \"instructions\": []}. " +
+            "{\"name\": \"...\", \"category\": \"...\", \"description\": \"...\", \"ingredients\": [], \"instructions\": [], \"direction\": \"...\"}. " +
             "Text to parse: " + rawText;
         
         // Safely build the JSON request body

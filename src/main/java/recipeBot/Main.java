@@ -10,6 +10,9 @@ public class Main {
     public static void main(String[] args) throws TelegramApiException {
         // db init
         DatabaseHandler db = new DatabaseHandler();
+        
+        
+
 
         // bot init
         TelegramBotsApi telegramBotsApi = new TelegramBotsApi(DefaultBotSession.class);

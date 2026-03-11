@@ -9,12 +9,13 @@ public class Recipe {
     private String[] instructions;
     private String language;
 
-    public Recipe(String name, Category category, String description, String[] ingredients, String[] instructions) {
+    public Recipe(String name, Category category, String description, String[] ingredients, String[] instructions, String language) {
         this.name = name;
         this.category = category;
         this.description = description;
         this.ingredients = ingredients;
         this.instructions = instructions;
+        this.language = language;
     }
 
     public Recipe(){
@@ -52,12 +53,14 @@ public class Recipe {
     public String getDescription() { return this.description; }
     public String[] getIngredients() { return this.ingredients; }
     public String[] getInstructions() { return this.instructions; }
+    public String getLanguage() { return this.language; }
 
     public void setName(String newName) { this.name = newName; }
     public void setCategory(Category category) { this.category = category; }
     public void setDescription(String description) { this.description = description; }
     public void setIngredients(String[] ingredients) { this.ingredients = ingredients; }
     public void setInstructions(String[] instructions) { this.instructions = instructions; }
+    public void setLanguage(String language) { this.language = language; }
 
     public boolean isFavorite() { return this.favorite; }
 

@@ -13,20 +13,54 @@ export default function RecipeCard({ recipeName, onBack }) {
     }, [recipeName])
 
     if(!details) return <p>Loading recipe details...</p>    
+    
+    // language logic
+    const dir = details.direction || details.language || 'ltr';    
+    const isRtl = dir === 'rtl';
+
+    // Helper to render sections with lines
+    const renderSection = (text) => {
+        // Safety check: If it's null or undefined, return nothing
+        if (!text) return null;
+
+        let lines = [];
+        
+        // Handle both Strings and Arrays
+        if (typeof text === 'string') {
+            lines = text.split('\n');
+        } else if (Array.isArray(text)) {
+            lines = text;
+        } else {
+            return null; // Not a string or array, can't render
+        }
+
+        // Clean up empty lines and render
+        const cleanLines = lines.filter(l => l && typeof l === 'string' && l.trim() !== "");
+        
+        return cleanLines.map((line, index) => (
+            <div key={index}>
+                <p style={{ margin: '10px 0' }}>{line}</p>
+                {index < cleanLines.length - 1 && <hr style={{ border: '0', borderTop: '1px solid #eee' }} />}
+            </div>
+        ));
+    };
 
     return (
-        <div style={{ padding: '20px'}}>
-        <button onClick={onBack}> ← Back </button>
-        
-        <h2>🍳 {recipeName}</h2>
-        <p>{details.description}</p>
-        
-        <h3>Ingredients:</h3>
-        <p style={{ whiteSpace: 'pre-wrap' }}>{details.ingredients}</p>
-        
-        <h3>Instructions:</h3>
-        <p style={{ whiteSpace: 'pre-wrap' }}>{details.instructions}</p>
-        
+        <div style={{ padding: '20px', direction: dir }}>
+            <button onClick={onBack}> ← Back </button>
+            
+            <h2>🍳 {recipeName}</h2>
+            <p>{details.description}</p>
+            
+            <h3>Ingredients:</h3>
+            <div style={{ whiteSpace: 'pre-wrap' }}>
+                {renderSection(details.ingredients)}
+            </div>
+            
+            <h3>Instructions:</h3>
+            <div style={{ whiteSpace: 'pre-wrap' }}>
+                {renderSection(details.instructions)}
+            </div>
         </div>
     )
 }

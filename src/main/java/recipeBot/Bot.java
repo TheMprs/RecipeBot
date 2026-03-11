@@ -181,10 +181,11 @@ public class Bot extends TelegramLongPollingBot {
         if(userState.get(id) == State.EDITING_CATEGORY) {
             Recipe recipe = tempRecipes.get(id);
             Category category = Category.parse(data.toString());
+            
             recipe.setCategory(category);
             
             int recipeId = db.getIdOf(recipe.getName());
-            db.updateRecipe(recipeId, "category", category.toString());
+            db.updateRecipe(recipeId, "category", category.toString(), null);
             sendText(id, "Recipe category updated successfully!");
 
             return;
@@ -338,8 +339,12 @@ public class Bot extends TelegramLongPollingBot {
             }
             recipe.setInstructions(instructions);
             
+            //language detection
+            String lang = message.getFrom().getLanguageCode();
+            if (lang == null) lang = "en"; // Fallback just in case
+            
             // save recipe to database
-            db.addRecipe(recipe);
+            db.addRecipe(recipe, lang);
         
             //clean up addition process
             userState.remove(id);
@@ -352,15 +357,20 @@ public class Bot extends TelegramLongPollingBot {
     
         if(state == State.WAITING_FOR_URL) {
             String url = message.getText();
-            String rawText = extractTextFromUrl(url);
+            
             sendText(id, "Processing URL");
+            
+            String rawText = extractTextFromUrl(url);
             Recipe extractedRecipe = gemini.extractRecipeFromText(rawText);
+            
             if(extractedRecipe != null && extractedRecipe.getName() != null) {
-                db.addRecipe(extractedRecipe);
+                String lang = extractedRecipe.getLanguage();
+                db.addRecipe(extractedRecipe, lang);
                 sendText(id, "Recipe imported successfully!");
             } else {
                 sendText(id, "Failed to extract recipe from the provided URL. Please make sure it's a valid recipe page and try again.");
             }
+            
             userState.remove(id);
             tempRecipes.remove(id);
             return;
@@ -370,7 +380,12 @@ public class Bot extends TelegramLongPollingBot {
             Recipe recipeToEdit = tempRecipes.get(id);
             int recipeId = db.getIdOf(recipeToEdit.getName());
             
-            db.updateRecipe(recipeId, "name", message.getText());
+            //language detection
+            String lang = message.getFrom().getLanguageCode();
+            if (lang == null) lang = "en"; // Fallback just in case
+            
+
+            db.updateRecipe(recipeId, "name", message.getText(), lang);
             sendText(id, "Recipe name updated successfully!");
 
             return;
@@ -380,7 +395,11 @@ public class Bot extends TelegramLongPollingBot {
             Recipe recipeToEdit = tempRecipes.get(id);
             int recipeId = db.getIdOf(recipeToEdit.getName());
             
-            db.updateRecipe(recipeId, "description", message.getText());
+            //language detection
+            String lang = message.getFrom().getLanguageCode();
+            if (lang == null) lang = "en"; // Fallback just in case
+
+            db.updateRecipe(recipeId, "description", message.getText(), lang);
             sendText(id, "Recipe description updated successfully!");
 
             return;
@@ -390,11 +409,15 @@ public class Bot extends TelegramLongPollingBot {
             Recipe recipeToEdit = tempRecipes.get(id);
             int recipeId = db.getIdOf(recipeToEdit.getName());
             
+            //language detection
+            String lang = message.getFrom().getLanguageCode();
+            if (lang == null) lang = "en"; // Fallback just in case
+
             String[] rawIngredients = message.getText().split("\n");
             for(int i=0; i<rawIngredients.length; i++){
                 rawIngredients[i]=rawIngredients[i].trim();
             }
-            db.updateRecipe(recipeId, "ingredients", String.join(";", rawIngredients));
+            db.updateRecipe(recipeId, "ingredients", String.join(";", rawIngredients), lang);
             sendText(id, "Recipe ingredients updated successfully!");
 
             return;
@@ -404,11 +427,15 @@ public class Bot extends TelegramLongPollingBot {
             Recipe recipeToEdit = tempRecipes.get(id);
             int recipeId = db.getIdOf(recipeToEdit.getName());
             
+            //language detection
+            String lang = message.getFrom().getLanguageCode();
+            if (lang == null) lang = "en"; // Fallback just in case
+
             String[] instructions = message.getText().split("\n");
             for(int i=0; i<instructions.length; i++){
                 instructions[i] = instructions[i].trim();
             }
-            db.updateRecipe(recipeId, "instructions", String.join(";", instructions));
+            db.updateRecipe(recipeId, "instructions", String.join(";", instructions), lang);
             sendText(id, "Recipe instructions updated successfully!");
 
             return;
