@@ -227,7 +227,11 @@ public class Bot extends TelegramLongPollingBot {
     public void handleCommand(Long chatId, Message message){
         userState.remove(chatId); // reset progress on new command
         String text = message.getText();     
-        
+        if(text.equals("/help")){
+            
+            //sendText(chatId, message);
+        }
+
         if(text.startsWith("/start")){
             if(text.startsWith("/start show_")){
                 String recipeId = text.substring(12).trim();
