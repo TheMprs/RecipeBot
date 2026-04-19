@@ -117,7 +117,7 @@ public class DatabaseHandler {
     }
 
     public Recipe getRecipeById(String id) {
-        String sql = "SELECT name, category, description, ingredients, instructions, language FROM recipes WHERE id = ?";
+        String sql = "SELECT name, category, description, ingredients, instructions, direction FROM recipes WHERE id = ?";
         try (Connection conn = connect();
              java.sql.PreparedStatement pstmt = conn.prepareStatement(sql)) {
             pstmt.setString(1, id);
