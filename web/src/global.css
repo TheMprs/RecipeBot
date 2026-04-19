@@ -1,57 +1,182 @@
-body, h1, h2, h3 {
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    color: #2c3e50;
-    margin-bottom: 10px;
+/* --- global.css --- */
+:root {
+  --bg-off-white: #f5f5f7; /* Apple-style off-white */
+  --card-bg: #ffffff;
+  --primary: #000000; /* Sleek black for accents */
+  --text-main: #1d1d1f;
+  --text-muted: #86868b;
+  --border: #e5e5ea;
+  /* Soft, wide shadows for the pop-out effect */
+  --shadow: 0 10px 30px rgba(0, 0, 0, 0.08); 
+  --shadow-hover: 0 14px 40px rgba(0, 0, 0, 0.12);
 }
 
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background-color: var(--bg-off-white);
+  color: var(--text-main);
+  margin: 0;
+  padding: 20px;
+  /* This centers everything on the screen horizontally */
+  display: flex;
+  justify-content: center; 
+  min-height: 100vh;
+}
+
+/* --- The Main List & Recipe Card (Centered, Narrow) --- */
+.app-container {
+  width: 100%;
+  max-width: 500px; /* Small portion of the screen */
+  background: var(--card-bg);
+  margin-top: 40px; /* Pushes it slightly down from the top */
+  padding: 40px;
+  border-radius: 20px;
+  box-shadow: var(--shadow);
+  height: fit-content;
+}
+
+/* --- The Form (Even smaller, heavier shadow to pop out) --- */
+.form-container {
+  width: 100%;
+  max-width: 450px; /* Tighter than the main list */
+  background: var(--card-bg);
+  margin-top: 30px; /* Closer to the top */
+  padding: 35px;
+  border-radius: 20px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15); /* Heavier pop-out shadow */
+  height: fit-content;
+}
+
+h1, h2 {
+  text-align: center;
+  margin-top: 0;
+  margin-bottom: 30px;
+  font-weight: 600;
+  letter-spacing: -0.5px;
+}
+
+/* --- Buttons --- */
+.btn-primary {
+  width: 100%;
+  background-color: var(--primary);
+  color: white;
+  border: none;
+  padding: 14px;
+  border-radius: 12px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.2s, opacity 0.2s;
+  margin-bottom: 25px;
+}
+
+.btn-primary:hover {
+  opacity: 0.8;
+  transform: scale(0.98);
+}
+
+.btn-secondary {
+  background-color: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  padding: 8px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.2s;
+  font-size: 0.9rem;
+  margin-bottom: 20px;
+}
+
+.btn-secondary:hover {
+  background-color: var(--bg-off-white);
+  color: var(--text-main);
+}
+
+/* --- List Items --- */
+.recipe-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.recipe-card-mini {
+  padding: 18px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background-color: var(--card-bg);
+  cursor: pointer;
+  transition: all 0.2s;
+  font-weight: 500;
+  text-align: center;
+}
+
+.recipe-card-mini:hover {
+  border-color: var(--primary);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+  transform: translateY(-2px);
+}
+
+/* --- Form Inputs --- */
 .recipe-form {
-    display: flex;
-    flex-direction: column;
-    gap: 15px;
-    max-width: 600px;
-    background: #ffffff;
-    padding: 20px;
-    border-radius: 8px;
-    border: 1px solid #e0e0e0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
 .form-group {
-    display: flex;
-    flex-direction: column;
-    gap: 5px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .form-group label {
-    font-weight: 600;
-    font-size: 0.95rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .form-group input, 
 .form-group select, 
 .form-group textarea {
-    padding: 10px;
-    border: 1px solid #ccc;
-    border-radius: 5px;
-    font-family: inherit;
-    font-size: 1rem;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-family: inherit;
+  font-size: 0.95rem;
+  background-color: var(--bg-off-white);
+  transition: border-color 0.2s;
 }
 
-.form-group textarea {
-    resize: vertical;
+.form-group input:focus, 
+.form-group select:focus, 
+.form-group textarea:focus {
+  outline: none;
+  border-color: var(--primary);
+  background-color: white;
 }
 
-.submit-btn {
-    padding: 12px;
-    background-color: #28a745;
-    color: white;
-    border: none;
-    border-radius: 5px;
-    font-size: 1.1rem;
-    cursor: pointer;
-    font-weight: bold;
-    margin-top: 10px;
+/* --- global.css additions --- */
+.header-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
 }
 
-.submit-btn:hover {
-    background-color: #218838;
+.btn-danger {
+  background-color: transparent;
+  color: #dc2626; /* Sleek red */
+  border: 1px solid #fca5a5;
+  padding: 8px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 0.9rem;
+}
+
+.btn-danger:hover {
+  background-color: #fef2f2;
+  border-color: #dc2626;
 }

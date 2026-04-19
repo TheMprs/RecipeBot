@@ -40,31 +40,34 @@ function App() {
       <RecipeCard 
         recipeName={selectedRecipe} 
         onBack={() => setSelectedRecipe(null)} 
+        onDeleteSuccess={() => {
+          setSelectedRecipe(null); // Close the card
+          fetchRecipes();          // Refresh the database list!
+        }}
       />
     )
   }
 
   // default view: list of recipes
   return (
-    <div style={{ padding: '40px'}}>
-      <h1>🍽️ My Recipe Book</h1>
-      <button className="add-btn" onClick={() => setIsAdding(true)}>
-        + Add New Recipe
-      </button>
+    <div className="app-container">
+        <h1>🍽️ My Recipe Book</h1>
+        <button className="btn-primary" onClick={() => setIsAdding(true)}>
+          + Add New Recipe
+        </button>
 
-      <div> 
-        {recipes.map((recipe, index) => (
-              <div 
-                key={index}
-                onClick={() => setSelectedRecipe(recipe)}
-                onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#eee'}
-                onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#f9f9f9'}
-              >
-                  <strong>  {recipe}  </strong> 
-              </div>
-            ))}
+        <div className="recipe-list"> 
+          {recipes.map((recipe, index) => (
+                <div 
+                  key={index}
+                  className="recipe-card-mini"
+                  onClick={() => setSelectedRecipe(recipe)}
+                >
+                    {recipe} 
+                </div>
+              ))}
+        </div>
       </div>
-    </div>
   )
 }
 

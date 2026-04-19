@@ -52,8 +52,8 @@ export default function RecipeForm({ onBack, onSuccess }) {
     const isRtl = formData.direction === 'rtl';
 
     return (
-        <div style={{ padding: '20px', direction: formData.direction }}>
-            <button className="back-btn" onClick={onBack} type="button">
+        <div className="form-container" style={{ direction: formData.direction }}>
+            <button className="btn-secondary" onClick={onBack} type="button">
                 {isRtl ? '→ ביטול' : '← Cancel'}
             </button>
 
@@ -113,7 +113,7 @@ export default function RecipeForm({ onBack, onSuccess }) {
                     />
                 </div>
 
-                <button type="submit" className="submit-btn">
+                <button type="submit" className="btn-primary" style={{ marginTop: '10px' }}>
                     {isRtl ? 'שמור מתכון' : 'Save Recipe'}
                 </button>
             </form>
