@@ -7,15 +7,15 @@ public class Recipe {
     private boolean favorite = false; // default value
     private String[] ingredients;
     private String[] instructions;
-    private String language;
+    private String direction; // "ltr" for left-to-right languages, "rtl" for right-to-left languages
 
-    public Recipe(String name, Category category, String description, String[] ingredients, String[] instructions, String language) {
+    public Recipe(String name, Category category, String description, String[] ingredients, String[] instructions, String direction) {
         this.name = name;
         this.category = category;
         this.description = description;
         this.ingredients = ingredients;
         this.instructions = instructions;
-        this.language = language;
+        this.direction = direction;
     }
 
     public Recipe(){
@@ -24,7 +24,7 @@ public class Recipe {
         this.description = null;
         this.ingredients = null;
         this.instructions = null;
-        this.language = null;
+        this.direction = null;
     }
 
     public Recipe(String text) {
@@ -35,7 +35,6 @@ public class Recipe {
         this.description = parts[2];
         this.ingredients = parts[3].split(";"); //  ingredients are separated by semicolons
         this.instructions = parts[4].split(";"); //  instructions are separated by semicolons
-        
     }
 
     // add recipe to favorite list
@@ -53,14 +52,14 @@ public class Recipe {
     public String getDescription() { return this.description; }
     public String[] getIngredients() { return this.ingredients; }
     public String[] getInstructions() { return this.instructions; }
-    public String getLanguage() { return this.language; }
+    public String getDirection() { return this.direction; }
 
     public void setName(String newName) { this.name = newName; }
     public void setCategory(Category category) { this.category = category; }
     public void setDescription(String description) { this.description = description; }
     public void setIngredients(String[] ingredients) { this.ingredients = ingredients; }
     public void setInstructions(String[] instructions) { this.instructions = instructions; }
-    public void setLanguage(String language) { this.language = language; }
+    public void setDirection(String direction) { this.direction = direction; }
 
     public boolean isFavorite() { return this.favorite; }
 

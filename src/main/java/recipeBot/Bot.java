@@ -364,7 +364,7 @@ public class Bot extends TelegramLongPollingBot {
             Recipe extractedRecipe = gemini.extractRecipeFromText(rawText);
             
             if(extractedRecipe != null && extractedRecipe.getName() != null) {
-                String lang = extractedRecipe.getLanguage();
+                String lang = extractedRecipe.getDirection();
                 db.addRecipe(extractedRecipe, lang);
                 sendText(id, "Recipe imported successfully!");
             } else {

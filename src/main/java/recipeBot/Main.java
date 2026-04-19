@@ -11,9 +11,6 @@ public class Main {
         // db init
         DatabaseHandler db = new DatabaseHandler();
         
-        
-
-
         // bot init
         TelegramBotsApi telegramBotsApi = new TelegramBotsApi(DefaultBotSession.class);
         Bot bot = new Bot(db);
@@ -27,7 +24,6 @@ public class Main {
 
         // init web manager
         webManager webManager = new webManager(db);
-        app.get("/api/recipes", webManager::getAllRecipes);
-        app.get("/api/recipes/{name}", webManager::getOneRecipe);
+        webManager.registerRoutes(app);
     }
 }
