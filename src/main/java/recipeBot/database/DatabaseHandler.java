@@ -4,6 +4,7 @@ import java.sql.Statement;
 import java.sql.Connection;
 import java.util.ArrayList;
 import java.util.List;
+import java.io.File;
 
 import recipeBot.*;
 
@@ -15,6 +16,9 @@ public class DatabaseHandler {
 
     // Initialize the database connection and create tables
     public DatabaseHandler() {
+        File dbFolder = new File("data");
+        dbFolder.mkdirs(); // create the data folder if it doesn't exist
+        
         try (Connection conn = connect();
              Statement stmt = conn.createStatement()) {
             String sql = 

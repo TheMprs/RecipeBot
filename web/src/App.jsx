@@ -10,7 +10,7 @@ function App() {
   
   // useEffect runs this code automatically when the page loads
   const fetchRecipes = () => {
-    fetch('http://localhost:8080/api/recipes')
+    fetch('http://8.229.229.162:8080/api/recipes')
       .then(response => response.json())
       .then(data => setRecipes(data))
       .catch(error => console.error("Error fetching recipes:", error))
