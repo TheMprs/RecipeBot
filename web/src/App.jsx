@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { BookOpen, Plus, Search, Filter, X } from 'lucide-react'
+import { BookOpen, Plus, Search, Filter, X, Link as LinkIcon } from 'lucide-react'
 import { RecipeCard } from './components/RecipeCard'
 import { RecipeDetail } from './components/RecipeDetail'
 import { RecipeForm } from './components/RecipeForm'
@@ -15,6 +15,9 @@ function App() {
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedCategory, setSelectedCategory] = useState('All')
   const [isCategoryMenuOpen, setIsCategoryMenuOpen] = useState(false)
+  const [showUrlModal, setShowUrlModal] = useState(false)
+  const [urlInput, setUrlInput] = useState('')
+  const [isScrapingLoading, setIsScrapingLoading] = useState(false)
 
   // 1. FETCH ALL RECIPE NAMES AND DETAILS
   const fetchRecipes = () => {
@@ -116,6 +119,46 @@ function App() {
     setSelectedRecipe(null)
   }
 
+  // 5. SCRAPE RECIPE FROM URL
+  const handleScrapeFromUrl = async () => {
+    if (!urlInput.trim()) {
+      alert('Please enter a URL');
+      return;
+    }
+
+    setIsScrapingLoading(true);
+    try {
+      const res = await fetch('/api/recipes/scrape', {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: urlInput
+      });
+
+      if (res.ok) {
+        const scrapedRecipe = await res.json();
+        // Convert recipe data to format expected by RecipeForm
+        setEditingRecipe({
+          title: scrapedRecipe.name,
+          category: scrapedRecipe.category,
+          description: scrapedRecipe.description,
+          ingredients: scrapedRecipe.ingredients || [],
+          instructions: scrapedRecipe.instructions || [],
+          direction: scrapedRecipe.direction || 'ltr'
+        });
+        setViewMode('add');
+        setShowUrlModal(false);
+        setUrlInput('');
+      } else {
+        alert('Failed to scrape recipe. Please make sure the URL points to a valid recipe page.');
+      }
+    } catch (error) {
+      console.error('Error scraping URL:', error);
+      alert('Error: ' + error.message);
+    } finally {
+      setIsScrapingLoading(false);
+    }
+  }
+
   // Bridge: Map recipe data to display format
   const displayRecipes = recipes.map(recipe => {
     const formatArray = (text) => typeof text === 'string' ? text.split('\n').filter(i => i.trim()) : text;
@@ -149,6 +192,10 @@ function App() {
             <button onClick={() => setViewMode('add')} className="flex items-center gap-2 px-4 py-2.5 bg-[#c4785a] text-white rounded-xl hover:bg-[#b56a4d] transition-colors shadow-sm">
               <Plus className="w-4 h-4" />
               <span className="hidden sm:inline font-medium">Add Recipe</span>
+            </button>
+            <button onClick={() => setShowUrlModal(true)} className="flex items-center gap-2 px-4 py-2.5 bg-[#7a7265] text-white rounded-xl hover:bg-[#5a5248] transition-colors shadow-sm">
+              <LinkIcon className="w-4 h-4" />
+              <span className="hidden sm:inline font-medium">Import URL</span>
             </button>
         </div>
       </header>
@@ -186,6 +233,57 @@ function App() {
         {viewMode === 'add' && (
           <div className="transition-all duration-300 ease-out opacity-100 translate-y-0">
             <RecipeForm editingRecipe={editingRecipe} onBack={handleBack} onSave={handleAddRecipe} />
+          </div>
+        )}
+
+        {/* URL Import Modal */}
+        {showUrlModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-lg">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-xl font-semibold text-[#3d3429]">Import Recipe from URL</h2>
+                <button onClick={() => setShowUrlModal(false)} className="text-[#7a7265] hover:text-[#3d3429] transition-colors">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-[#3d3429] mb-2">Recipe URL</label>
+                  <input
+                    type="url"
+                    value={urlInput}
+                    onChange={(e) => setUrlInput(e.target.value)}
+                    placeholder="https://example.com/recipe"
+                    className="w-full px-4 py-3 bg-[#faf9f7] border border-[#e8e4dc] rounded-2xl text-[#3d3429] placeholder:text-[#7a7265] focus:outline-none focus:ring-2 focus:ring-[#c4785a]/20 focus:border-[#c4785a] transition-all"
+                  />
+                  <p className="text-xs text-[#7a7265] mt-2">Paste the URL of a recipe webpage. Our AI will extract the recipe details automatically.</p>
+                </div>
+
+                <div className="flex gap-3 pt-4">
+                  <button
+                    onClick={() => setShowUrlModal(false)}
+                    className="flex-1 px-4 py-3 bg-[#f5f3ef] text-[#3d3429] rounded-xl hover:bg-[#e8e4dc] transition-colors font-medium"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleScrapeFromUrl}
+                    disabled={isScrapingLoading}
+                    className="flex-1 px-4 py-3 bg-[#c4785a] text-white rounded-xl hover:bg-[#b56a4d] disabled:bg-[#c4785a]/50 transition-colors font-medium flex items-center justify-center gap-2"
+                  >
+                    {isScrapingLoading ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        <span>Importing...</span>
+                      </>
+                    ) : (
+                      <span>Import</span>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </main>
