@@ -33,7 +33,7 @@ export default function RecipeForm({ onBack, onSuccess }) {
         };
 
         try {
-            const response = await fetch('http://localhost:8080/api/recipes', {
+            const response = await fetch('http://8.229.229.162:8080/api/recipes', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)

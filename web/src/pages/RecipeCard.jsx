@@ -6,7 +6,7 @@ export default function RecipeCard({ recipeName, onBack, onDeleteSuccess }) {
 
     useEffect(() => {
         // Fetch full recipe details from the API
-        fetch(`http://localhost:8080/api/recipes/${recipeName}`)
+        fetch(`http://8.229.229.162:8080/api/recipes/${recipeName}`)
             .then(response => response.json())
             .then(data => setDetails(data))
             .catch(error => console.error("Error fetching recipe details:", error))
@@ -27,7 +27,7 @@ export default function RecipeCard({ recipeName, onBack, onDeleteSuccess }) {
 
         try {
             const safeName = encodeURIComponent(recipeName); // <--- ADD THIS
-            const response = await fetch(`http://localhost:8080/api/recipes/${safeName}`, { // <--- USE IT HERE
+            const response = await fetch(`http://8.229.229.162:8080/api/recipes/${safeName}`, { // <--- USE IT HERE
                 method: 'DELETE'
             });
             
