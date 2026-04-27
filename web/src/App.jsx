@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import RecipeCard from './pages/recipeCard'
+import RecipeCard from './pages/RecipeCard'
 import RecipeForm from './pages/RecipeForm'
 import './global.css'
 
