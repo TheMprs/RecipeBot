@@ -11,15 +11,29 @@ function App() {
   const [recipes, setRecipes] = useState([])
   const [viewMode, setViewMode] = useState('dashboard')
   const [selectedRecipe, setSelectedRecipe] = useState(null)
+  const [editingRecipe, setEditingRecipe] = useState(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedCategory, setSelectedCategory] = useState('All')
   const [isCategoryMenuOpen, setIsCategoryMenuOpen] = useState(false)
 
-  // 1. FETCH ALL RECIPE NAMES
+  // 1. FETCH ALL RECIPE NAMES AND DETAILS
   const fetchRecipes = () => {
     fetch('/api/recipes')
       .then(response => response.json())
-      .then(data => setRecipes(data))
+      .then(async (data) => {
+        // Fetch full details for each recipe
+        const fullRecipes = await Promise.all(
+          data.map(name => 
+            fetch(`/api/recipes/${encodeURIComponent(name)}`)
+              .then(res => res.json())
+              .catch(error => {
+                console.error(`Error fetching ${name}:`, error);
+                return { name, description: '' };
+              })
+          )
+        );
+        setRecipes(fullRecipes);
+      })
       .catch(error => console.error("Error fetching:", error))
   }
 
@@ -39,6 +53,7 @@ function App() {
           title: fullRecipe.name || recipeObj.title,
           description: fullRecipe.description || '',
           category: fullRecipe.category || 'MAIN',
+          direction: fullRecipe.direction || 'ltr',
           ingredients: formatArray(fullRecipe.ingredients) || [],
           instructions: formatArray(fullRecipe.instructions) || []
         });
@@ -53,13 +68,18 @@ function App() {
       name: newRecipe.title,
       category: newRecipe.category,
       description: newRecipe.description,
-      ingredients: newRecipe.ingredients.join('\n'),
-      instructions: newRecipe.instructions.join('\n'),
-      direction: 'ltr'
+      ingredients: newRecipe.ingredients,
+      instructions: newRecipe.instructions,
+      direction: editingRecipe?.direction || 'ltr'
     };
 
-    const res = await fetch('/api/recipes', {
-      method: 'POST',
+    const method = editingRecipe ? 'PUT' : 'POST';
+    const url = editingRecipe ? `/api/recipes/${encodeURIComponent(editingRecipe.title)}` : '/api/recipes';
+    
+    console.log(`[DEBUG] ${method} request to ${url}`, backendFormat, 'editingRecipe:', editingRecipe);
+
+    const res = await fetch(url, {
+      method,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(backendFormat)
     });
@@ -67,7 +87,17 @@ function App() {
     if (res.ok) {
       fetchRecipes();
       setViewMode('dashboard');
+      setEditingRecipe(null);
+    } else {
+      const errorText = await res.text();
+      console.error(`Error: ${res.status}`, errorText);
     }
+  }
+
+  // 3b. EDIT RECIPE
+  const handleEditRecipe = (recipe) => {
+    setEditingRecipe(recipe);
+    setViewMode('add');
   }
 
   // 4. DELETE RECIPE
@@ -86,10 +116,19 @@ function App() {
     setSelectedRecipe(null)
   }
 
-  // Bridge: Convert your string array into fake objects so the v0 UI doesn't crash
-  const displayRecipes = recipes.map(name => ({
-    id: name, title: name, description: 'Click to view details...', category: 'MAIN', ingredients: [], instructions: []
-  })).filter(recipe => 
+  // Bridge: Map recipe data to display format
+  const displayRecipes = recipes.map(recipe => {
+    const formatArray = (text) => typeof text === 'string' ? text.split('\n').filter(i => i.trim()) : text;
+    return {
+      id: recipe.name || recipe.title,
+      title: recipe.name || recipe.title,
+      description: recipe.description || '',
+      category: recipe.category || 'MAIN',
+      direction: recipe.direction || 'ltr',
+      ingredients: formatArray(recipe.ingredients) || [],
+      instructions: formatArray(recipe.instructions) || []
+    };
+  }).filter(recipe => 
     recipe.title.toLowerCase().includes(searchQuery.toLowerCase()) &&
     (selectedCategory === 'All' || recipe.category === selectedCategory)
   );
@@ -127,7 +166,7 @@ function App() {
               {displayRecipes.length > 0 ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
                   {displayRecipes.map((recipe) => (
-                    <RecipeCard key={recipe.id} recipe={recipe} onSelect={handleSelectRecipe} onDelete={handleDeleteRecipe} onEdit={() => {}} showCategory={false} />
+                    <RecipeCard key={recipe.id} recipe={recipe} onSelect={handleSelectRecipe} onDelete={handleDeleteRecipe} onEdit={handleEditRecipe} showCategory={false} />
                   ))}
                 </div>
               ) : (
@@ -139,14 +178,14 @@ function App() {
         )}
 
         {viewMode === 'detail' && selectedRecipe && (
-          <div className="transition-all duration-300 ease-out opacity-100 translate-y-0">
-            <RecipeDetail recipe={selectedRecipe} onBack={handleBack} onEdit={() => {}} onDelete={handleDeleteRecipe} />
+          <div style={{ direction: selectedRecipe.direction === 'rtl' ? 'rtl' : 'ltr' }} className="transition-all duration-300 ease-out opacity-100 translate-y-0">
+            <RecipeDetail recipe={selectedRecipe} onBack={handleBack} onEdit={handleEditRecipe} onDelete={handleDeleteRecipe} />
           </div>
         )}
 
         {viewMode === 'add' && (
           <div className="transition-all duration-300 ease-out opacity-100 translate-y-0">
-            <RecipeForm onBack={handleBack} onSave={handleAddRecipe} />
+            <RecipeForm editingRecipe={editingRecipe} onBack={handleBack} onSave={handleAddRecipe} />
           </div>
         )}
       </main>

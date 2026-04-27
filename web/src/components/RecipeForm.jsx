@@ -1,11 +1,26 @@
 import { useState, useEffect, useRef } from 'react'
 import { ArrowLeft, ChevronDown } from 'lucide-react'
 
-const categories = ['Breakfast', 'Lunch', 'Dinner', 'Dessert', 'Snacks', 'Drinks']
+// Map display names to backend category enums
+const categoryMap = {
+  'Main': 'MAIN',
+  'Dessert': 'DESSERT',
+  'Snacks': 'SNACK',
+  'Special': 'SPECIAL'
+}
+
+const reverseMap = {
+  'MAIN': 'Main',
+  'DESSERT': 'Dessert',
+  'SNACK': 'Snacks',
+  'SPECIAL': 'Special'
+}
+
+const categories = ['Main', 'Dessert', 'Snacks', 'Special']
 
 export function RecipeForm({ onBack, onSave, editingRecipe }) {
   const [title, setTitle] = useState('')
-  const [category, setCategory] = useState('Dinner')
+  const [category, setCategory] = useState('Main')
   const [description, setDescription] = useState('')
   const [ingredientsText, setIngredientsText] = useState('')
   const [instructionsText, setInstructionsText] = useState('')
@@ -15,7 +30,8 @@ export function RecipeForm({ onBack, onSave, editingRecipe }) {
   useEffect(() => {
     if (editingRecipe) {
       setTitle(editingRecipe.title)
-      setCategory(editingRecipe.category)
+      // Map backend enum back to display name
+      setCategory(reverseMap[editingRecipe.category] || 'Main')
       setDescription(editingRecipe.description)
       setIngredientsText(editingRecipe.ingredients.join('\n'))
       setInstructionsText(editingRecipe.instructions.join('\n'))
@@ -47,7 +63,7 @@ export function RecipeForm({ onBack, onSave, editingRecipe }) {
 
     onSave({
       title,
-      category,
+      category: categoryMap[category],
       description,
       ingredients,
       instructions,

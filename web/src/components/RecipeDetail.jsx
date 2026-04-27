@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { ArrowLeft, Clock, Users, ChefHat, Check, Pencil, Trash2, RotateCcw } from 'lucide-react'
+import { ArrowLeft, Users, ChefHat, Check, Pencil, Trash2, RotateCcw } from 'lucide-react'
 
 const COOKIE_NAME_PREFIX = 'recipe_ingredients_'
 
@@ -20,6 +20,7 @@ function setCookie(name, value, days = 30) {
 
 export function RecipeDetail({ recipe, onBack, onEdit, onDelete }) {
   const cookieName = `${COOKIE_NAME_PREFIX}${recipe.id}`
+  const isRtl = recipe.direction === 'rtl'
 
   const [checkedIngredients, setCheckedIngredients] = useState(() => {
     const saved = getCookie(cookieName)
@@ -58,7 +59,7 @@ export function RecipeDetail({ recipe, onBack, onEdit, onDelete }) {
   return (
     <div className="max-w-3xl mx-auto">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 gap-2" style={{ direction: 'ltr' }}>
         <button
           onClick={onBack}
           className="flex items-center gap-2 text-[#7a7265] hover:text-[#3d3429] transition-colors"
@@ -88,31 +89,28 @@ export function RecipeDetail({ recipe, onBack, onEdit, onDelete }) {
       {/* Recipe Header Card */}
       <div className="bg-white rounded-3xl border border-[#e8e4dc]/50 shadow-sm overflow-hidden mb-6">
         <div className="p-6 sm:p-8">
-          <div className="flex items-start justify-between gap-4 mb-4">
-            <div>
+          <div className={`flex items-start mb-4 w-full ${isRtl ? 'flex-row-reverse' : ''}`}>
+            <div className="w-full">
               <span className="inline-block px-3 py-1 rounded-full text-xs font-medium bg-[#f5f3ef] text-[#5a5248] mb-3">
                 {recipe.category}
               </span>
-              <h1 className="text-2xl sm:text-3xl font-bold text-[#3d3429] text-balance">{recipe.title}</h1>
+              <h1 
+                className={`text-2xl sm:text-3xl font-bold text-[#3d3429] text-balance ${isRtl ? 'text-right' : 'text-left'}`}
+                style={{ direction: isRtl ? 'rtl' : 'ltr' }}
+              >{recipe.title}</h1>
             </div>
           </div>
 
-          <p className="text-[#7a7265] leading-relaxed mb-6">{recipe.description}</p>
+          <p className={`text-[#7a7265] leading-relaxed mb-6 ${isRtl ? 'text-right' : ''}`} dir={isRtl ? 'rtl' : 'ltr'}>{recipe.description}</p>
 
-          <div className="flex flex-wrap items-center gap-4 sm:gap-6 text-sm text-[#7a7265]">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-full bg-[#c4785a]/10 flex items-center justify-center">
-                <Clock className="w-4 h-4 text-[#c4785a]" />
-              </div>
-              <span>{recipe.instructions.length * 5} min</span>
-            </div>
-            <div className="flex items-center gap-2">
+          <div className={`flex flex-wrap items-center gap-4 sm:gap-6 text-sm text-[#7a7265]`} dir="ltr">
+            <div className={`flex items-center gap-2 ${isRtl ? 'flex-row-reverse' : ''}`}>
               <div className="w-8 h-8 rounded-full bg-[#c4785a]/10 flex items-center justify-center">
                 <Users className="w-4 h-4 text-[#c4785a]" />
               </div>
               <span>4 servings</span>
             </div>
-            <div className="flex items-center gap-2">
+            <div className={`flex items-center gap-2 ${isRtl ? 'flex-row-reverse' : ''}`}>
               <div className="w-8 h-8 rounded-full bg-[#c4785a]/10 flex items-center justify-center">
                 <ChefHat className="w-4 h-4 text-[#c4785a]" />
               </div>
@@ -127,8 +125,8 @@ export function RecipeDetail({ recipe, onBack, onEdit, onDelete }) {
         {/* Ingredients */}
         <div className="lg:col-span-2">
           <div className="bg-white rounded-3xl border border-[#e8e4dc]/50 shadow-sm p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-[#3d3429] flex items-center gap-2">
+            <div className={`flex items-center justify-between mb-4 ${isRtl ? 'flex-row-reverse' : ''}`}>
+              <h2 className={`text-lg font-semibold text-[#3d3429] flex items-center gap-2 ${isRtl ? 'flex-row-reverse' : ''}`}>
                 <span className="w-8 h-8 rounded-full bg-[#c4785a]/10 flex items-center justify-center">
                   <span className="text-[#c4785a] text-sm">*</span>
                 </span>
@@ -144,23 +142,25 @@ export function RecipeDetail({ recipe, onBack, onEdit, onDelete }) {
                 </button>
               )}
             </div>
-            <ul className="space-y-3">
+            <ul className="space-y-3" style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
               {recipe.ingredients.map((ingredient, index) => {
                 const isChecked = checkedIngredients.has(index)
                 return (
-                  <li key={index} className="flex items-start gap-3">
+                  <li key={index} className="flex items-start gap-3" style={{ display: 'flex', flexDirection: isRtl ? 'row-reverse' : 'row' }}>
                     <button
                       onClick={() => toggleIngredient(index)}
                       className={`w-5 h-5 rounded-md border-2 flex items-center justify-center flex-shrink-0 mt-0.5 transition-all duration-200 ${
                         isChecked ? 'bg-[#c4785a] border-[#c4785a]' : 'border-[#e8e4dc] hover:border-[#c4785a]/50'
                       }`}
+                      style={{ order: isRtl ? 2 : 1 }}
                     >
                       {isChecked && <Check className="w-3 h-3 text-white" />}
                     </button>
                     <span
-                      className={`text-sm leading-relaxed transition-all duration-200 ${
+                      className={`text-sm leading-relaxed transition-all duration-200 flex-1 ${
                         isChecked ? 'text-[#7a7265] line-through' : 'text-[#3d3429]/80'
-                      }`}
+                      } ${isRtl ? 'text-right' : ''}`}
+                      style={{ order: isRtl ? 1 : 2 }}
                     >
                       {ingredient}
                     </span>
@@ -174,19 +174,22 @@ export function RecipeDetail({ recipe, onBack, onEdit, onDelete }) {
         {/* Instructions */}
         <div className="lg:col-span-3">
           <div className="bg-white rounded-3xl border border-[#e8e4dc]/50 shadow-sm p-6">
-            <h2 className="text-lg font-semibold text-[#3d3429] mb-6 flex items-center gap-2">
+            <h2 className={`text-lg font-semibold text-[#3d3429] mb-6 flex items-center gap-2 ${isRtl ? 'flex-row-reverse' : ''}`}>
               <span className="w-8 h-8 rounded-full bg-[#c4785a]/10 flex items-center justify-center">
                 <ChefHat className="w-4 h-4 text-[#c4785a]" />
               </span>
               Instructions
             </h2>
-            <ol className="space-y-6">
+            <ol className="space-y-6 w-full">
               {recipe.instructions.map((instruction, index) => (
-                <li key={index} className="flex gap-4">
-                  <span className="w-8 h-8 rounded-full bg-[#c4785a] text-white flex items-center justify-center flex-shrink-0 text-sm font-semibold">
+                <li key={index} className="flex gap-4 items-start" style={{ display: 'flex', flexDirection: isRtl ? 'row-reverse' : 'row' }}>
+                  <span className="w-8 h-8 rounded-full bg-[#c4785a] text-white flex items-center justify-center flex-shrink-0 text-sm font-semibold" style={{ order: isRtl ? 2 : 1 }}>
                     {index + 1}
                   </span>
-                  <p className="text-[#3d3429]/80 leading-relaxed pt-1">{instruction}</p>
+                  <p 
+                    className={`text-[#3d3429]/80 leading-relaxed pt-1 flex-1 ${isRtl ? 'text-right' : ''}`}
+                    style={{ order: isRtl ? 1 : 2 }}
+                  >{instruction}</p>
                 </li>
               ))}
             </ol>
