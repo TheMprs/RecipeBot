@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
 import { ArrowLeft, ChevronDown, LinkIcon, X } from 'lucide-react'
-import { Dotenv } from 'dotenv'
 
 // Map display names to backend category enums
 const categoryMap = {
