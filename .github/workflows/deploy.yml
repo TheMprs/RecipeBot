@@ -1,0 +1,46 @@
+name: Deploy Java Backend to Google Cloud
+
+on:
+  push:
+    branches:
+      - main 
+      
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v3
+
+    - name: Set up JDK 17
+      uses: actions/setup-java@v3
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+
+    - name: Build with Maven
+      run: mvn clean package -DskipTests
+
+    - name: Copy JAR to Google Cloud VM
+      uses: appleboy/scp-action@v0.1.4
+      with:
+        host: ${{ secrets.GCP_HOST }}
+        username: ${{ secrets.GCP_USERNAME }}
+        key: ${{ secrets.GCP_SSH_KEY }}
+        source: "target/*-jar-with-dependencies.jar" # Adjust if your jar name is different
+        target: "/home/${{ secrets.GCP_USERNAME }}/recipebot/"
+        strip_components: 1
+
+    - name: Restart Java Server
+      uses: appleboy/ssh-action@v0.1.10
+      with:
+        host: ${{ secrets.GCP_HOST }}
+        username: ${{ secrets.GCP_USERNAME }}
+        key: ${{ secrets.GCP_SSH_KEY }}
+        script: |
+          cd /home/${{ secrets.GCP_USERNAME }}/recipebot/
+          # Kill the old Java process safely
+          pkill -f 'java -jar' || true
+          # Start the new JAR in the background
+          nohup java -jar *.jar > server.log 2>&1 &
