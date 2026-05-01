@@ -21,7 +21,7 @@ jobs:
         cache: 'maven'
 
     - name: Build with Maven
-      run: mvn clean package -DskipTests
+      run: mvn --batch-mode clean package -DskipTests -Djava.net.preferIPv4Stack=true
 
     - name: Copy JAR to Google Cloud VM
       uses: appleboy/scp-action@v0.1.4
@@ -39,9 +39,11 @@ jobs:
         host: ${{ secrets.GCP_HOST }}
         username: ${{ secrets.GCP_USERNAME }}
         key: ${{ secrets.GCP_SSH_KEY }}
+        command_timeout: 60  # Add this line
         script: |
           cd /home/${{ secrets.GCP_USERNAME }}/recipebot/
           pkill -f 'java -jar' || true
           sleep 2
-          nohup java -jar *.jar > server.log 2>&1 < /dev/null &
+          nohup java -jar *.jar > server.log 2>&1 &
+          sleep 1
           exit 0
