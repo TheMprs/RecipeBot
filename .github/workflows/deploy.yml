@@ -23,15 +23,60 @@ jobs:
     - name: Build with Maven
       run: mvn --batch-mode clean package -DskipTests -Djava.net.preferIPv4Stack=true
 
+    - name: Backup Database Before Deploy
+      uses: appleboy/ssh-action@v0.1.10
+      with:
+        host: ${{ secrets.GCP_HOST }}
+        username: ${{ secrets.GCP_USERNAME }}
+        key: ${{ secrets.GCP_SSH_KEY }}
+        script: |
+          mkdir -p /home/${{ secrets.GCP_USERNAME }}/RecipeBot/db-backup
+          find /home/${{ secrets.GCP_USERNAME }}/RecipeBot -maxdepth 1 \( -name "*.db" -o -name "*.mv.db" -o -name "*.h2.db" \) -exec cp {} /home/${{ secrets.GCP_USERNAME }}/RecipeBot/db-backup/ \;
+          echo "✓ Database backed up"
+          ls -lah /home/${{ secrets.GCP_USERNAME }}/RecipeBot/db-backup/
+
     - name: Copy JAR to Google Cloud VM
       uses: appleboy/scp-action@v0.1.4
       with:
         host: ${{ secrets.GCP_HOST }}
         username: ${{ secrets.GCP_USERNAME }}
         key: ${{ secrets.GCP_SSH_KEY }}
-        source: "target/*-jar-with-dependencies.jar" # Adjust if your jar name is different
-        target: "/home/${{ secrets.GCP_USERNAME }}/recipebot/"
+        source: "target/*-jar-with-dependencies.jar"
+        target: "/home/${{ secrets.GCP_USERNAME }}/RecipeBot/"
         strip_components: 1
+
+    - name: Restore Database After Deploy
+      uses: appleboy/ssh-action@v0.1.10
+      with:
+        host: ${{ secrets.GCP_HOST }}
+        username: ${{ secrets.GCP_USERNAME }}
+        key: ${{ secrets.GCP_SSH_KEY }}
+        script: |
+          cp /home/${{ secrets.GCP_USERNAME }}/RecipeBot/db-backup/* /home/${{ secrets.GCP_USERNAME }}/RecipeBot/ 2>/dev/null || true
+          echo "✓ Database restored"
+          ls -lah /home/${{ secrets.GCP_USERNAME }}/RecipeBot/*.db* 2>/dev/null || echo "No database files"
+
+    - name: Copy .env to VM
+      uses: appleboy/ssh-action@v0.1.10
+      with:
+        host: ${{ secrets.GCP_HOST }}
+        username: ${{ secrets.GCP_USERNAME }}
+        key: ${{ secrets.GCP_SSH_KEY }}
+        script: |
+          cp /home/${{ secrets.GCP_USERNAME }}/.env /home/${{ secrets.GCP_USERNAME }}/RecipeBot/.env || echo "Warning: .env not found"
+
+    - name: Check Server Logs
+      uses: appleboy/ssh-action@v0.1.10
+      with:
+        host: ${{ secrets.GCP_HOST }}
+        username: ${{ secrets.GCP_USERNAME }}
+        key: ${{ secrets.GCP_SSH_KEY }}
+        script: |
+          echo "✓ Server output log:"
+          tail -100 /home/${{ secrets.GCP_USERNAME }}/RecipeBot/server.log 2>/dev/null || echo "No server log yet"
+          echo ""
+          echo "✓ Systemd journal (last 50 lines):"
+          sudo journalctl -u recipebot -n 50 --no-pager 2>/dev/null || echo "No systemd logs yet"
 
     - name: Restart Java Server
       uses: appleboy/ssh-action@v0.1.10
@@ -39,11 +84,44 @@ jobs:
         host: ${{ secrets.GCP_HOST }}
         username: ${{ secrets.GCP_USERNAME }}
         key: ${{ secrets.GCP_SSH_KEY }}
-        command_timeout: 60  # Add this line
+        command_timeout: 60s
         script: |
-          cd /home/${{ secrets.GCP_USERNAME }}/recipebot/
-          pkill -f 'java -jar' || true
+          RECIPEBOT_HOME=/home/${{ secrets.GCP_USERNAME }}/RecipeBot
+          
+          if [ ! -f ${RECIPEBOT_HOME}/.env ]; then
+            echo "ERROR: .env file not found"
+            exit 1
+          fi
+
+          # Clean restart
+          sudo systemctl stop recipebot 2>/dev/null || true
+          pkill -9 java 2>/dev/null || true
           sleep 2
-          nohup java -jar *.jar > server.log 2>&1 &
-          sleep 1
-          exit 0
+
+          sudo tee /etc/systemd/system/recipebot.service > /dev/null <<EOF
+          [Unit]
+          Description=RecipeBot Java Server
+          After=network.target
+
+          [Service]
+          Type=simple
+          User=${{ secrets.GCP_USERNAME }}
+          WorkingDirectory=${RECIPEBOT_HOME}
+          EnvironmentFile=${RECIPEBOT_HOME}/.env
+          ExecStart=/usr/bin/java -Dspring.jpa.hibernate.ddl-auto=update -jar ${RECIPEBOT_HOME}/RecipeBot-1.0-SNAPSHOT-jar-with-dependencies.jar
+          Restart=on-failure
+          RestartSec=10
+          StandardOutput=journal
+          StandardError=journal
+
+          [Install]
+          WantedBy=multi-user.target
+          EOF
+
+          sudo systemctl daemon-reload
+          sudo systemctl enable recipebot
+          sudo systemctl start recipebot
+          sleep 5
+          
+          echo "✓ Server started"
+          sudo journalctl -u recipebot -n 50 --no-pager
