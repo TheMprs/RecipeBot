@@ -203,7 +203,7 @@ export function RecipeForm({ onBack, onSave, editingRecipe }) {
               onChange={(e) => setIngredientsText(e.target.value)}
               placeholder="2 cups flour&#10;1 cup sugar&#10;3 eggs&#10;1/2 cup butter"
               rows={6}
-              className="w-full px-4 py-3 bg-[#faf9f7] border border-[#e8e4dc] rounded-2xl text-[#3d3429] placeholder:text-[#7a7265] focus:outline-none focus:ring-2 focus:ring-[#c4785a]/20 focus:border-[#c4785a] transition-all resize-none font-mono text-sm"
+              className="w-full px-4 py-3 bg-[#faf9f7] border border-[#e8e4dc] rounded-2xl text-[#3d3429] placeholder:text-[#7a7265] focus:outline-none focus:ring-2 focus:ring-[#c4785a]/20 focus:border-[#c4785a] transition-all resize-none"
             />
           </div>
 
@@ -216,7 +216,7 @@ export function RecipeForm({ onBack, onSave, editingRecipe }) {
               onChange={(e) => setInstructionsText(e.target.value)}
               placeholder="Preheat oven to 350F&#10;Mix dry ingredients in a bowl&#10;Add wet ingredients and stir&#10;Pour into pan and bake for 30 minutes"
               rows={8}
-              className="w-full px-4 py-3 bg-[#faf9f7] border border-[#e8e4dc] rounded-2xl text-[#3d3429] placeholder:text-[#7a7265] focus:outline-none focus:ring-2 focus:ring-[#c4785a]/20 focus:border-[#c4785a] transition-all resize-none font-mono text-sm"
+              className="w-full px-4 py-3 bg-[#faf9f7] border border-[#e8e4dc] rounded-2xl text-[#3d3429] placeholder:text-[#7a7265] focus:outline-none focus:ring-2 focus:ring-[#c4785a]/20 focus:border-[#c4785a] transition-all resize-none"
             />
           </div>
         </div>
