@@ -1,24 +1,17 @@
 import { Pencil, Trash2 } from 'lucide-react'
 
-export function RecipeCard({ recipe, onSelect, onEdit, onDelete, showCategory = true }) {
-  const isRtl = recipe.direction === 'rtl'
+export function RecipeCard({ recipe, language = 'en', onSelect, onEdit, onDelete, showCategory = true }) {
+  const isRtl = language === 'he'
   
   return (
-    <div className="group relative w-full bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-all duration-300 border border-[#e8e4dc]/50 cursor-pointer" onClick={() => onSelect(recipe)}>
+    <div className="group relative w-full bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-all duration-300 border border-[#e8e4dc]/50 cursor-pointer flex flex-col" onClick={() => onSelect(recipe)}>
       {/* Header area with title and buttons */}
-      <div className={`px-5 pt-5 pb-4 border-b border-[#e8e4dc]/30 flex items-center gap-3 ${isRtl ? 'flex-row-reverse' : ''}`}>
-        <h3 
-          className="font-semibold text-[#3d3429] text-lg group-hover:text-[#c4785a] transition-colors line-clamp-1 flex-1"
-          style={{
-            direction: isRtl ? 'rtl' : 'ltr',
-            textAlign: isRtl ? 'right' : 'left',
-            unicodeBidi: 'plaintext'
-          }}
-        >
+      <div className={`px-5 pt-5 pb-1 border-b border-[#e8e4dc]/30 flex items-center gap-3`} style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
+        <h3 className={`font-semibold text-[#3d3429] text-lg group-hover:text-[#c4785a] transition-colors line-clamp-1 ${isRtl ? 'text-right' : 'text-left'} flex-1`}>
           {recipe.title}
         </h3>
         
-        {/* Action buttons - inline */}
+        {/* Action buttons */}
         <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
           <button
             onClick={(e) => {
@@ -41,18 +34,21 @@ export function RecipeCard({ recipe, onSelect, onEdit, onDelete, showCategory = 
         </div>
       </div>
 
-        {/* Content area */}
-        <div className="px-5 py-4">
-          <p className={`text-[#7a7265] text-sm line-clamp-2 mb-4 ${isRtl ? 'text-right' : 'text-left'}`} dir={isRtl ? 'rtl' : 'ltr'}>{recipe.description}</p>
-          <div className={`items-center justify-between gap-4 ${isRtl ? 'flex-row-reverse' : ''}`} dir="ltr">
-            <span className="flex items-center gap-1 text-xs text-[#7a7265]">{recipe.ingredients.length} ingredients</span>
-            {showCategory && (
-              <span className="px-3 py-1 rounded-full text-xs font-medium bg-[#f5f3ef] text-[#5a5248] flex-shrink-0">
-                {recipe.category}
-              </span>
-            )}
+      {/* Content area */}
+      <div className="px-5 py-4 flex flex-col flex-grow">
+        <p className={`text-[#7a7265] text-sm line-clamp-2 flex-grow ${isRtl ? 'text-right' : 'text-left'}`}>
+          {recipe.description}
+        </p>
+        
+          <div className="border-t border-[#e8e4dc] pt-2 mt-2">
+
+          <div className={`flex justify-between`} style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
+            <span className={ `flex text-xs text-[#7a7265]` }>
+              {recipe.ingredients.length} {language === 'en' ? 'ingredients' : 'מצרכים'}
+            </span>
+            </div>
           </div>
         </div>
-    </div>
+      </div>
   )
 }

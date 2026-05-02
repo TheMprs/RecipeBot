@@ -9,6 +9,7 @@ const categories = ['All', 'MAIN', 'SNACK', 'LUNCH', 'SPECIAL', 'DESSERT']
 
 function App() {
   const [recipes, setRecipes] = useState([])
+  const [language, setLanguage] = useState('he')
   const [viewMode, setViewMode] = useState('dashboard')
   const [selectedRecipe, setSelectedRecipe] = useState(null)
   const [editingRecipe, setEditingRecipe] = useState(null)
@@ -18,6 +19,8 @@ function App() {
   const [showUrlModal, setShowUrlModal] = useState(false)
   const [urlInput, setUrlInput] = useState('')
   const [isScrapingLoading, setIsScrapingLoading] = useState(false)
+
+  const isRtl = language === 'he'
 
   // 1. FETCH ALL RECIPE NAMES AND DETAILS
   const fetchRecipes = () => {
@@ -185,17 +188,13 @@ function App() {
                 <BookOpen className="w-5 h-5 text-white" />
               </div>
               <div className="hidden sm:block text-left">
-                <h1 className="text-xl font-semibold text-[#3d3429]">My Recipe Book</h1>
-                <p className="text-xs text-[#7a7265]">Homemade goodness</p>
+                <h1 className="text-xl font-semibold text-[#3d3429]">Yuval's Recipe Book</h1>
+                <p className="text-xs text-[#7a7265]">זה בתהליך לא לשפוט</p>
               </div>
             </button>
-            <button onClick={() => setViewMode('add')} className="flex items-center gap-2 px-4 py-2.5 bg-[#c4785a] text-white rounded-xl hover:bg-[#b56a4d] transition-colors shadow-sm">
-              <Plus className="w-4 h-4" />
-              <span className="hidden sm:inline font-medium">Add Recipe</span>
-            </button>
-            <button onClick={() => setShowUrlModal(true)} className="flex items-center gap-2 px-4 py-2.5 bg-[#7a7265] text-white rounded-xl hover:bg-[#5a5248] transition-colors shadow-sm">
-              <LinkIcon className="w-4 h-4" />
-              <span className="hidden sm:inline font-medium">Import URL</span>
+            <button onClick={() => setViewMode('add')} className={`flex items-center gap-1 px-4 py-2.5 bg-[#c4785a] text-white rounded-xl hover:bg-[#b56a4d] transition-colors shadow-sm ${language === 'he' ? 'flex-row-reverse' : ''}`}>
+              <Plus className="w-4 h-4"/>
+              <span className="hidden sm:inline font-medium">{language === 'en' ? 'Add Recipe' : 'הוסף מתכון'}</span>
             </button>
         </div>
       </header>
@@ -205,15 +204,29 @@ function App() {
           <div className="transition-all duration-300 ease-out opacity-100 translate-y-0">
              <div className="mb-8 flex items-center gap-3">
                   <div className="relative flex-1">
-                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[#7a7265]" />
-                    <input type="text" placeholder="Search recipes..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full pl-11 pr-4 py-3 bg-white border border-[#e8e4dc] rounded-2xl text-[#3d3429] placeholder:text-[#7a7265] focus:outline-none focus:ring-2 focus:ring-[#c4785a]/20" />
+                    <Search className={`absolute top-1/2 -translate-y-1/2 w-4 h-4 text-[#7a7265] ${language === 'he' ? 'right-4' : 'left-4'}`} />
+                    <input 
+                        type="text" 
+                        placeholder={language === 'en' ? 'Search recipes...' : '...חפש מתכונים'} 
+                        value={searchQuery} 
+                        onChange={(e) => setSearchQuery(e.target.value)} 
+                        className={`w-full py-3 bg-white border border-[#e8e4dc] rounded-2xl text-[#3d3429] placeholder:text-[#7a7265] focus:outline-none focus:ring-2 focus:ring-[#c4785a]/20 ${language === 'he' ? 'pr-11 pl-4 text-right' : 'pl-11 pr-4'}`}
+                        />
                   </div>
               </div>
-              
+               
               {displayRecipes.length > 0 ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
                   {displayRecipes.map((recipe) => (
-                    <RecipeCard key={recipe.id} recipe={recipe} onSelect={handleSelectRecipe} onDelete={handleDeleteRecipe} onEdit={handleEditRecipe} showCategory={false} />
+                    <RecipeCard 
+                      key={recipe.id} 
+                      recipe={recipe} 
+                      language={language}
+                      onSelect={handleSelectRecipe} 
+                      onDelete={handleDeleteRecipe} 
+                      onEdit={handleEditRecipe} 
+                      showCategory={false} 
+                    />
                   ))}
                 </div>
               ) : (
@@ -225,21 +238,36 @@ function App() {
         )}
 
         {viewMode === 'detail' && selectedRecipe && (
-          <div style={{ direction: selectedRecipe.direction === 'rtl' ? 'rtl' : 'ltr' }} className="transition-all duration-300 ease-out opacity-100 translate-y-0">
-            <RecipeDetail recipe={selectedRecipe} onBack={handleBack} onEdit={handleEditRecipe} onDelete={handleDeleteRecipe} />
+          <div className="transition-all duration-300 ease-out opacity-100 translate-y-0">
+            <RecipeDetail 
+              recipe={selectedRecipe} 
+              onBack={handleBack} 
+              language={language}
+              onEdit={handleEditRecipe} 
+              onDelete={handleDeleteRecipe} />
           </div>
         )}
 
         {viewMode === 'add' && (
           <div className="transition-all duration-300 ease-out opacity-100 translate-y-0">
-            <RecipeForm editingRecipe={editingRecipe} onBack={handleBack} onSave={handleAddRecipe} />
+            <RecipeForm 
+              editingRecipe={editingRecipe} 
+              language={language}
+              onBack={handleBack} 
+              onSave={handleAddRecipe}
+              onOpenUrlModal={() => setShowUrlModal(true)}
+            />
           </div>
         )}
 
-        {/* URL Import Modal */}
-        {showUrlModal && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-lg">
+      </main>
+
+      {/* URL Import Modal - Rendered at App level for full-screen overlay */}
+      {showUrlModal && (
+        <>
+          <div className="fixed inset-0 bg-black/50 z-40" onClick={() => setShowUrlModal(false)}></div>
+          <div className="fixed inset-0 flex items-center justify-center z-50 p-4" onClick={() => setShowUrlModal(false)}>
+            <div onClick={(e) => e.stopPropagation()} className="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-lg">
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-xl font-semibold text-[#3d3429]">Import Recipe from URL</h2>
                 <button onClick={() => setShowUrlModal(false)} className="text-[#7a7265] hover:text-[#3d3429] transition-colors">
@@ -285,8 +313,23 @@ function App() {
               </div>
             </div>
           </div>
-        )}
-      </main>
+        </>
+      )}
+
+      {/* Footer - Credits and Language */}
+      <footer className="border-t border-[#e8e4dc] bg-[#faf9f7] mt-12">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8">
+          <div className="flex flex-col items-center justify-center text-center">
+            <p className="text-sm text-[#7a7265]">© 2026 Yuval's Recipe Book.</p>
+            <button 
+              onClick={() => setLanguage(language === 'en' ? 'he' : 'en')}
+              className="text-sm text-[#7a7265] hover:text-[#c4785a] transition-colors"
+            >
+              Language: <span className="cursor-pointer underline text-[#3d3429]">{language === 'en' ? 'en' : 'he'}</span>
+            </button>
+          </div>
+        </div>
+      </footer>
     </div>
   )
 }
