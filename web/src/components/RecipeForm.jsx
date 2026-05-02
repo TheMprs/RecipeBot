@@ -218,7 +218,7 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
           </button>
           <button
             type="submit"
-            className="flex-1 py-3 px-4 bg-[#c4785a] text-white rounded-2xl font-medium hover:bg-[#b56a4d] transition-colors shadow-sm"
+            className="flex-1 py-3 px-4 bg-[#d49277] text-white rounded-2xl font-medium hover:bg-[#b56a4d] transition-colors shadow-sm"
           >
             {editingRecipe ? (language === 'en' ? 'Save Changes' : 'שמור שינויים') 
                           : (language === 'en' ? 'Add Recipe' : 'הוסף מתכון')}

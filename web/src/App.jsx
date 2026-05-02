@@ -184,7 +184,7 @@ function App() {
       <header className="sticky top-0 z-30 bg-[#faf9f7]/95 backdrop-blur-md border-b border-[#e8e4dc]">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
             <button onClick={handleBack} className="flex items-center gap-2 group">
-              <div className="w-10 h-10 rounded-2xl bg-[#c4785a] flex items-center justify-center">
+              <div className="w-10 h-10 rounded-2xl bg-[#d49277] flex items-center justify-center">
                 <BookOpen className="w-5 h-5 text-white" />
               </div>
               <div className="hidden sm:block text-left">
@@ -192,7 +192,7 @@ function App() {
                 <p className="text-xs text-[#7a7265]">זה בתהליך לא לשפוט</p>
               </div>
             </button>
-            <button onClick={() => setViewMode('add')} className={`flex items-center gap-1 px-4 py-2.5 bg-[#c4785a] text-white rounded-xl hover:bg-[#b56a4d] transition-colors shadow-sm ${language === 'he' ? 'flex-row-reverse' : ''}`}>
+            <button onClick={() => setViewMode('add')} className={`flex items-center gap-1 px-4 py-2.5 bg-[#d49277] text-white rounded-xl hover:bg-[#c4785a] transition-colors shadow-sm ${language === 'he' ? 'flex-row-reverse' : ''}`}>
               <Plus className="w-4 h-4"/>
               <span className="hidden sm:inline font-medium">{language === 'en' ? 'Add Recipe' : 'הוסף מתכון'}</span>
             </button>
@@ -216,7 +216,7 @@ function App() {
               </div>
                
               {displayRecipes.length > 0 ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+                <div style={{ direction: isRtl ? 'rtl' : 'ltr' }} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6" >
                   {displayRecipes.map((recipe) => (
                     <RecipeCard 
                       key={recipe.id} 
