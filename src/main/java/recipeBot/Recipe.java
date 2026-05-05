@@ -7,15 +7,13 @@ public class Recipe {
     private boolean favorite = false; // default value
     private String[] ingredients;
     private String[] instructions;
-    private String direction; // "ltr" for left-to-right languages, "rtl" for right-to-left languages
 
-    public Recipe(String name, Category category, String description, String[] ingredients, String[] instructions, String direction) {
+    public Recipe(String name, Category category, String description, String[] ingredients, String[] instructions) {
         this.name = name;
         this.category = category;
         this.description = description;
         this.ingredients = ingredients;
         this.instructions = instructions;
-        this.direction = direction;
     }
 
     public Recipe(){
@@ -24,7 +22,6 @@ public class Recipe {
         this.description = null;
         this.ingredients = null;
         this.instructions = null;
-        this.direction = null;
     }
 
     public Recipe(String text) {
@@ -52,15 +49,12 @@ public class Recipe {
     public String getDescription() { return this.description; }
     public String[] getIngredients() { return this.ingredients; }
     public String[] getInstructions() { return this.instructions; }
-    public String getDirection() { return this.direction; }
 
     public void setName(String newName) { this.name = newName; }
     public void setCategory(Category category) { this.category = category; }
     public void setDescription(String description) { this.description = description; }
     public void setIngredients(String[] ingredients) { this.ingredients = ingredients; }
     public void setInstructions(String[] instructions) { this.instructions = instructions; }
-    public void setDirection(String direction) { this.direction = direction; }
-
     public boolean isFavorite() { return this.favorite; }
 
 }

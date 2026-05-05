@@ -28,8 +28,7 @@ public class DatabaseHandler {
                     "category TEXT," +
                     "description TEXT," +
                     "ingredients TEXT," +
-                    "instructions TEXT," +
-                    "direction TEXT DEFAULT 'ltr'" +
+                    "instructions TEXT" +
                     ")";
 
             stmt.execute(sql);
@@ -52,16 +51,15 @@ public class DatabaseHandler {
     // *** DATABASE METHODS ***
 
     // method to add a new recipe to the database
-    public void addRecipe(Recipe recipe, String direction) {
+    public void addRecipe(Recipe recipe) {
         // prep the recipe data for SQL insertion
         String name = recipe.getName();
         String category = recipe.getCategory().toString();
         String description = recipe.getDescription();
         String[] ingredients = recipe.getIngredients();
         String[] instructions = recipe.getInstructions();
-        String dir = direction != null ? direction : "ltr"; // default to left-to-right if direction is null
 
-        String sql = "INSERT INTO recipes(name, category, description, ingredients, instructions, direction) VALUES(?, ?, ?, ?, ?, ?)";
+        String sql = "INSERT INTO recipes(name, category, description, ingredients, instructions) VALUES(?, ?, ?, ?, ?)";
         try (Connection conn = connect();
              java.sql.PreparedStatement pstmt = conn.prepareStatement(sql)) {
             pstmt.setString(1, name);
@@ -70,7 +68,6 @@ public class DatabaseHandler {
             pstmt.setString(3, description);
             pstmt.setString(4, String.join(";", ingredients));
             pstmt.setString(5, String.join(";", instructions));
-            pstmt.setString(6, dir);
 
             pstmt.executeUpdate();
         } catch (java.sql.SQLException e) {
@@ -79,7 +76,7 @@ public class DatabaseHandler {
     }
 
     public Recipe getRecipeByName(String name) {
-        String sql = "SELECT name, category, description, ingredients, instructions, direction FROM recipes WHERE name = ?";
+        String sql = "SELECT name, category, description, ingredients, instructions FROM recipes WHERE name = ?";
         try (Connection conn = connect();
              java.sql.PreparedStatement pstmt = conn.prepareStatement(sql)) {
             pstmt.setString(1, name);
@@ -89,13 +86,12 @@ public class DatabaseHandler {
                     String description = rs.getString("description");
                     String ingredients = rs.getString("ingredients");
                     String instructions = rs.getString("instructions");
-                    String direction = rs.getString("direction");
 
                     // convert the ingredients and instructions back to arrays and create a Recipe object
                     String[] ingredientsArray = ingredients.split(";");
                     String[] instructionsArray = instructions.split(";");
                     
-                    return new Recipe(name, Category.parse(category), description, ingredientsArray, instructionsArray, direction);
+                    return new Recipe(name, Category.parse(category), description, ingredientsArray, instructionsArray);
                 }
             }
         } catch (java.sql.SQLException e) {
@@ -121,7 +117,7 @@ public class DatabaseHandler {
     }
 
     public Recipe getRecipeById(String id) {
-        String sql = "SELECT name, category, description, ingredients, instructions, direction FROM recipes WHERE id = ?";
+        String sql = "SELECT name, category, description, ingredients, instructions FROM recipes WHERE id = ?";
         try (Connection conn = connect();
              java.sql.PreparedStatement pstmt = conn.prepareStatement(sql)) {
             pstmt.setString(1, id);
@@ -132,13 +128,12 @@ public class DatabaseHandler {
                     String description = rs.getString("description");
                     String ingredients = rs.getString("ingredients");
                     String instructions = rs.getString("instructions");
-                    String direction = rs.getString("direction");
 
                     // convert the ingredients and instructions back to arrays and create a Recipe object
                     String[] ingredientsArray = ingredients.split(";");
                     String[] instructionsArray = instructions.split(";");
                     
-                    return new Recipe(name, Category.parse(category), description, ingredientsArray, instructionsArray, direction);
+                    return new Recipe(name, Category.parse(category), description, ingredientsArray, instructionsArray);
                 }
             }
         } catch (java.sql.SQLException e) {
@@ -171,7 +166,7 @@ public class DatabaseHandler {
     // method to retrieve recipes by category from the database
     public List<Recipe> getRecipesByCategory(Category category) {
         List<Recipe> recipes = new ArrayList<>();
-        String sql = "SELECT name, category, description, ingredients, instructions, direction FROM recipes WHERE category = ?";
+        String sql = "SELECT name, category, description, ingredients, instructions FROM recipes WHERE category = ?";
         try (Connection conn = connect();
              java.sql.PreparedStatement pstmt = conn.prepareStatement(sql)) {
             pstmt.setString(1, category.toString());
@@ -182,13 +177,12 @@ public class DatabaseHandler {
                     String description = rs.getString("description");
                     String ingredients = rs.getString("ingredients");
                     String instructions = rs.getString("instructions");
-                    String direction = rs.getString("direction");
 
                     // convert the ingredients and instructions back to arrays and create a Recipe object
                     String[] ingredientsArray = ingredients.split(";");
                     String[] instructionsArray = instructions.split(";");
                     
-                    Recipe recipe = new Recipe(name, cat, description, ingredientsArray, instructionsArray, direction);
+                    Recipe recipe = new Recipe(name, cat, description, ingredientsArray, instructionsArray);
                     recipes.add(recipe);
                 }
             }
@@ -211,7 +205,7 @@ public class DatabaseHandler {
         return true;
     }
 
-    public void updateRecipe(int recipeId, String entry, String newValue, String direction){
+    public void updateRecipe(int recipeId, String entry, String newValue){
         if(!entry.equals("name") && !entry.equals("category") && !entry.equals("description") && !entry.equals("ingredients") && !entry.equals("instructions")) {
             throw new IllegalArgumentException("Invalid entry: " + entry);
         }
@@ -228,22 +222,5 @@ public class DatabaseHandler {
         } catch (java.sql.SQLException e) {
             e.printStackTrace();
         }
-    
-        
-        // check if we need to update the language as well
-        if(direction != null) {
-            // we only update the language if its needed
-            String dirSql = "UPDATE recipes SET direction = ? WHERE id = ? AND (direction != ? OR direction IS NULL)";
-            try (Connection conn = connect();
-                 java.sql.PreparedStatement dirPstmt = conn.prepareStatement(dirSql)) {
-                dirPstmt.setString(1, direction);
-                dirPstmt.setInt(2, recipeId);
-                dirPstmt.setString(3, direction);
-                dirPstmt.executeUpdate();
-            } catch (java.sql.SQLException e) {
-                e.printStackTrace();
-            }
-        }
-        
     }
 }

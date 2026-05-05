@@ -59,7 +59,6 @@ function App() {
           title: fullRecipe.name || recipeObj.title,
           description: fullRecipe.description || '',
           category: fullRecipe.category || 'MAIN',
-          direction: fullRecipe.direction || 'ltr',
           ingredients: formatArray(fullRecipe.ingredients) || [],
           instructions: formatArray(fullRecipe.instructions) || []
         });
@@ -76,7 +75,6 @@ function App() {
       description: newRecipe.description,
       ingredients: newRecipe.ingredients,
       instructions: newRecipe.instructions,
-      direction: editingRecipe?.direction || 'ltr'
     };
 
     const method = editingRecipe ? 'PUT' : 'POST';
@@ -146,7 +144,6 @@ function App() {
           description: scrapedRecipe.description,
           ingredients: scrapedRecipe.ingredients || [],
           instructions: scrapedRecipe.instructions || [],
-          direction: scrapedRecipe.direction || 'ltr'
         });
         setViewMode('add');
         setShowUrlModal(false);
@@ -170,7 +167,6 @@ function App() {
       title: recipe.name || recipe.title,
       description: recipe.description || '',
       category: recipe.category || 'MAIN',
-      direction: recipe.direction || 'ltr',
       ingredients: formatArray(recipe.ingredients) || [],
       instructions: formatArray(recipe.instructions) || []
     };

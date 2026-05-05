@@ -45,10 +45,7 @@ public class webManager {
             // Convert the JSON from React directly into a Java Recipe object
             Recipe newRecipe = ctx.bodyAsClass(Recipe.class); 
             
-            // Safety check for direction, default to 'ltr'
-            String dir = newRecipe.getDirection() != null ? newRecipe.getDirection() : "ltr";
-            
-            db.addRecipe(newRecipe, dir);
+            db.addRecipe(newRecipe);
             ctx.status(201).result("Recipe added successfully");
         } catch (Exception e) {
             e.printStackTrace();
@@ -64,8 +61,7 @@ public class webManager {
             // Delete old recipe and add updated one with new name
             db.deleteRecipe(oldName);
             
-            String dir = updatedRecipe.getDirection() != null ? updatedRecipe.getDirection() : "ltr";
-            db.addRecipe(updatedRecipe, dir);
+            db.addRecipe(updatedRecipe);
             
             ctx.status(200).result("Recipe updated successfully");
         } catch (Exception e) {
