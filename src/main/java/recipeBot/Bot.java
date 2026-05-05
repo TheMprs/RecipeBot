@@ -102,8 +102,8 @@ public class Bot extends TelegramLongPollingBot {
             String recipeId = data.substring(6);
             Recipe recipe = db.getRecipeById(recipeId);
             if (recipe != null) {
-                sendText(id, recipe.toString());
-            }
+                    sendText(id, recipe.toString());
+                }
             return;
         }
 
@@ -539,10 +539,12 @@ public class Bot extends TelegramLongPollingBot {
         delBtn.setText("🗑 Delete");
         delBtn.setCallbackData("DELETE_" + recipeId);
         row1.add(delBtn);
+        
         InlineKeyboardButton editBtn = new InlineKeyboardButton();
         editBtn.setText("✏️ Edit");
         editBtn.setCallbackData("EDIT_" + recipeId);
         row1.add(editBtn);
+        
         InlineKeyboardButton shareBtn = new InlineKeyboardButton();
         shareBtn.setText("📤 Share");
         shareBtn.setCallbackData("SHARE_" + recipeId);

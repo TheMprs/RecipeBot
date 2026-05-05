@@ -52,6 +52,23 @@ function App() {
 
   useEffect(() => {
     fetchRecipes()
+    
+    // Check for shared recipe in URL
+    const params = new URLSearchParams(window.location.search)
+    const recipeName = params.get('recipe')
+    if (recipeName) {
+      fetch(`/api/recipes/${encodeURIComponent(recipeName)}`)
+        .then(res => {
+          if (!res.ok) throw new Error('Recipe not found')
+          return res.json()
+        })
+        .then(data => {
+          setSelectedRecipe(data)
+          setViewMode('detail')
+          window.history.pushState({}, '', `?recipe=${encodeURIComponent(data.title || data.name)}`)
+        })
+        .catch(console.error)
+    }
   }, [])
 
   // 2. FETCH SPECIFIC RECIPE DETAILS WHEN CLICKED
@@ -62,14 +79,16 @@ function App() {
         // Convert string ingredients/instructions into arrays for the UI
         const formatArray = (text) => typeof text === 'string' ? text.split('\n').filter(i => i.trim()) : text;
         
-        setSelectedRecipe({
+        const recipeData = {
           title: fullRecipe.name || recipeObj.title,
           description: fullRecipe.description || '',
           category: fullRecipe.category || 'MAIN',
           ingredients: formatArray(fullRecipe.ingredients) || [],
           instructions: formatArray(fullRecipe.instructions) || []
-        });
+        };
+        setSelectedRecipe(recipeData);
         setViewMode('detail');
+        window.history.pushState({}, '', `?recipe=${encodeURIComponent(recipeData.title)}`);
       });
   }
 
@@ -111,6 +130,13 @@ function App() {
     setViewMode('add');
   }
 
+  const handleBack = () => {
+    setSelectedRecipe(null)
+    setEditingRecipe(null)
+    setViewMode('dashboard')
+    window.history.pushState({}, '', window.location.pathname)
+  }
+
   // 4. DELETE RECIPE
   const handleDeleteRecipe = async (recipe) => {
     if(window.confirm(`Delete ${recipe.title}?`)) {
@@ -122,10 +148,6 @@ function App() {
     }
   }
 
-  const handleBack = () => {
-    setViewMode('dashboard')
-    setSelectedRecipe(null)
-  }
 
   // 5. SCRAPE RECIPE FROM URL
   const handleScrapeFromUrl = async () => {
