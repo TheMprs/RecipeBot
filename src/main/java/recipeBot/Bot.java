@@ -47,6 +47,7 @@ public class Bot extends TelegramLongPollingBot {
     @Override
     public String getBotUsername() {
         return "@Yuvals_Recipe_Book_bot";
+        //return "@recipe_book_test_bot";
     }
 
     @Override
@@ -539,10 +540,10 @@ public class Bot extends TelegramLongPollingBot {
         InlineKeyboardButton shareBtn = new InlineKeyboardButton();
         shareBtn.setText("📤 Share");
         try {
-            String webUrl = "https://babrecipebook.vercel.app/?recipe=" + 
-                java.net.URLEncoder.encode(recipe.getName(), java.nio.charset.StandardCharsets.UTF_8.name()).replace("+", "%20");
-            String textToShare = java.net.URLEncoder.encode(recipe.toString(), java.nio.charset.StandardCharsets.UTF_8.name());
-            shareBtn.setUrl("https://t.me/share/url?url=" + webUrl + "&text=" + textToShare);
+            String rawWebUrl = "https://babrecipebook.vercel.app/?recipe=" + recipe.getName().replace(" ", "%20");
+            String encodedWebUrl = java.net.URLEncoder.encode(rawWebUrl, java.nio.charset.StandardCharsets.UTF_8.name());
+            String textToShare = java.net.URLEncoder.encode(recipe.toString(), java.nio.charset.StandardCharsets.UTF_8.name()).replace("+", "%20");
+            shareBtn.setUrl("https://t.me/share/url?url=" + encodedWebUrl + "&text=" + textToShare);
         } catch (Exception e) {
             shareBtn.setCallbackData("SHARE_" + recipeId);
         }

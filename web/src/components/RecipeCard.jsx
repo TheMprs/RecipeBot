@@ -14,7 +14,7 @@ export function RecipeCard({ recipe, language = 'en', onSelect, showCategory = t
       const fullText = `${text}\n\n🔗 ${url}`
 
       if (navigator.share) {
-        await navigator.share({ title: recipe.title, text: fullText })
+        await navigator.share({ title: recipe.title, text: text, url: url })
       } else {
         await navigator.clipboard.writeText(fullText)
         setCopied(true)

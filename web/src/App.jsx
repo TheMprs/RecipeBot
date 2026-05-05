@@ -63,9 +63,17 @@ function App() {
           return res.json()
         })
         .then(data => {
-          setSelectedRecipe(data)
+          const formatArray = (text) => typeof text === 'string' ? text.split('\n').filter(i => i.trim()) : text;
+          const recipeData = {
+            title: data.name || data.title,
+            description: data.description || '',
+            category: data.category || 'MAIN',
+            ingredients: formatArray(data.ingredients) || [],
+            instructions: formatArray(data.instructions) || []
+          };
+          setSelectedRecipe(recipeData)
           setViewMode('detail')
-          window.history.pushState({}, '', `?recipe=${encodeURIComponent(data.title || data.name)}`)
+          window.history.pushState({}, '', `?recipe=${encodeURIComponent(recipeData.title)}`)
         })
         .catch(console.error)
     }
