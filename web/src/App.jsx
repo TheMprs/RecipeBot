@@ -5,7 +5,14 @@ import { RecipeDetail } from './components/RecipeDetail'
 import { RecipeForm } from './components/RecipeForm'
 import './global.css'
 
-const categories = ['All', 'MAIN', 'SNACK', 'LUNCH', 'SPECIAL', 'DESSERT']
+const categories = ['All', 'MAIN', 'SNACK', 'SPECIAL', 'DESSERT']
+
+const categoryTranslations = {
+  'MAIN': 'עיקרית',
+  'DESSERT': 'קינוח',
+  'SNACK': 'חטיף',
+  'SPECIAL': 'מיוחד'
+}
 
 function App() {
   const [recipes, setRecipes] = useState([])
@@ -199,16 +206,59 @@ function App() {
       <main className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
         {viewMode === 'dashboard' && (
           <div className="transition-all duration-300 ease-out opacity-100 translate-y-0">
-             <div className="mb-8 flex items-center gap-3">
-                  <div className="relative flex-1">
+             <div className="mb-8 flex items-center">
+                  <div className="relative flex-1 z-40">
                     <Search className={`absolute top-1/2 -translate-y-1/2 w-4 h-4 text-[#7a7265] ${language === 'he' ? 'right-4' : 'left-4'}`} />
                     <input 
                         type="text" 
                         placeholder={language === 'en' ? 'Search recipes...' : '...חפש מתכונים'} 
                         value={searchQuery} 
                         onChange={(e) => setSearchQuery(e.target.value)} 
-                        className={`w-full py-3 bg-white border border-[#e8e4dc] rounded-2xl text-[#3d3429] placeholder:text-[#7a7265] focus:outline-none focus:ring-2 focus:ring-[#b86535]/20 ${language === 'he' ? 'pr-11 pl-4 text-right' : 'pl-11 pr-4'}`}
+                        className={`w-full py-3 bg-white border border-[#e8e4dc] rounded-2xl text-[#3d3429] placeholder:text-[#7a7265] focus:outline-none focus:ring-2 focus:ring-[#b86535]/20 ${language === 'he' ? 'pr-11 pl-14 sm:pl-32 text-right' : 'pl-11 pr-14 sm:pr-32'}`}
                         />
+
+                    {/* Category Filter */}
+                    <div className={`absolute top-1/2 -translate-y-1/2 ${language === 'he' ? 'left-2' : 'right-2'}`}>
+                      <button
+                        onClick={() => setIsCategoryMenuOpen(!isCategoryMenuOpen)}
+                        className={`flex items-center gap-1.5 py-1.5 px-3 rounded-xl transition-colors ${
+                          selectedCategory !== 'All'
+                            ? 'bg-[#ce743e]/10 text-[#ce743e] font-semibold'
+                            : 'bg-[#f5f3ef] text-[#7a7265] hover:bg-[#e8e4dc]'
+                        }`}
+                      >
+                        <Filter className="w-3.5 h-3.5" />
+                        <span className="hidden sm:inline text-xs font-medium">
+                          {selectedCategory === 'All' 
+                            ? (language === 'en' ? 'Filter' : 'סינון')
+                            : (language === 'en' ? selectedCategory : categoryTranslations[selectedCategory] || selectedCategory)}
+                        </span>
+                      </button>
+
+                      {isCategoryMenuOpen && (
+                        <>
+                          <div className="fixed inset-0 z-10" onClick={() => setIsCategoryMenuOpen(false)} />
+                          <div className={`absolute top-full mt-3 z-20 bg-white rounded-2xl border border-[#e8e4dc] shadow-lg overflow-hidden min-w-[160px] ${language === 'he' ? 'left-0' : 'right-0'}`}>
+                            {categories.map((cat) => (
+                              <button
+                                key={cat}
+                                onClick={() => {
+                                  setSelectedCategory(cat)
+                                  setIsCategoryMenuOpen(false)
+                                }}
+                                className={`w-full px-4 py-2.5 text-sm text-left transition-colors ${
+                                  selectedCategory === cat
+                                    ? 'bg-[#ce743e]/10 text-[#ce743e] font-semibold'
+                                    : 'text-[#3d3429] hover:bg-[#f5f3ef]'
+                                } ${isRtl ? 'text-right' : 'text-left'}`}
+                              >
+                                {cat === 'All' ? (language === 'en' ? 'All' : 'הכל') : (language === 'en' ? cat : categoryTranslations[cat] || cat)}
+                              </button>
+                            ))}
+                          </div>
+                        </>
+                      )}
+                    </div>
                   </div>
               </div>
                

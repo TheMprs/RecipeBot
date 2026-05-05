@@ -3,6 +3,13 @@ import { ArrowLeft, ArrowRight, Users, ChefHat, Check, Pencil, Trash2, RotateCcw
 
 const COOKIE_NAME_PREFIX = 'recipe_ingredients_'
 
+const categoryTranslations = {
+  'MAIN': 'עיקרית',
+  'DESSERT': 'קינוח',
+  'SNACK': 'חטיף',
+  'SPECIAL': 'מיוחד'
+}
+
 function getCookie(name) {
   if (typeof document === 'undefined') return null
   const value = `; ${document.cookie}`
@@ -84,7 +91,7 @@ export function RecipeDetail({ recipe, language = 'en', onBack, onEdit, onDelete
           className="flex items-center gap-2 text-[#64748b] hover:text-[#1e293b] transition-colors"
         >
           {isRtl ? <ArrowRight className="w-5 h-5" /> : <ArrowLeft className="w-5 h-5" />}
-          <span className="font-medium">Back</span>
+          <span className="font-medium">{language === 'en' ? 'Back' : 'חזור'}</span>
         </button>
 
         <div className="flex items-center gap-2">
@@ -118,7 +125,7 @@ export function RecipeDetail({ recipe, language = 'en', onBack, onEdit, onDelete
           <div className={`flex items-start mb-4 w-full`}>
             <div className="w-full">
               <span className="inline-block px-3 py-1 rounded-full text-xs font-medium bg-[#f8fafc] text-[#5a5248] mb-3">
-                {recipe.category}
+                {language === 'en' ? recipe.category : (categoryTranslations[recipe.category] || recipe.category)}
               </span>
               <h1 
                 className={`text-2xl sm:text-3xl font-bold text-[#1e293b] text-balance}`}

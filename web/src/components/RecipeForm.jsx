@@ -5,25 +5,25 @@ import { ArrowLeft, ChevronDown, LinkIcon, X } from 'lucide-react'
 const categoryMap = {
   'Main': 'MAIN',
   'Dessert': 'DESSERT',
-  'Snacks': 'SNACK',
+  'Snack': 'SNACK',
   'Special': 'SPECIAL'
 }
 
 const categoryTranslations = {
   'Main': 'עיקרי',
   'Dessert': 'קינוח',
-  'Snacks': 'חטיפים',
+  'Snack': 'חטיף',
   'Special': 'מיוחד'
 }
 
 const reverseMap = {
   'MAIN': 'Main',
   'DESSERT': 'Dessert',
-  'SNACK': 'Snacks',
+  'SNACK': 'Snack',
   'SPECIAL': 'Special'
 }
 
-const categories = ['Main', 'Dessert', 'Snacks', 'Special']
+const categories = ['Main', 'Dessert', 'Snack', 'Special']
 
 export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, language = 'en' }) {
   const isRtl = language === 'he'
