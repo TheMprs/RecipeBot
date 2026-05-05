@@ -97,15 +97,6 @@ public class Bot extends TelegramLongPollingBot {
             return;
         }
 
-        // handle share button press
-        if (data.startsWith("SHARE_")) {
-            String recipeId = data.substring(6);
-            Recipe recipe = db.getRecipeById(recipeId);
-            if (recipe != null) {
-                    sendText(id, recipe.toString());
-                }
-            return;
-        }
 
         // handle edit button press
         if (data.startsWith("EDIT_")) {
@@ -547,7 +538,14 @@ public class Bot extends TelegramLongPollingBot {
         
         InlineKeyboardButton shareBtn = new InlineKeyboardButton();
         shareBtn.setText("📤 Share");
-        shareBtn.setCallbackData("SHARE_" + recipeId);
+        try {
+            String webUrl = "https://babrecipebook.vercel.app/?recipe=" + 
+                java.net.URLEncoder.encode(recipe.getName(), java.nio.charset.StandardCharsets.UTF_8.name()).replace("+", "%20");
+            String textToShare = java.net.URLEncoder.encode(recipe.toString(), java.nio.charset.StandardCharsets.UTF_8.name());
+            shareBtn.setUrl("https://t.me/share/url?url=" + webUrl + "&text=" + textToShare);
+        } catch (Exception e) {
+            shareBtn.setCallbackData("SHARE_" + recipeId);
+        }
         row1.add(shareBtn);
         rows.add(row1);
         markup.setKeyboard(rows);
