@@ -18,6 +18,7 @@ public class webManager {
     public void registerRoutes(Javalin app) {
         app.get("/api/recipes", this::getAllRecipes);
         app.get("/api/recipes/{name}", this::getOneRecipe);
+        app.get("/api/recipes/{name}/share", this::getShareableRecipe);
         app.post("/api/recipes", this::addRecipe);
         app.put("/api/recipes/{name}", this::updateRecipe);
         app.delete("/api/recipes/{name}", this::deleteRecipe);
@@ -35,6 +36,16 @@ public class webManager {
         Recipe recipe = db.getRecipeByName(name);
         if (recipe != null) {
             ctx.json(recipe);
+        } else {
+            ctx.status(404).result("Recipe not found");
+        }
+    }
+
+    public void getShareableRecipe(Context ctx) {
+        String name = ctx.pathParam("name");
+        Recipe recipe = db.getRecipeByName(name);
+        if (recipe != null) {
+            ctx.contentType("text/plain").result(recipe.toString());
         } else {
             ctx.status(404).result("Recipe not found");
         }

@@ -180,16 +180,17 @@ function App() {
       <header className="sticky top-0 z-30 bg-[#faf9f7]/95 backdrop-blur-md border-b border-[#e8e4dc]">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
             <button onClick={handleBack} className="flex items-center gap-2 group">
-              <div className="w-10 h-10 rounded-2xl bg-[#d49277] flex items-center justify-center">
+              <div className="w-10 h-10 rounded-2xl bg-[#ce743e] flex items-center justify-center">
                 <BookOpen className="w-5 h-5 text-white" />
               </div>
-              <div className="hidden sm:block text-left">
-                <h1 className="text-xl font-semibold text-[#3d3429]">Yuval's Recipe Book</h1>
+              <div className="text-left">
+                <h1 className="text-lg sm:text-xl font-semibold text-[#3d3429]">Yuval's Recipe Book</h1>
                 <p className="text-xs text-[#7a7265]">זה בתהליך לא לשפוט</p>
               </div>
             </button>
-            <button onClick={() => setViewMode('add')} className={`flex items-center gap-1 px-4 py-2.5 bg-[#d49277] text-white rounded-xl hover:bg-[#c4785a] transition-colors shadow-sm ${language === 'he' ? 'flex-row-reverse' : ''}`}>
-              <Plus className="w-4 h-4"/>
+            <button onClick={() => setViewMode('add')} 
+              className={`flex items-center gap-2 text-[#64748b] hover:text-[#1e293b] transition-colors ${language === 'he' ? 'flex-row-reverse' : ''}`}>
+              <Plus className="w-5 h-5"/>
               <span className="hidden sm:inline font-medium">{language === 'en' ? 'Add Recipe' : 'הוסף מתכון'}</span>
             </button>
         </div>
@@ -206,7 +207,7 @@ function App() {
                         placeholder={language === 'en' ? 'Search recipes...' : '...חפש מתכונים'} 
                         value={searchQuery} 
                         onChange={(e) => setSearchQuery(e.target.value)} 
-                        className={`w-full py-3 bg-white border border-[#e8e4dc] rounded-2xl text-[#3d3429] placeholder:text-[#7a7265] focus:outline-none focus:ring-2 focus:ring-[#c4785a]/20 ${language === 'he' ? 'pr-11 pl-4 text-right' : 'pl-11 pr-4'}`}
+                        className={`w-full py-3 bg-white border border-[#e8e4dc] rounded-2xl text-[#3d3429] placeholder:text-[#7a7265] focus:outline-none focus:ring-2 focus:ring-[#b86535]/20 ${language === 'he' ? 'pr-11 pl-4 text-right' : 'pl-11 pr-4'}`}
                         />
                   </div>
               </div>
@@ -219,8 +220,6 @@ function App() {
                       recipe={recipe} 
                       language={language}
                       onSelect={handleSelectRecipe} 
-                      onDelete={handleDeleteRecipe} 
-                      onEdit={handleEditRecipe} 
                       showCategory={false} 
                     />
                   ))}
@@ -279,7 +278,7 @@ function App() {
                     value={urlInput}
                     onChange={(e) => setUrlInput(e.target.value)}
                     placeholder="https://example.com/recipe"
-                    className="w-full px-4 py-3 bg-[#faf9f7] border border-[#e8e4dc] rounded-2xl text-[#3d3429] placeholder:text-[#7a7265] focus:outline-none focus:ring-2 focus:ring-[#c4785a]/20 focus:border-[#c4785a] transition-all"
+                    className="w-full px-4 py-3 bg-[#faf9f7] border border-[#e8e4dc] rounded-2xl text-[#3d3429] placeholder:text-[#7a7265] focus:outline-none focus:ring-2 focus:ring-[#b86535]/20 focus:border-[#b86535] transition-all"
                   />
                   <p className="text-xs text-[#7a7265] mt-2">Paste the URL of a recipe webpage. Our AI will extract the recipe details automatically.</p>
                 </div>
@@ -294,7 +293,7 @@ function App() {
                   <button
                     onClick={handleScrapeFromUrl}
                     disabled={isScrapingLoading}
-                    className="flex-1 px-4 py-3 bg-[#c4785a] text-white rounded-xl hover:bg-[#b56a4d] disabled:bg-[#c4785a]/50 transition-colors font-medium flex items-center justify-center gap-2"
+                    className="flex-1 px-4 py-3 bg-[#b86535] text-white rounded-xl hover:bg-[#a5582d] disabled:bg-[#b86535]/50 transition-colors font-medium flex items-center justify-center gap-2"
                   >
                     {isScrapingLoading ? (
                       <>
@@ -319,7 +318,7 @@ function App() {
             <p className="text-sm text-[#7a7265]">© 2026 Yuval's Recipe Book.</p>
             <button 
               onClick={() => setLanguage(language === 'en' ? 'he' : 'en')}
-              className="text-sm text-[#7a7265] hover:text-[#c4785a] transition-colors"
+              className="text-sm text-[#7a7265] hover:text-[#b86535] transition-colors"
             >
               Language: <span className="cursor-pointer underline text-[#3d3429]">{language === 'en' ? 'en' : 'he'}</span>
             </button>

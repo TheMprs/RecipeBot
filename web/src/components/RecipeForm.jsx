@@ -96,7 +96,7 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
           <button 
             type="button"
             onClick={onOpenUrlModal}  // Use the prop
-            className={`flex items-center gap-2 text-[#7a7265] hover:text-[#c4785a] transition-colors ${isRtl ? 'flex-row-reverse' : ''}`}
+            className={`flex items-center gap-2 text-[#7a7265] hover:text-[#b86535] transition-colors ${isRtl ? 'flex-row-reverse' : ''}`}
             title="Import recipe from link"
           >
             <LinkIcon className="w-5 h-5" />
@@ -120,7 +120,7 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
               onChange={(e) => setTitle(e.target.value)}
               placeholder={language === 'en' ? "e.g., Grandma's Apple Pie" : 'למשל, חלה של יובל'}
               required
-              className="w-full px-4 py-3 bg-[#faf9f7] border border-[#e8e4dc] rounded-2xl text-[#3d3429] placeholder:text-[#7a7265] focus:outline-none focus:ring-2 focus:ring-[#c4785a]/20 focus:border-[#c4785a] transition-all"
+              className="w-full px-4 py-3 bg-[#faf9f7] border border-[#e8e4dc] rounded-2xl text-[#3d3429] placeholder:text-[#7a7265] focus:outline-none focus:ring-2 focus:ring-[#b86535]/20 focus:border-[#b86535] transition-all"
             />
           </div>
 
@@ -131,7 +131,7 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
               <button
                 type="button"
                 onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                className="w-full px-4 py-3 bg-[#faf9f7] border border-[#e8e4dc] rounded-2xl text-[#3d3429] text-left flex items-center justify-between focus:outline-none focus:ring-2 focus:ring-[#c4785a]/20 focus:border-[#c4785a] transition-all"
+                className="w-full px-4 py-3 bg-[#faf9f7] border border-[#e8e4dc] rounded-2xl text-[#3d3429] text-left flex items-center justify-between focus:outline-none focus:ring-2 focus:ring-[#b86535]/20 focus:border-[#b86535] transition-all"
               >
                 <span>{language === 'en' ? category : categoryTranslations[category] || category}</span>
                 <ChevronDown
@@ -153,7 +153,7 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
                         setIsDropdownOpen(false)
                       }}
                       className={`w-full px-4 py-2.5 rounded-xl text-sm transition-colors ${
-                        category === cat ? 'bg-[#c4785a] text-white font-medium' : 'text-[#3d3429] hover:bg-[#f5f3ef]'
+                        category === cat ? 'bg-[#b86535] text-white font-medium' : 'text-[#3d3429] hover:bg-[#f5f3ef]'
                         , isRtl ? 'text-right' : 'text-left'
                       }`}
                     >
@@ -173,7 +173,7 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
               onChange={(e) => setDescription(e.target.value)}
               placeholder={language === 'en' ? 'A brief description of your recipe...' : 'תיאור קצר של המתכון...'}  
               rows={3}
-              className="w-full px-4 py-3 bg-[#faf9f7] border border-[#e8e4dc] rounded-2xl text-[#3d3429] placeholder:text-[#7a7265] focus:outline-none focus:ring-2 focus:ring-[#c4785a]/20 focus:border-[#c4785a] transition-all resize-none"
+              className="w-full px-4 py-3 bg-[#faf9f7] border border-[#e8e4dc] rounded-2xl text-[#3d3429] placeholder:text-[#7a7265] focus:outline-none focus:ring-2 focus:ring-[#b86535]/20 focus:border-[#b86535] transition-all resize-none"
             />
           </div>
 
@@ -187,7 +187,7 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
               placeholder={language === 'en' ? '2 cups flour \n1 cup sugar \n3 eggs \n1/2 cup butter' 
                                             : '2 כוסות קמח \n1 כוס סוכר \n3 ביצים \n1/2 כוס שמן'}
               rows={6}
-              className="w-full px-4 py-3 bg-[#faf9f7] border border-[#e8e4dc] rounded-2xl text-[#3d3429] placeholder:text-[#7a7265] focus:outline-none focus:ring-2 focus:ring-[#c4785a]/20 focus:border-[#c4785a] transition-all resize-none"
+              className="w-full px-4 py-3 bg-[#faf9f7] border border-[#e8e4dc] rounded-2xl text-[#3d3429] placeholder:text-[#7a7265] focus:outline-none focus:ring-2 focus:ring-[#b86535]/20 focus:border-[#b86535] transition-all resize-none"
             />
           </div>
 
@@ -202,7 +202,7 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
                       'Preheat oven to 350F\nMix dry ingredients in a bowl\nAdd wet ingredients and stir\nPour into pan and bake for 30 minutes' 
                     : 'מחמים תנור ל180 מעלות\nמערבבים את הרכיבים היבשים בקערה\nמוסיפים את הרכיבים הרטובים ומערבבים\nיוצקים לתבנית ואופים במשך 30 דקות'}
               rows={8}
-              className="w-full px-4 py-3 bg-[#faf9f7] border border-[#e8e4dc] rounded-2xl text-[#3d3429] placeholder:text-[#7a7265] focus:outline-none focus:ring-2 focus:ring-[#c4785a]/20 focus:border-[#c4785a] transition-all resize-none"
+              className="w-full px-4 py-3 bg-[#faf9f7] border border-[#e8e4dc] rounded-2xl text-[#3d3429] placeholder:text-[#7a7265] focus:outline-none focus:ring-2 focus:ring-[#b86535]/20 focus:border-[#b86535] transition-all resize-none"
             />
           </div>
         </div>
@@ -218,7 +218,7 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
           </button>
           <button
             type="submit"
-            className="flex-1 py-3 px-4 bg-[#d49277] text-white rounded-2xl font-medium hover:bg-[#b56a4d] transition-colors shadow-sm"
+            className="flex-1 py-3 px-4 bg-[#ce743e] text-white rounded-2xl font-medium hover:bg-[#b86535] transition-colors shadow-sm"
           >
             {editingRecipe ? (language === 'en' ? 'Save Changes' : 'שמור שינויים') 
                           : (language === 'en' ? 'Add Recipe' : 'הוסף מתכון')}

@@ -1,35 +1,40 @@
-import { Pencil, Trash2 } from 'lucide-react'
+import { useState } from 'react'
+import { Share2 } from 'lucide-react'
 
-export function RecipeCard({ recipe, language = 'en', onSelect, onEdit, onDelete, showCategory = true }) {
+export function RecipeCard({ recipe, language = 'en', onSelect, showCategory = true }) {
   const isRtl = language === 'he'
-  
+  const [copied, setCopied] = useState(false)
+
+  const handleShare = async (e) => {
+    e.stopPropagation()
+    try {
+      const res = await fetch(`/api/recipes/${encodeURIComponent(recipe.title)}/share`)
+      const text = await res.text()
+      if (navigator.share) {
+        await navigator.share({ title: recipe.title, text })
+      } else {
+        await navigator.clipboard.writeText(text)
+        setCopied(true)
+        setTimeout(() => setCopied(false), 2000)
+      }
+    } catch (err) {}
+  }
+
   return (
     <div className="group relative w-full bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-all duration-300 border border-[#e8e4dc]/50 cursor-pointer flex flex-col" onClick={() => onSelect(recipe)}>
       {/* Header area with title and buttons */}
       <div className={`px-5 pt-5 pb-1 border-b border-[#e8e4dc]/30 flex items-center gap-3`} style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
-        <h3 className={`font-semibold text-[#3d3429] text-lg group-hover:text-[#c4785a] transition-colors line-clamp-1 ${isRtl ? 'text-right' : 'text-left'} flex-1`}>
+        <h3 className={`font-semibold text-[#3d3429] text-lg group-hover:text-[#b86535] transition-colors line-clamp-1 ${isRtl ? 'text-right' : 'text-left'} flex-1`}>
           {recipe.title}
         </h3>
         
-        {/* Action buttons */}
+        {/* Action button */}
         <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
           <button
-            onClick={(e) => {
-              e.stopPropagation()
-              onEdit(recipe)
-            }}
-            className="w-8 h-8 rounded-lg bg-white/90 backdrop-blur flex items-center justify-center text-[#7a7265] hover:text-[#c4785a] hover:bg-white transition-colors shadow-sm border border-[#e8e4dc]/50"
+            onClick={handleShare}
+            className="w-8 h-8 rounded-lg bg-white/90 backdrop-blur flex items-center justify-center text-[#7a7265] hover:text-[#b86535] hover:bg-white transition-colors shadow-sm border border-[#e8e4dc]/50"
           >
-            <Pencil className="w-3.5 h-3.5" />
-          </button>
-          <button
-            onClick={(e) => {
-              e.stopPropagation()
-              onDelete(recipe)
-            }}
-            className="w-8 h-8 rounded-lg bg-white/90 backdrop-blur flex items-center justify-center text-[#7a7265] hover:text-red-500 hover:bg-white transition-colors shadow-sm border border-[#e8e4dc]/50"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
+            <Share2 className="w-3.5 h-3.5" />
           </button>
         </div>
       </div>

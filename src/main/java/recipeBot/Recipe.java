@@ -57,4 +57,22 @@ public class Recipe {
     public void setInstructions(String[] instructions) { this.instructions = instructions; }
     public boolean isFavorite() { return this.favorite; }
 
+    @Override
+    public String toString() {
+        String result = "🍽️ *" + name + "*\n\n";
+        result += description + "\n\n";
+
+        result += "🛒 *Ingredients:*\n";
+        for (String ingredient : ingredients) {
+            result += "• " + ingredient + "\n";
+        }
+
+        result += "\n📝 *Instructions:*\n";
+        for (int i = 0 ; i < instructions.length; i++) {
+            result += i + 1 + ". " + instructions[i] + "\n";
+        }
+
+        return result;
+    }
+
 }

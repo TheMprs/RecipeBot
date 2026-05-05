@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { ArrowLeft, Users, ChefHat, Check, Pencil, Trash2, RotateCcw, UtensilsCrossed} from 'lucide-react'
+import { ArrowLeft, ArrowRight, Users, ChefHat, Check, Pencil, Trash2, RotateCcw, UtensilsCrossed, Share2 } from 'lucide-react'
 
 const COOKIE_NAME_PREFIX = 'recipe_ingredients_'
 
@@ -56,6 +56,25 @@ export function RecipeDetail({ recipe, language = 'en', onBack, onEdit, onDelete
     setCheckedIngredients(new Set())
   }
 
+  const [copied, setCopied] = useState(false)
+
+  const handleShare = async () => {
+    try {
+      const res = await fetch(`/api/recipes/${encodeURIComponent(recipe.title)}/share`)
+      const text = await res.text()
+
+      if (navigator.share) {
+        await navigator.share({ title: recipe.title, text })
+      } else {
+        await navigator.clipboard.writeText(text)
+        setCopied(true)
+        setTimeout(() => setCopied(false), 2000)
+      }
+    } catch (err) {
+      // User cancelled share or clipboard failed
+    }
+  }
+
   return (
     <div className="max-w-3xl mx-auto" style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
       {/* Header */}
@@ -64,14 +83,21 @@ export function RecipeDetail({ recipe, language = 'en', onBack, onEdit, onDelete
           onClick={onBack}
           className="flex items-center gap-2 text-[#64748b] hover:text-[#1e293b] transition-colors"
         >
-          <ArrowLeft className="w-5 h-5" />
+          {isRtl ? <ArrowRight className="w-5 h-5" /> : <ArrowLeft className="w-5 h-5" />}
           <span className="font-medium">Back</span>
         </button>
 
         <div className="flex items-center gap-2">
           <button
+            onClick={handleShare}
+            className="flex items-center gap-2 px-3 py-2 text-sm text-[#64748b] hover:text-[#ce743e] hover:bg-[#f8fafc] rounded-xl transition-colors"
+          >
+            <Share2 className="w-4 h-4" />
+            <span className="hidden sm:inline">{copied ? 'Copied!' : 'Share'}</span>
+          </button>
+          <button
             onClick={() => onEdit(recipe)}
-            className="flex items-center gap-2 px-3 py-2 text-sm text-[#64748b] hover:text-[#d49277] hover:bg-[#f8fafc] rounded-xl transition-colors"
+            className="flex items-center gap-2 px-3 py-2 text-sm text-[#64748b] hover:text-[#ce743e] hover:bg-[#f8fafc] rounded-xl transition-colors"
           >
             <Pencil className="w-4 h-4" />
             <span className="hidden sm:inline">Edit</span>
@@ -104,14 +130,14 @@ export function RecipeDetail({ recipe, language = 'en', onBack, onEdit, onDelete
 
           <div className={`flex flex-wrap items-center gap-4 sm:gap-6 text-sm text-[#64748b] ${isRtl ? 'text-right' : 'text-left'}`}>
             <div className={`flex items-center gap-2}`}>
-              <div className="w-8 h-8 rounded-full bg-[#d49277]/10 flex items-center justify-center">
-                <Users className="w-4 h-4 text-[#d49277]"/>
+              <div className="w-8 h-8 rounded-full bg-[#ce743e]/10 flex items-center justify-center">
+                <Users className="w-4 h-4 text-[#ce743e]"/>
               </div>
               <span className="ms-1">{language === 'en' ? '4 servings' : '4 מנות'}</span>
             </div>
             <div className={`flex items-center gap-2}`}>
-              <div className="w-8 h-8 rounded-full bg-[#d49277]/10 flex items-center justify-center">
-                <ChefHat className="w-4 h-4 text-[#d49277]" />
+              <div className="w-8 h-8 rounded-full bg-[#ce743e]/10 flex items-center justify-center">
+                <ChefHat className="w-4 h-4 text-[#ce743e]" />
               </div>
               <span className="ms-1">{language === 'en' ? `${recipe.ingredients.length} ingredients` : `${recipe.ingredients.length} מצרכים`}</span>
             </div>
@@ -128,15 +154,15 @@ export function RecipeDetail({ recipe, language = 'en', onBack, onEdit, onDelete
             <div className="flex gap-3">
               {/* Left column: emoji + checkboxes */}
               <div className="flex flex-col items-center gap-3">
-                <div className="w-7 h-7 rounded-full bg-[#d49277]/10 flex items-center justify-center">
-                  <UtensilsCrossed className="w-4 h-4 text-[#d49277]" />
+                <div className="w-7 h-7 rounded-full bg-[#ce743e]/10 flex items-center justify-center">
+                  <UtensilsCrossed className="w-4 h-4 text-[#ce743e]" />
                 </div>
                 {recipe.ingredients.map((ingredient, index) => (
                   <button
                     key={index}
                     onClick={() => toggleIngredient(ingredient)}
                     className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all duration-200 ${
-                      checkedIngredients.has(ingredient) ? 'bg-[#d49277] border-[#d49277]' : 'border-[#e2e8f0] hover:border-[#d49277]/50'
+                      checkedIngredients.has(ingredient) ? 'bg-[#ce743e] border-[#ce743e]' : 'border-[#e2e8f0] hover:border-[#ce743e]/50'
                     }`}
                   >
                     {checkedIngredients.has(ingredient) && <Check className="w-3 h-3 text-white" />}
@@ -176,8 +202,8 @@ export function RecipeDetail({ recipe, language = 'en', onBack, onEdit, onDelete
         <div className="lg:col-span-3">
           <div className="bg-white rounded-3xl border border-[#e2e8f0]/50 shadow-sm p-6">
             <h2 className={`text-lg font-semibold text-[#1e293b] mb-6 flex items-center gap-2}`}>
-              <span className="w-7 h-7 rounded-full bg-[#d49277]/10 flex items-center justify-center">
-                <ChefHat className="w-4 h-4 text-[#d49277]" />
+              <span className="w-7 h-7 rounded-full bg-[#ce743e]/10 flex items-center justify-center">
+                <ChefHat className="w-4 h-4 text-[#ce743e]" />
               </span>
               <span className="ms-2">
                 {language === 'en' ? 'Instructions' : 'הוראות'}
