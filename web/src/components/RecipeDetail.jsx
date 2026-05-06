@@ -68,12 +68,13 @@ export function RecipeDetail({ recipe, language = 'en', onBack, onEdit, onDelete
   const handleShare = async () => {
     try {
       const res = await fetch(`/api/recipes/${encodeURIComponent(recipe.title)}/share`)
-      const text = await res.text()
-      const url = `${window.location.origin}/?recipe=${encodeURIComponent(recipe.title)}`
-      const fullText = `${text}\n\n🔗 ${url}`
+      let text = await res.text()
+      text = text.replace(/\*/g, '')
+      const url = `${window.location.origin}/?r=${recipe.id}`
+      const fullText = `${text}\n🔗 ${url}`
 
       if (navigator.share) {
-        await navigator.share({ title: recipe.title, text: text, url: url })
+        await navigator.share({ title: recipe.title, text: fullText })
       } else {
         await navigator.clipboard.writeText(fullText)
         setCopied(true)
@@ -160,49 +161,41 @@ export function RecipeDetail({ recipe, language = 'en', onBack, onEdit, onDelete
         {/* Ingredients */}
         <div className="lg:col-span-2">
           <div className="bg-white rounded-3xl border border-[#e2e8f0]/50 shadow-sm p-6">
-            <div className="flex gap-3">
-              {/* Left column: emoji + checkboxes */}
-              <div className="flex flex-col items-center gap-3">
-                <div className="w-7 h-7 rounded-full bg-[#ce743e]/10 flex items-center justify-center">
-                  <UtensilsCrossed className="w-4 h-4 text-[#ce743e]" />
-                </div>
-                {recipe.ingredients.map((ingredient, index) => (
-                  <button
-                    key={index}
-                    onClick={() => toggleIngredient(ingredient)}
-                    className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all duration-200 ${
-                      checkedIngredients.has(ingredient) ? 'bg-[#ce743e] border-[#ce743e]' : 'border-[#e2e8f0] hover:border-[#ce743e]/50'
-                    }`}
-                  >
-                    {checkedIngredients.has(ingredient) && <Check className="w-3 h-3 text-white" />}
-                  </button>
-                ))}
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-7 h-7 rounded-full bg-[#ce743e]/10 flex items-center justify-center flex-shrink-0">
+                <UtensilsCrossed className="w-4 h-4 text-[#ce743e]" />
               </div>
-    
-            {/* Right column: title + ingredients */}
-              <div className="flex-1">
-                <div className="flex items-center justify-between mb-3">
-                  <h2 className="text-lg font-semibold text-[#1e293b]">
-                    {language === 'en' ? 'Ingredients' : 'מצרכים'}
-                  </h2>
-                  {checkedIngredients.size > 0 && (
-                    <button onClick={clearAllIngredients} className="flex items-center gap-1.5 text-xs text-[#64748b] hover:text-[#1e293b] transition-colors">
-                      <RotateCcw className="w-3 h-3" />
-                      Clear all
-                    </button>
-                  )}
-                </div>
-                <div className="space-y-3">
-                  {recipe.ingredients.map((ingredient, index) => {
-                    const isChecked = checkedIngredients.has(ingredient)
-                    return (
-                      <span key={index} className={`text-sm block transition-all duration-200 ${isChecked ? 'text-[#64748b] line-through' : 'text-[#1e293b]/80'}`}>
-                        {ingredient}
-                      </span>
-                    )
-                  })}
-                </div>
-              </div>
+              <h2 className="text-lg font-semibold text-[#1e293b] flex-1">
+                {language === 'en' ? 'Ingredients' : 'מצרכים'}
+              </h2>
+              {checkedIngredients.size > 0 && (
+                <button onClick={clearAllIngredients} className="flex items-center gap-1.5 text-xs text-[#64748b] hover:text-[#1e293b] transition-colors">
+                  <RotateCcw className="w-3 h-3" />
+                  Clear all
+                </button>
+              )}
+            </div>
+            <div className="space-y-3">
+              {recipe.ingredients.map((ingredient, index) => {
+                const isChecked = checkedIngredients.has(ingredient)
+                return (
+                  <div key={index} className="flex items-start gap-2">
+                    <div className="w-7 flex-shrink-0 flex items-center justify-center mt-0.5">
+                      <button
+                        onClick={() => toggleIngredient(ingredient)}
+                        className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all duration-200 ${
+                          isChecked ? 'bg-[#ce743e] border-[#ce743e]' : 'border-[#e2e8f0] hover:border-[#ce743e]/50'
+                        }`}
+                      >
+                        {isChecked && <Check className="w-3 h-3 text-white" />}
+                      </button>
+                    </div>
+                    <span className={`text-sm transition-all duration-200 ${isChecked ? 'text-[#64748b] line-through' : 'text-[#1e293b]/80'}`}>
+                      {ingredient}
+                    </span>
+                  </div>
+                )
+              })}
             </div>
           </div>
         </div>

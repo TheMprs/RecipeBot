@@ -1,6 +1,7 @@
 package recipeBot;
 
 public class Recipe {
+    private int id = -1; // -1 means "not yet persisted"
     private String name;
     private Category category;
     private String description;
@@ -56,6 +57,9 @@ public class Recipe {
     public void setIngredients(String[] ingredients) { this.ingredients = ingredients; }
     public void setInstructions(String[] instructions) { this.instructions = instructions; }
     public boolean isFavorite() { return this.favorite; }
+    
+    public int getId() { return this.id; }
+    public void setId(int id) { this.id = id; }
 
     @Override
     public String toString() {

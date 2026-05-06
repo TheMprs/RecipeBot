@@ -9,12 +9,13 @@ export function RecipeCard({ recipe, language = 'en', onSelect, showCategory = t
     e.stopPropagation()
     try {
       const res = await fetch(`/api/recipes/${encodeURIComponent(recipe.title)}/share`)
-      const text = await res.text()
-      const url = `${window.location.origin}/?recipe=${encodeURIComponent(recipe.title)}`
-      const fullText = `${text}\n\n🔗 ${url}`
+      let text = await res.text()
+      text = text.replace(/\*/g, '')
+      const url = `${window.location.origin}/?r=${recipe.id}`
+      const fullText = `${text}\n🔗 ${url}`
 
       if (navigator.share) {
-        await navigator.share({ title: recipe.title, text: text, url: url })
+        await navigator.share({ title: recipe.title, text: fullText })
       } else {
         await navigator.clipboard.writeText(fullText)
         setCopied(true)

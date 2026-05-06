@@ -28,10 +28,19 @@ public class DatabaseHandler {
                     "category TEXT," +
                     "description TEXT," +
                     "ingredients TEXT," +
-                    "instructions TEXT" +
+                    "instructions TEXT," +
+                    "visibility TEXT DEFAULT 'public'" +
                     ")";
 
             stmt.execute(sql);
+            
+            // Add visibility column to existing tables (backward compatibility)
+            try {
+                stmt.execute("ALTER TABLE recipes ADD COLUMN visibility TEXT DEFAULT 'public'");
+            } catch (java.sql.SQLException e) {
+                // Column likely already exists, ignore
+            }
+            
             System.out.println("Database initialized successfully.");
         } catch (java.sql.SQLException e) {
             e.printStackTrace();
@@ -61,27 +70,34 @@ public class DatabaseHandler {
 
         String sql = "INSERT INTO recipes(name, category, description, ingredients, instructions) VALUES(?, ?, ?, ?, ?)";
         try (Connection conn = connect();
-             java.sql.PreparedStatement pstmt = conn.prepareStatement(sql)) {
+             java.sql.PreparedStatement pstmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
             pstmt.setString(1, name);
             pstmt.setString(2, category);
-
             pstmt.setString(3, description);
             pstmt.setString(4, String.join(";", ingredients));
             pstmt.setString(5, String.join(";", instructions));
 
             pstmt.executeUpdate();
+            
+            // Capture the auto-generated ID and set it on the recipe
+            try (java.sql.ResultSet generatedKeys = pstmt.getGeneratedKeys()) {
+                if (generatedKeys.next()) {
+                    recipe.setId(generatedKeys.getInt(1));
+                }
+            }
         } catch (java.sql.SQLException e) {
             e.printStackTrace();
         }
     }
 
     public Recipe getRecipeByName(String name) {
-        String sql = "SELECT name, category, description, ingredients, instructions FROM recipes WHERE name = ?";
+        String sql = "SELECT id, name, category, description, ingredients, instructions FROM recipes WHERE name = ?";
         try (Connection conn = connect();
              java.sql.PreparedStatement pstmt = conn.prepareStatement(sql)) {
             pstmt.setString(1, name);
             try (java.sql.ResultSet rs = pstmt.executeQuery()) {
                 if (rs.next()) {
+                    int id = rs.getInt("id");
                     String category = rs.getString("category");
                     String description = rs.getString("description");
                     String ingredients = rs.getString("ingredients");
@@ -91,7 +107,9 @@ public class DatabaseHandler {
                     String[] ingredientsArray = ingredients.split(";");
                     String[] instructionsArray = instructions.split(";");
                     
-                    return new Recipe(name, Category.parse(category), description, ingredientsArray, instructionsArray);
+                    Recipe recipe = new Recipe(name, Category.parse(category), description, ingredientsArray, instructionsArray);
+                    recipe.setId(id);
+                    return recipe;
                 }
             }
         } catch (java.sql.SQLException e) {
@@ -117,12 +135,13 @@ public class DatabaseHandler {
     }
 
     public Recipe getRecipeById(String id) {
-        String sql = "SELECT name, category, description, ingredients, instructions FROM recipes WHERE id = ?";
+        String sql = "SELECT id, name, category, description, ingredients, instructions FROM recipes WHERE id = ?";
         try (Connection conn = connect();
              java.sql.PreparedStatement pstmt = conn.prepareStatement(sql)) {
             pstmt.setString(1, id);
             try (java.sql.ResultSet rs = pstmt.executeQuery()) {
                 if (rs.next()) {
+                    int recipeId = rs.getInt("id");
                     String name = rs.getString("name");
                     String category = rs.getString("category");
                     String description = rs.getString("description");
@@ -133,7 +152,9 @@ public class DatabaseHandler {
                     String[] ingredientsArray = ingredients.split(";");
                     String[] instructionsArray = instructions.split(";");
                     
-                    return new Recipe(name, Category.parse(category), description, ingredientsArray, instructionsArray);
+                    Recipe recipe = new Recipe(name, Category.parse(category), description, ingredientsArray, instructionsArray);
+                    recipe.setId(recipeId);
+                    return recipe;
                 }
             }
         } catch (java.sql.SQLException e) {
@@ -163,15 +184,46 @@ public class DatabaseHandler {
         return recipes;
     }
 
+    // method to retrieve all recipes from the database (returns full Recipe objects with IDs)
+    public List<Recipe> getAllRecipes() {
+        List<Recipe> recipes = new ArrayList<>();
+        String sql = "SELECT id, name, category, description, ingredients, instructions FROM recipes";
+        try (Connection conn = connect();
+             java.sql.Statement stmt = conn.createStatement();
+             java.sql.ResultSet rs = stmt.executeQuery(sql)) {
+            
+            while (rs.next()) {
+                int id = rs.getInt("id");
+                String name = rs.getString("name");
+                String category = rs.getString("category");
+                String description = rs.getString("description");
+                String ingredients = rs.getString("ingredients");
+                String instructions = rs.getString("instructions");
+
+                // convert the ingredients and instructions back to arrays and create a Recipe object
+                String[] ingredientsArray = ingredients.split(";");
+                String[] instructionsArray = instructions.split(";");
+                
+                Recipe recipe = new Recipe(name, Category.parse(category), description, ingredientsArray, instructionsArray);
+                recipe.setId(id);
+                recipes.add(recipe);
+            }
+        } catch (java.sql.SQLException e) {
+            e.printStackTrace();
+        }
+        return recipes;
+    }
+
     // method to retrieve recipes by category from the database
     public List<Recipe> getRecipesByCategory(Category category) {
         List<Recipe> recipes = new ArrayList<>();
-        String sql = "SELECT name, category, description, ingredients, instructions FROM recipes WHERE category = ?";
+        String sql = "SELECT id, name, category, description, ingredients, instructions FROM recipes WHERE category = ?";
         try (Connection conn = connect();
              java.sql.PreparedStatement pstmt = conn.prepareStatement(sql)) {
             pstmt.setString(1, category.toString());
             try (java.sql.ResultSet rs = pstmt.executeQuery()) {
                 while (rs.next()) {
+                    int id = rs.getInt("id");
                     String name = rs.getString("name");
                     Category cat = Category.parse(rs.getString("category"));
                     String description = rs.getString("description");
@@ -183,6 +235,7 @@ public class DatabaseHandler {
                     String[] instructionsArray = instructions.split(";");
                     
                     Recipe recipe = new Recipe(name, cat, description, ingredientsArray, instructionsArray);
+                    recipe.setId(id);
                     recipes.add(recipe);
                 }
             }

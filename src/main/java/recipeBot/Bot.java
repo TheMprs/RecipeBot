@@ -540,7 +540,7 @@ public class Bot extends TelegramLongPollingBot {
         InlineKeyboardButton shareBtn = new InlineKeyboardButton();
         shareBtn.setText("📤 Share");
         try {
-            String rawWebUrl = "https://babrecipebook.vercel.app/?recipe=" + recipe.getName().replace(" ", "%20");
+            String rawWebUrl = "https://babrecipebook.vercel.app/?r=" + recipeId;
             String encodedWebUrl = java.net.URLEncoder.encode(rawWebUrl, java.nio.charset.StandardCharsets.UTF_8.name());
             String textToShare = java.net.URLEncoder.encode(recipe.toString(), java.nio.charset.StandardCharsets.UTF_8.name()).replace("+", "%20");
             shareBtn.setUrl("https://t.me/share/url?url=" + encodedWebUrl + "&text=" + textToShare);

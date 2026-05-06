@@ -29,23 +29,13 @@ function App() {
 
   const isRtl = language === 'he'
 
-  // 1. FETCH ALL RECIPE NAMES AND DETAILS
+  // 1. FETCH ALL RECIPES WITH FULL DETAILS (no N+1 queries)
   const fetchRecipes = () => {
     fetch('/api/recipes')
       .then(response => response.json())
-      .then(async (data) => {
-        // Fetch full details for each recipe
-        const fullRecipes = await Promise.all(
-          data.map(name => 
-            fetch(`/api/recipes/${encodeURIComponent(name)}`)
-              .then(res => res.json())
-              .catch(error => {
-                console.error(`Error fetching ${name}:`, error);
-                return { name, description: '' };
-              })
-          )
-        );
-        setRecipes(fullRecipes);
+      .then(data => {
+        // API now returns full Recipe objects with IDs
+        setRecipes(data);
       })
       .catch(error => console.error("Error fetching:", error))
   }
@@ -53,11 +43,14 @@ function App() {
   useEffect(() => {
     fetchRecipes()
     
-    // Check for shared recipe in URL
+    // Check for shared recipe in URL (supports both ?r=<id> and ?recipe=<name> for backward compatibility)
     const params = new URLSearchParams(window.location.search)
+    const recipeId = params.get('r')
     const recipeName = params.get('recipe')
-    if (recipeName) {
-      fetch(`/api/recipes/${encodeURIComponent(recipeName)}`)
+    
+    if (recipeId) {
+      // New ID-based share link
+      fetch(`/api/recipes/id/${recipeId}`)
         .then(res => {
           if (!res.ok) throw new Error('Recipe not found')
           return res.json()
@@ -65,6 +58,7 @@ function App() {
         .then(data => {
           const formatArray = (text) => typeof text === 'string' ? text.split('\n').filter(i => i.trim()) : text;
           const recipeData = {
+            id: data.id,
             title: data.name || data.title,
             description: data.description || '',
             category: data.category || 'MAIN',
@@ -73,7 +67,30 @@ function App() {
           };
           setSelectedRecipe(recipeData)
           setViewMode('detail')
-          window.history.pushState({}, '', `?recipe=${encodeURIComponent(recipeData.title)}`)
+          window.history.pushState({}, '', `?r=${data.id}`)
+        })
+        .catch(console.error)
+    } else if (recipeName) {
+      // Backward-compatible name-based link
+      fetch(`/api/recipes/${encodeURIComponent(recipeName)}`)
+        .then(res => {
+          if (!res.ok) throw new Error('Recipe not found')
+          return res.json()
+        })
+        .then(data => {
+          const formatArray = (text) => typeof text === 'string' ? text.split('\n').filter(i => i.trim()) : text;
+          const recipeData = {
+            id: data.id,
+            title: data.name || data.title,
+            description: data.description || '',
+            category: data.category || 'MAIN',
+            ingredients: formatArray(data.ingredients) || [],
+            instructions: formatArray(data.instructions) || []
+          };
+          setSelectedRecipe(recipeData)
+          setViewMode('detail')
+          // Update URL to use new ID-based format
+          window.history.pushState({}, '', `?r=${data.id}`)
         })
         .catch(console.error)
     }
@@ -81,13 +98,19 @@ function App() {
 
   // 2. FETCH SPECIFIC RECIPE DETAILS WHEN CLICKED
   const handleSelectRecipe = (recipeObj) => {
-    fetch(`/api/recipes/${encodeURIComponent(recipeObj.title)}`)
+    // Use ID if available (more efficient), fallback to name for backward compatibility
+    const fetchUrl = recipeObj.id && typeof recipeObj.id === 'number' 
+      ? `/api/recipes/id/${recipeObj.id}`
+      : `/api/recipes/${encodeURIComponent(recipeObj.title)}`;
+    
+    fetch(fetchUrl)
       .then(res => res.json())
       .then(fullRecipe => {
         // Convert string ingredients/instructions into arrays for the UI
         const formatArray = (text) => typeof text === 'string' ? text.split('\n').filter(i => i.trim()) : text;
         
         const recipeData = {
+          id: fullRecipe.id,
           title: fullRecipe.name || recipeObj.title,
           description: fullRecipe.description || '',
           category: fullRecipe.category || 'MAIN',
@@ -96,7 +119,7 @@ function App() {
         };
         setSelectedRecipe(recipeData);
         setViewMode('detail');
-        window.history.pushState({}, '', `?recipe=${encodeURIComponent(recipeData.title)}`);
+        window.history.pushState({}, '', `?r=${fullRecipe.id}`);
       });
   }
 
@@ -200,7 +223,7 @@ function App() {
   const displayRecipes = recipes.map(recipe => {
     const formatArray = (text) => typeof text === 'string' ? text.split('\n').filter(i => i.trim()) : text;
     return {
-      id: recipe.name || recipe.title,
+      id: recipe.id,
       title: recipe.name || recipe.title,
       description: recipe.description || '',
       category: recipe.category || 'MAIN',

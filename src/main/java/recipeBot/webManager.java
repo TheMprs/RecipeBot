@@ -17,6 +17,7 @@ public class webManager {
 
     public void registerRoutes(Javalin app) {
         app.get("/api/recipes", this::getAllRecipes);
+        app.get("/api/recipes/id/{id}", this::getRecipeById);
         app.get("/api/recipes/{name}", this::getOneRecipe);
         app.get("/api/recipes/{name}/share", this::getShareableRecipe);
         app.post("/api/recipes", this::addRecipe);
@@ -27,7 +28,19 @@ public class webManager {
 
     public void getAllRecipes(Context ctx) {
         // This method will be called by the web server to get all recipes from the database
-        ctx.json(db.getAllRecipeNames());    
+        // Returns full Recipe objects with IDs to eliminate N+1 queries on the frontend
+        ctx.json(db.getAllRecipes());    
+    }
+
+    public void getRecipeById(Context ctx) {
+        // Get recipe by numeric ID (for share link resolution)
+        String id = ctx.pathParam("id");
+        Recipe recipe = db.getRecipeById(id);
+        if (recipe != null) {
+            ctx.json(recipe);
+        } else {
+            ctx.status(404).result("Recipe not found");
+        }
     }
 
     public void getOneRecipe(Context ctx) {
