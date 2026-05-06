@@ -14,6 +14,9 @@ const categoryTranslations = {
   'SPECIAL': 'מיוחד'
 }
 
+// API configuration: uses environment variable in production, /api proxy in dev
+const API_BASE = import.meta.env.VITE_API_URL || '/api'
+
 function App() {
   const [recipes, setRecipes] = useState([])
   const [language, setLanguage] = useState('he')
@@ -31,7 +34,7 @@ function App() {
 
   // 1. FETCH ALL RECIPES WITH FULL DETAILS (no N+1 queries)
   const fetchRecipes = () => {
-    fetch('/api/recipes')
+    fetch(`${API_BASE}/recipes`)
       .then(response => response.json())
       .then(data => {
         // API now returns full Recipe objects with IDs
@@ -50,16 +53,20 @@ function App() {
     
     if (recipeId) {
       // New ID-based share link
-      fetch(`/api/recipes/id/${recipeId}`)
+      fetch(`${API_BASE}/recipes/id/${recipeId}`)
         .then(res => {
           if (!res.ok) throw new Error('Recipe not found')
           return res.json()
         })
         .then(data => {
-          const formatArray = (text) => typeof text === 'string' ? text.split('\n').filter(i => i.trim()) : text;
+          const formatArray = (text) => {
+            if (Array.isArray(text)) return text;
+            if (typeof text === 'string') return text.split('\n').filter(i => i.trim());
+            return [];
+          };
           const recipeData = {
             id: data.id,
-            title: data.name || data.title,
+            title: String(data.name || data.title || 'Unnamed'),
             description: data.description || '',
             category: data.category || 'MAIN',
             ingredients: formatArray(data.ingredients) || [],
@@ -72,16 +79,20 @@ function App() {
         .catch(console.error)
     } else if (recipeName) {
       // Backward-compatible name-based link
-      fetch(`/api/recipes/${encodeURIComponent(recipeName)}`)
+      fetch(`${API_BASE}/recipes/${encodeURIComponent(recipeName)}`)
         .then(res => {
           if (!res.ok) throw new Error('Recipe not found')
           return res.json()
         })
         .then(data => {
-          const formatArray = (text) => typeof text === 'string' ? text.split('\n').filter(i => i.trim()) : text;
+          const formatArray = (text) => {
+            if (Array.isArray(text)) return text;
+            if (typeof text === 'string') return text.split('\n').filter(i => i.trim());
+            return [];
+          };
           const recipeData = {
             id: data.id,
-            title: data.name || data.title,
+            title: String(data.name || data.title || 'Unnamed'),
             description: data.description || '',
             category: data.category || 'MAIN',
             ingredients: formatArray(data.ingredients) || [],
@@ -100,18 +111,25 @@ function App() {
   const handleSelectRecipe = (recipeObj) => {
     // Use ID if available (more efficient), fallback to name for backward compatibility
     const fetchUrl = recipeObj.id && typeof recipeObj.id === 'number' 
-      ? `/api/recipes/id/${recipeObj.id}`
-      : `/api/recipes/${encodeURIComponent(recipeObj.title)}`;
+      ? `${API_BASE}/recipes/id/${recipeObj.id}`
+      : `${API_BASE}/recipes/${encodeURIComponent(String(recipeObj.title))}`;
     
     fetch(fetchUrl)
-      .then(res => res.json())
+      .then(res => {
+        if (!res.ok) throw new Error('Recipe not found');
+        return res.json();
+      })
       .then(fullRecipe => {
         // Convert string ingredients/instructions into arrays for the UI
-        const formatArray = (text) => typeof text === 'string' ? text.split('\n').filter(i => i.trim()) : text;
+        const formatArray = (text) => {
+          if (Array.isArray(text)) return text; // Already an array
+          if (typeof text === 'string') return text.split('\n').filter(i => i.trim());
+          return [];
+        };
         
         const recipeData = {
           id: fullRecipe.id,
-          title: fullRecipe.name || recipeObj.title,
+          title: String(fullRecipe.name || fullRecipe.title || 'Unnamed'),
           description: fullRecipe.description || '',
           category: fullRecipe.category || 'MAIN',
           ingredients: formatArray(fullRecipe.ingredients) || [],
@@ -120,6 +138,9 @@ function App() {
         setSelectedRecipe(recipeData);
         setViewMode('detail');
         window.history.pushState({}, '', `?r=${fullRecipe.id}`);
+      })
+      .catch(err => {
+        console.error('Error loading recipe:', err);
       });
   }
 
@@ -135,7 +156,7 @@ function App() {
     };
 
     const method = editingRecipe ? 'PUT' : 'POST';
-    const url = editingRecipe ? `/api/recipes/${encodeURIComponent(editingRecipe.title)}` : '/api/recipes';
+    const url = editingRecipe ? `${API_BASE}/recipes/${encodeURIComponent(editingRecipe.title)}` : `${API_BASE}/recipes`;
     
     console.log(`[DEBUG] ${method} request to ${url}`, backendFormat, 'editingRecipe:', editingRecipe);
 
@@ -171,7 +192,7 @@ function App() {
   // 4. DELETE RECIPE
   const handleDeleteRecipe = async (recipe) => {
     if(window.confirm(`Delete ${recipe.title}?`)) {
-      const res = await fetch(`/api/recipes/${encodeURIComponent(recipe.title)}`, { method: 'DELETE' });
+      const res = await fetch(`${API_BASE}/recipes/${encodeURIComponent(recipe.title)}`, { method: 'DELETE' });
       if (res.ok) {
         fetchRecipes();
         setViewMode('dashboard');
@@ -189,7 +210,7 @@ function App() {
 
     setIsScrapingLoading(true);
     try {
-      const res = await fetch('/api/recipes/scrape', {
+      const res = await fetch(`${API_BASE}/recipes/scrape`, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain' },
         body: urlInput
@@ -221,19 +242,28 @@ function App() {
 
   // Bridge: Map recipe data to display format
   const displayRecipes = recipes.map(recipe => {
-    const formatArray = (text) => typeof text === 'string' ? text.split('\n').filter(i => i.trim()) : text;
+    const formatArray = (text) => {
+      if (Array.isArray(text)) return text; // Backend now returns arrays
+      if (typeof text === 'string') return text.split('\n').filter(i => i.trim());
+      return [];
+    };
+    
+    const title = String(recipe.name || recipe.title || 'Unnamed').trim();
+    
     return {
       id: recipe.id,
-      title: recipe.name || recipe.title,
+      title: title,
       description: recipe.description || '',
       category: recipe.category || 'MAIN',
       ingredients: formatArray(recipe.ingredients) || [],
       instructions: formatArray(recipe.instructions) || []
     };
-  }).filter(recipe => 
-    recipe.title.toLowerCase().includes(searchQuery.toLowerCase()) &&
-    (selectedCategory === 'All' || recipe.category === selectedCategory)
-  );
+  }).filter(recipe => {
+    // Safely handle recipe.title in case it's not a string
+    const titleStr = String(recipe.title || '').toLowerCase();
+    return titleStr.includes(searchQuery.toLowerCase()) &&
+      (selectedCategory === 'All' || recipe.category === selectedCategory);
+  });
 
   return (
     <div className="min-h-screen bg-[#f5f3ef]">
@@ -322,6 +352,7 @@ function App() {
                       key={recipe.id} 
                       recipe={recipe} 
                       language={language}
+                      apiBase={API_BASE}
                       onSelect={handleSelectRecipe} 
                       showCategory={false} 
                     />
@@ -341,6 +372,7 @@ function App() {
               recipe={selectedRecipe} 
               onBack={handleBack} 
               language={language}
+              apiBase={API_BASE}
               onEdit={handleEditRecipe} 
               onDelete={handleDeleteRecipe} />
           </div>
@@ -365,9 +397,11 @@ function App() {
         <>
           <div className="fixed inset-0 bg-black/50 z-40" onClick={() => setShowUrlModal(false)}></div>
           <div className="fixed inset-0 flex items-center justify-center z-50 p-4" onClick={() => setShowUrlModal(false)}>
-            <div onClick={(e) => e.stopPropagation()} className="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-lg">
+            <div onClick={(e) => e.stopPropagation()} className="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-lg" style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
               <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl font-semibold text-[#3d3429]">Import Recipe from URL</h2>
+                <h2 className="text-xl font-semibold text-[#3d3429]">
+                  {language === 'en' ? 'Import Recipe from URL' : 'ייבא מתכון מ-URL'}
+                </h2>
                 <button onClick={() => setShowUrlModal(false)} className="text-[#7a7265] hover:text-[#3d3429] transition-colors">
                   <X className="w-5 h-5" />
                 </button>
@@ -375,15 +409,21 @@ function App() {
               
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-[#3d3429] mb-2">Recipe URL</label>
+                  <label className="block text-sm font-medium text-[#3d3429] mb-2">
+                    {language === 'en' ? 'Recipe URL' : 'לינק למתכון'}
+                  </label>
                   <input
                     type="url"
                     value={urlInput}
                     onChange={(e) => setUrlInput(e.target.value)}
-                    placeholder="https://example.com/recipe"
-                    className="w-full px-4 py-3 bg-[#faf9f7] border border-[#e8e4dc] rounded-2xl text-[#3d3429] placeholder:text-[#7a7265] focus:outline-none focus:ring-2 focus:ring-[#b86535]/20 focus:border-[#b86535] transition-all"
+                    placeholder='https://example.com/recipe'
+                    className="w-full px-4 py-3 bg-[#faf9f7] text-left border border-[#e8e4dc] rounded-2xl text-[#3d3429] placeholder:text-[#7a7265] focus:outline-none focus:ring-2 focus:ring-[#b86535]/20 focus:border-[#b86535] transition-all"
                   />
-                  <p className="text-xs text-[#7a7265] mt-2">Paste the URL of a recipe webpage. Our AI will extract the recipe details automatically.</p>
+                  <p className={`text-xs text-[#7a7265] mt-2 ${isRtl ? 'text-right' : 'text-left'}`}>
+                    {language === 'en' 
+                      ? 'Paste the URL of a recipe webpage. AI will extract the recipe details automatically.'
+                      : 'הדבק את כתובת ה-URL של דף המתכון. בינה מלאכותית תחלץ את פרטי המתכון באופן אוטומטי.'}
+                  </p>
                 </div>
 
                 <div className="flex gap-3 pt-4">
@@ -391,7 +431,7 @@ function App() {
                     onClick={() => setShowUrlModal(false)}
                     className="flex-1 px-4 py-3 bg-[#f5f3ef] text-[#3d3429] rounded-xl hover:bg-[#e8e4dc] transition-colors font-medium"
                   >
-                    Cancel
+                    {language === 'en' ? 'Cancel' : 'בטל'}
                   </button>
                   <button
                     onClick={handleScrapeFromUrl}
@@ -401,10 +441,10 @@ function App() {
                     {isScrapingLoading ? (
                       <>
                         <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                        <span>Importing...</span>
+                        <span>{language === 'en' ? 'Importing...' : 'מייבא...'}</span>
                       </>
                     ) : (
-                      <span>Import</span>
+                      <span>{language === 'en' ? 'Import' : 'ייבא'}</span>
                     )}
                   </button>
                 </div>

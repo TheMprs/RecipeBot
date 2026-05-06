@@ -25,7 +25,7 @@ function setCookie(name, value, days = 30) {
   document.cookie = `${name}=${value};expires=${expires.toUTCString()};path=/;SameSite=Lax`
 }
 
-export function RecipeDetail({ recipe, language = 'en', onBack, onEdit, onDelete }) {
+export function RecipeDetail({ recipe, language = 'en', apiBase = '/api', onBack, onEdit, onDelete }) {
   const cookieName = `${COOKIE_NAME_PREFIX}${recipe.id}`
   const isRtl = language === 'he'
 
@@ -67,7 +67,7 @@ export function RecipeDetail({ recipe, language = 'en', onBack, onEdit, onDelete
 
   const handleShare = async () => {
     try {
-      const res = await fetch(`/api/recipes/${encodeURIComponent(recipe.title)}/share`)
+      const res = await fetch(`${apiBase}/recipes/${encodeURIComponent(recipe.title)}/share`)
       let text = await res.text()
       text = text.replace(/\*/g, '')
       const url = `${window.location.origin}/?r=${recipe.id}`

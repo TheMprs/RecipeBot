@@ -1,14 +1,14 @@
 import { useState } from 'react'
 import { Share2 } from 'lucide-react'
 
-export function RecipeCard({ recipe, language = 'en', onSelect, showCategory = true }) {
+export function RecipeCard({ recipe, language = 'en', apiBase = '/api', onSelect, showCategory = true }) {
   const isRtl = language === 'he'
   const [copied, setCopied] = useState(false)
 
   const handleShare = async (e) => {
     e.stopPropagation()
     try {
-      const res = await fetch(`/api/recipes/${encodeURIComponent(recipe.title)}/share`)
+      const res = await fetch(`${apiBase}/recipes/${encodeURIComponent(recipe.title)}/share`)
       let text = await res.text()
       text = text.replace(/\*/g, '')
       const url = `${window.location.origin}/?r=${recipe.id}`
