@@ -53,8 +53,37 @@ function App() {
     checkAuth()
 
     // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       setUser(session?.user || null)
+      
+      // Create profile for new users (OAuth sign-in)
+      if (event === 'SIGNED_IN' && session?.user) {
+        const user = session.user
+        try {
+          // Check if profile already exists
+          const { data: existingProfile } = await supabase
+            .from('users')
+            .select('id')
+            .eq('id', user.id)
+            .single()
+          
+          // If no profile exists, create one
+          if (!existingProfile) {
+            await supabase
+              .from('users')
+              .insert({
+                id: user.id,
+                email: user.email,
+                username: user.user_metadata?.full_name || user.email.split('@')[0],
+                bio: null,
+                avatar_url: user.user_metadata?.avatar_url || null,
+              })
+            console.log('User profile created for Google OAuth sign-in')
+          }
+        } catch (error) {
+          console.error('Error creating user profile:', error)
+        }
+      }
     })
 
     return () => subscription?.unsubscribe()
