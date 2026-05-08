@@ -65,15 +65,41 @@ function App() {
   }
 
   // 1. FETCH ALL RECIPES WITH FULL DETAILS (no N+1 queries)
-  const fetchRecipes = () => {
-    fetch(`${API_BASE}/recipes`)
-      .then(response => response.json())
-      .then(data => {
-        // API now returns full Recipe objects with IDs
-        setRecipes(data);
-      })
-      .catch(error => console.error("Error fetching:", error))
-  }
+  const fetchRecipes = async () => {
+    try {
+      if (user) {
+        // Fetch only current user's recipes from Supabase
+        const { data, error } = await supabase
+          .from('recipes')
+          .select('*')
+          .eq('user_id', user.id);
+
+        if (error) throw error;
+
+        // Format recipes for display
+        const formattedRecipes = data.map(recipe => ({
+          id: recipe.id,
+          title: recipe.name,
+          category: recipe.category,
+          description: recipe.description,
+          ingredients: recipe.ingredients,
+          instructions: recipe.instructions
+        }));
+
+        setRecipes(formattedRecipes);
+      } else {
+        // No user logged in - show empty or fetch public recipes
+        setRecipes([]);
+      }
+    } catch (error) {
+      console.error('Error fetching recipes from Supabase:', error);
+      // Fallback to Java backend if Supabase fails
+      fetch(`${API_BASE}/recipes`)
+        .then(response => response.json())
+        .then(data => setRecipes(data))
+        .catch(err => console.error('Error fetching from backend:', err));
+    }
+  };
 
   useEffect(() => {
     fetchRecipes()
@@ -137,7 +163,7 @@ function App() {
         })
         .catch(console.error)
     }
-  }, [])
+  }, [user])
 
   // 2. FETCH SPECIFIC RECIPE DETAILS WHEN CLICKED
   const handleSelectRecipe = (recipeObj) => {
@@ -178,6 +204,11 @@ function App() {
 
   // 3. SAVE A NEW RECIPE
   const handleAddRecipe = async (newRecipe) => {
+    if (!user) {
+      alert('Please log in first');
+      return;
+    }
+
     // Convert arrays back to strings for your Java backend
     const backendFormat = {
       name: newRecipe.title,
@@ -192,19 +223,44 @@ function App() {
     
     console.log(`[DEBUG] ${method} request to ${url}`, backendFormat, 'editingRecipe:', editingRecipe);
 
-    const res = await fetch(url, {
-      method,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(backendFormat)
-    });
+    try {
+      // Save to Java backend
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(backendFormat)
+      });
 
-    if (res.ok) {
-      fetchRecipes();
-      setViewMode('dashboard');
-      setEditingRecipe(null);
-    } else {
-      const errorText = await res.text();
-      console.error(`Error: ${res.status}`, errorText);
+      if (res.ok) {
+        // Also save to Supabase with user_id
+        const supabaseRecipe = {
+          user_id: user.id,
+          name: newRecipe.title,
+          category: newRecipe.category,
+          description: newRecipe.description,
+          ingredients: newRecipe.ingredients,
+          instructions: newRecipe.instructions,
+          visibility: 'public' // Default to public for now
+        };
+
+        const { error } = await supabase
+          .from('recipes')
+          .insert([supabaseRecipe]);
+
+        if (error) {
+          console.error('Error saving to Supabase:', error);
+          // Don't fail the operation if Supabase save fails
+        }
+
+        fetchRecipes();
+        setViewMode('dashboard');
+        setEditingRecipe(null);
+      } else {
+        const errorText = await res.text();
+        console.error(`Error: ${res.status}`, errorText);
+      }
+    } catch (err) {
+      console.error('Error adding recipe:', err);
     }
   }
 

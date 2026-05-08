@@ -20,6 +20,25 @@ export default function Login({ onLoginSuccess }) {
           password,
         });
         if (error) throw error;
+
+        // Create user profile in database
+        if (data.user) {
+          const { error: profileError } = await supabase
+            .from('users')
+            .insert({
+              id: data.user.id,
+              email: email,
+              username: email.split('@')[0], // Use email prefix as default username
+              bio: null,
+              avatar_url: null,
+            });
+          
+          if (profileError) {
+            console.error('Profile creation error:', profileError);
+            // Don't throw - user is still created in auth
+          }
+        }
+
         alert('Check your email to confirm signup!');
       } else {
         const { data, error } = await supabase.auth.signInWithPassword({
