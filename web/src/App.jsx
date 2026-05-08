@@ -24,8 +24,10 @@ function App() {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
   const [recipes, setRecipes] = useState([])
+  const [publicRecipes, setPublicRecipes] = useState([])
   const [language, setLanguage] = useState('he')
-  const [viewMode, setViewMode] = useState('profile')
+  const [viewMode, setViewMode] = useState('home')
+  const [showLoginModal, setShowLoginModal] = useState(false)
   const [selectedRecipe, setSelectedRecipe] = useState(null)
   const [editingRecipe, setEditingRecipe] = useState(null)
   const [searchQuery, setSearchQuery] = useState('')
@@ -34,80 +36,113 @@ function App() {
   const [showUrlModal, setShowUrlModal] = useState(false)
   const [urlInput, setUrlInput] = useState('')
   const [isScrapingLoading, setIsScrapingLoading] = useState(false)
+  const [isImporting, setIsImporting] = useState(false)
+  const [importMessage, setImportMessage] = useState('')
 
   const isRtl = language === 'he'
 
   // Check auth status on mount
   useEffect(() => {
-    const checkAuth = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession()
+    console.log('Auth effect mounting...')
+    console.log('Supabase client:', supabase ? 'exists' : 'MISSING')
+    
+    // Set initial loading to false after a timeout to prevent infinite loading
+    const timeoutId = setTimeout(() => {
+      console.log('Timeout: forcing loading to false')
+      setLoading(false)
+    }, 3000)
+
+    // Listen for auth changes - this will fire immediately with current session
+    try {
+      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+        console.log('Auth state changed:', event, 'User:', session?.user?.email || 'null')
         setUser(session?.user || null)
-      } catch (error) {
-        console.error('Auth check error:', error)
-      } finally {
         setLoading(false)
-      }
-    }
-
-    checkAuth()
-
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      setUser(session?.user || null)
-      
-      // Create profile for new users (OAuth sign-in)
-      if (event === 'SIGNED_IN' && session?.user) {
-        const user = session.user
-        try {
-          // Check if profile already exists
-          const { data: existingProfile } = await supabase
-            .from('users')
-            .select('id')
-            .eq('id', user.id)
-            .single()
-          
-          // If no profile exists, create one
-          if (!existingProfile) {
-            await supabase
+        clearTimeout(timeoutId)
+        
+        // Create profile for new users (OAuth sign-in)
+        if (event === 'SIGNED_IN' && session?.user) {
+          const user = session.user
+          try {
+            // Check if profile already exists
+            const { data: existingProfile } = await supabase
               .from('users')
-              .insert({
-                id: user.id,
-                email: user.email,
-                username: user.user_metadata?.full_name || user.email.split('@')[0],
-                bio: null,
-                avatar_url: user.user_metadata?.avatar_url || null,
-              })
-            console.log('User profile created for Google OAuth sign-in')
+              .select('id')
+              .eq('id', user.id)
+              .single()
+            
+            // If no profile exists, create one
+            if (!existingProfile) {
+              await supabase
+                .from('users')
+                .insert({
+                  id: user.id,
+                  email: user.email,
+                  username: user.user_metadata?.full_name || user.email.split('@')[0],
+                  bio: null,
+                  avatar_url: user.user_metadata?.avatar_url || null,
+                })
+              console.log('User profile created for Google OAuth sign-in')
+            }
+          } catch (error) {
+            console.error('Error creating user profile:', error)
           }
-        } catch (error) {
-          console.error('Error creating user profile:', error)
         }
-      }
-    })
+      })
 
-    return () => subscription?.unsubscribe()
+      return () => {
+        clearTimeout(timeoutId)
+        subscription?.unsubscribe()
+      }
+    } catch (error) {
+      console.error('Error setting up auth listener:', error)
+      setLoading(false)
+      clearTimeout(timeoutId)
+    }
   }, [])
 
   const handleLogout = async () => {
-    await supabase.auth.signOut()
-    setUser(null)
+    console.log('Logout clicked')
+    try {
+      // Add timeout to prevent hanging
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Logout timeout')), 3000)
+      )
+      
+      await Promise.race([supabase.auth.signOut(), timeoutPromise])
+      console.log('Sign out complete')
+      setUser(null)
+    } catch (error) {
+      console.error('Logout error:', error)
+      // Force logout even if Supabase fails
+      setUser(null)
+    }
   }
 
   // 1. FETCH ALL RECIPES WITH FULL DETAILS (no N+1 queries)
   const fetchRecipes = async () => {
     try {
       if (user) {
-        // Fetch only current user's recipes from Supabase
-        const { data, error } = await supabase
+        console.log('Fetching recipes for user:', user.id)
+        
+        // Add timeout to prevent hanging
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Query timeout')), 5000)
+        )
+        
+        const queryPromise = supabase
           .from('recipes')
           .select('*')
-          .eq('user_id', user.id);
+          .eq('user_id', user.id)
+        
+        const { data, error } = await Promise.race([queryPromise, timeoutPromise])
+
+        console.log('Query result:', { dataLength: data?.length, error })
 
         if (error) throw error;
 
         // Format recipes for display
-        const formattedRecipes = data.map(recipe => ({
+        const formattedRecipes = (data || []).map(recipe => ({
           id: recipe.id,
           title: recipe.name,
           category: recipe.category,
@@ -116,23 +151,54 @@ function App() {
           instructions: recipe.instructions
         }));
 
+        console.log('Set recipes:', formattedRecipes.length)
         setRecipes(formattedRecipes);
       } else {
-        // No user logged in - show empty or fetch public recipes
         setRecipes([]);
       }
     } catch (error) {
-      console.error('Error fetching recipes from Supabase:', error);
-      // Fallback to Java backend if Supabase fails
-      fetch(`${API_BASE}/recipes`)
-        .then(response => response.json())
-        .then(data => setRecipes(data))
-        .catch(err => console.error('Error fetching from backend:', err));
+      console.error('Error fetching recipes:', error);
+      setRecipes([]);
+    }
+  };
+
+  // Fetch public recipes for home page when not logged in
+  const fetchPublicRecipes = async () => {
+    try {
+      console.log('Fetching public recipes...')
+      // Get all public recipes sorted by likes (descending)
+      const { data, error } = await supabase
+        .from('recipes')
+        .select('*')
+        .eq('visibility', 'public')
+        .order('id', { ascending: false })
+        .limit(50);
+
+      if (error) throw error;
+
+      console.log('Fetched', data?.length || 0, 'public recipes')
+      const formattedRecipes = data.map(recipe => ({
+        id: recipe.id,
+        title: recipe.name,
+        category: recipe.category,
+        description: recipe.description,
+        ingredients: recipe.ingredients,
+        instructions: recipe.instructions
+      }));
+
+      setPublicRecipes(formattedRecipes);
+    } catch (error) {
+      console.error('Error fetching public recipes:', error);
+      setPublicRecipes([]);
     }
   };
 
   useEffect(() => {
-    fetchRecipes()
+    if (user) {
+      fetchRecipes();
+    } else {
+      fetchPublicRecipes();
+    }
     
     // Check for shared recipe in URL (supports both ?r=<id> and ?recipe=<name> for backward compatibility)
     const params = new URLSearchParams(window.location.search)
@@ -390,7 +456,14 @@ function App() {
           <p className="text-gray-500">Loading...</p>
         </div>
       ) : !user ? (
-        <Login onLoginSuccess={() => setViewMode('profile')} />
+        <>
+          <div className="fixed inset-0 bg-black/40 backdrop-blur-md z-40" onClick={() => setShowLoginModal(false)} />
+          <div className="fixed inset-0 flex items-center justify-center z-50 p-4" onClick={() => setShowLoginModal(false)}>
+            <div onClick={(e) => e.stopPropagation()}>
+              <Login onLoginSuccess={() => { setShowLoginModal(false); setViewMode('profile'); }} />
+            </div>
+          </div>
+        </>
       ) : (
     <div className="min-h-screen bg-[#f5f3ef]">
       <header className="sticky top-0 z-30 bg-[#faf9f7]/95 backdrop-blur-md border-b border-[#e8e4dc]">
@@ -423,13 +496,50 @@ function App() {
 
       <main className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
         {viewMode === 'home' && (
-          <div className="min-h-[60vh] flex items-center justify-center">
-            <div className="text-center">
-              <BookOpen className="w-16 h-16 text-[#e8e4dc] mx-auto mb-4" />
-              <p className="text-[#7a7265] text-lg">
-                {language === 'en' ? 'lorem ipsum' : 'לורם איפסום'}
-              </p>
-            </div>
+          <div style={{ direction: language === 'he' ? 'rtl' : 'ltr' }} className="space-y-16">
+            {/* Saved Recipes Section */}
+            <section>
+              <div className="mb-8">
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="w-1 h-8 bg-[#ce743e] rounded-full"></div>
+                  <h2 className="text-3xl font-bold text-[#3d3429]">{language === 'en' ? 'My Saved Recipes' : 'המתכונים השמורים שלי'}</h2>
+                </div>
+                <p className="text-[#7a7265] text-sm ml-4">{displayRecipes.length} {language === 'en' ? 'recipes' : 'מתכונים'}</p>
+              </div>
+              {displayRecipes.length > 0 ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+                  {displayRecipes.slice(0, 6).map((recipe) => (
+                    <RecipeCard 
+                      key={recipe.id} 
+                      recipe={recipe} 
+                      language={language}
+                      onSelect={handleSelectRecipe} 
+                      showCategory={true} 
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-16 bg-gradient-to-br from-[#faf9f7] to-[#f5f3ef] rounded-3xl border-2 border-dashed border-[#e8e4dc]">
+                  <BookOpen className="w-12 h-12 text-[#ce743e]/30 mx-auto mb-4" />
+                  <p className="text-[#7a7265] font-medium">{language === 'en' ? 'No saved recipes yet' : 'אין מתכונים שמורים עדיין'}</p>
+                </div>
+              )}
+            </section>
+
+            {/* Most Prepped Section */}
+            <section>
+              <div className="mb-8">
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="w-1 h-8 bg-[#ce743e] rounded-full"></div>
+                  <h2 className="text-3xl font-bold text-[#3d3429]">{language === 'en' ? 'Your Most Prepped' : 'המתכונים המוכנים ביותר'}</h2>
+                </div>
+                <p className="text-[#7a7265] text-sm ml-4">{language === 'en' ? 'Track your cooking habits' : 'עקוב אחרי הרגלי הבישול שלך'}</p>
+              </div>
+              <div className="text-center py-16 bg-gradient-to-br from-[#faf9f7] to-[#f5f3ef] rounded-3xl border-2 border-dashed border-[#e8e4dc]">
+                <BookOpen className="w-12 h-12 text-[#ce743e]/30 mx-auto mb-4" />
+                <p className="text-[#3d3429] font-medium text-lg">{language === 'en' ? 'Coming Soon!' : 'בקרוב!'}</p>
+              </div>
+            </section>
           </div>
         )}
 

@@ -18,7 +18,9 @@ export function UserProfile({
   onSelectRecipe
 }) {
   const isRtl = language === 'he';
-  const username = user?.email?.split('@')[0] || 'User';
+  
+  // Get display name from Google metadata or fallback to email
+  const displayName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'User';
   
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
@@ -46,7 +48,7 @@ export function UserProfile({
 
           {/* Profile Info */}
           <div className="flex-1 pt-4">
-            <h1 className="text-3xl font-bold text-[#3d3429] mb-6 break-all whitespace-normal">{username}</h1>
+            <h1 className="text-3xl font-bold text-[#3d3429] mb-6 break-all whitespace-normal">{displayName}</h1>
 
             {/* Stats */}
             <div className="flex gap-8 mt-6">
