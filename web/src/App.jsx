@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
-import { BookOpen, Plus, Search, Filter, X, Link as LinkIcon } from 'lucide-react'
+import { BookOpen, Plus, Search, Filter, X, Link as LinkIcon, User as UserIcon } from 'lucide-react'
 import { RecipeCard } from './components/RecipeCard'
 import { RecipeDetail } from './components/RecipeDetail'
 import { RecipeForm } from './components/RecipeForm'
+import { UserProfile } from './components/UserProfile'
 import Login from './components/Login'
 import { supabase } from './supabaseClient'
 import './global.css'
@@ -24,7 +25,7 @@ function App() {
   const [loading, setLoading] = useState(true)
   const [recipes, setRecipes] = useState([])
   const [language, setLanguage] = useState('he')
-  const [viewMode, setViewMode] = useState('dashboard')
+  const [viewMode, setViewMode] = useState('profile')
   const [selectedRecipe, setSelectedRecipe] = useState(null)
   const [editingRecipe, setEditingRecipe] = useState(null)
   const [searchQuery, setSearchQuery] = useState('')
@@ -253,7 +254,7 @@ function App() {
         }
 
         fetchRecipes();
-        setViewMode('dashboard');
+        setViewMode('profile');
         setEditingRecipe(null);
       } else {
         const errorText = await res.text();
@@ -273,7 +274,7 @@ function App() {
   const handleBack = () => {
     setSelectedRecipe(null)
     setEditingRecipe(null)
-    setViewMode('dashboard')
+    setViewMode('profile')
     window.history.pushState({}, '', window.location.pathname)
   }
 
@@ -283,7 +284,7 @@ function App() {
       const res = await fetch(`${API_BASE}/recipes/${encodeURIComponent(recipe.title)}`, { method: 'DELETE' });
       if (res.ok) {
         fetchRecipes();
-        setViewMode('dashboard');
+        setViewMode('profile');
       }
     }
   }
@@ -360,12 +361,12 @@ function App() {
           <p className="text-gray-500">Loading...</p>
         </div>
       ) : !user ? (
-        <Login onLoginSuccess={() => setViewMode('dashboard')} />
+        <Login onLoginSuccess={() => setViewMode('profile')} />
       ) : (
     <div className="min-h-screen bg-[#f5f3ef]">
       <header className="sticky top-0 z-30 bg-[#faf9f7]/95 backdrop-blur-md border-b border-[#e8e4dc]">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
-            <button onClick={handleBack} className="flex items-center gap-2 group">
+            <button onClick={() => setViewMode('home')} className="flex items-center gap-2 group">
               <div className="w-10 h-10 rounded-2xl bg-[#ce743e] flex items-center justify-center">
                 <BookOpen className="w-5 h-5 text-white" />
               </div>
@@ -376,9 +377,12 @@ function App() {
             </button>
             <div className="flex items-center gap-4">
               <button onClick={() => setViewMode('add')} 
-                className={`flex items-center gap-2 text-[#64748b] hover:text-[#1e293b] transition-colors ${language === 'he' ? 'flex-row-reverse' : ''}`}>
+                className={`flex items-center gap-2 text-[#64748b] hover:text-[#1e293b] transition-colors`}>
                 <Plus className="w-5 h-5"/>
-                <span className="hidden sm:inline font-medium">{language === 'en' ? 'Add Recipe' : 'הוסף מתכון'}</span>
+              </button>
+              <button onClick={() => setViewMode('profile')}
+                className="flex items-center gap-2 text-[#64748b] hover:text-[#1e293b] transition-colors">
+                <UserIcon className="w-5 h-5"/>
               </button>
               <button onClick={handleLogout}
                 className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors text-sm">
@@ -389,6 +393,26 @@ function App() {
       </header>
 
       <main className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+        {viewMode === 'home' && (
+          <div className="min-h-[60vh] flex items-center justify-center">
+            <div className="text-center">
+              <BookOpen className="w-16 h-16 text-[#e8e4dc] mx-auto mb-4" />
+              <p className="text-[#7a7265] text-lg">
+                {language === 'en' ? 'lorem ipsum' : 'לורם איפסום'}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {viewMode === 'profile' && (
+          <UserProfile 
+            user={user} 
+            recipes={recipes} 
+            language={language}
+            onSelectRecipe={handleSelectRecipe}
+          />
+        )}
+
         {viewMode === 'dashboard' && (
           <div className="transition-all duration-300 ease-out opacity-100 translate-y-0">
              <div className="mb-8 flex items-center">
