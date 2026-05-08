@@ -3,6 +3,8 @@ import { BookOpen, Plus, Search, Filter, X, Link as LinkIcon } from 'lucide-reac
 import { RecipeCard } from './components/RecipeCard'
 import { RecipeDetail } from './components/RecipeDetail'
 import { RecipeForm } from './components/RecipeForm'
+import Login from './components/Login'
+import { supabase } from './supabaseClient'
 import './global.css'
 
 const categories = ['All', 'MAIN', 'SNACK', 'SPECIAL', 'DESSERT']
@@ -18,6 +20,8 @@ const categoryTranslations = {
 const API_BASE = import.meta.env.VITE_API_URL || '/api'
 
 function App() {
+  const [user, setUser] = useState(null)
+  const [loading, setLoading] = useState(true)
   const [recipes, setRecipes] = useState([])
   const [language, setLanguage] = useState('he')
   const [viewMode, setViewMode] = useState('dashboard')
@@ -31,6 +35,34 @@ function App() {
   const [isScrapingLoading, setIsScrapingLoading] = useState(false)
 
   const isRtl = language === 'he'
+
+  // Check auth status on mount
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        setUser(session?.user || null)
+      } catch (error) {
+        console.error('Auth check error:', error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    checkAuth()
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      setUser(session?.user || null)
+    })
+
+    return () => subscription?.unsubscribe()
+  }, [])
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut()
+    setUser(null)
+  }
 
   // 1. FETCH ALL RECIPES WITH FULL DETAILS (no N+1 queries)
   const fetchRecipes = () => {
@@ -266,6 +298,14 @@ function App() {
   });
 
   return (
+    <>
+      {loading ? (
+        <div className="min-h-screen flex items-center justify-center">
+          <p className="text-gray-500">Loading...</p>
+        </div>
+      ) : !user ? (
+        <Login onLoginSuccess={() => setViewMode('dashboard')} />
+      ) : (
     <div className="min-h-screen bg-[#f5f3ef]">
       <header className="sticky top-0 z-30 bg-[#faf9f7]/95 backdrop-blur-md border-b border-[#e8e4dc]">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
@@ -278,11 +318,17 @@ function App() {
                 <p className="text-xs text-[#7a7265]">זה בתהליך לא לשפוט</p>
               </div>
             </button>
-            <button onClick={() => setViewMode('add')} 
-              className={`flex items-center gap-2 text-[#64748b] hover:text-[#1e293b] transition-colors ${language === 'he' ? 'flex-row-reverse' : ''}`}>
-              <Plus className="w-5 h-5"/>
-              <span className="hidden sm:inline font-medium">{language === 'en' ? 'Add Recipe' : 'הוסף מתכון'}</span>
-            </button>
+            <div className="flex items-center gap-4">
+              <button onClick={() => setViewMode('add')} 
+                className={`flex items-center gap-2 text-[#64748b] hover:text-[#1e293b] transition-colors ${language === 'he' ? 'flex-row-reverse' : ''}`}>
+                <Plus className="w-5 h-5"/>
+                <span className="hidden sm:inline font-medium">{language === 'en' ? 'Add Recipe' : 'הוסף מתכון'}</span>
+              </button>
+              <button onClick={handleLogout}
+                className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors text-sm">
+                Logout
+              </button>
+            </div>
         </div>
       </header>
 
@@ -352,7 +398,6 @@ function App() {
                       key={recipe.id} 
                       recipe={recipe} 
                       language={language}
-                      apiBase={API_BASE}
                       onSelect={handleSelectRecipe} 
                       showCategory={false} 
                     />
@@ -372,7 +417,6 @@ function App() {
               recipe={selectedRecipe} 
               onBack={handleBack} 
               language={language}
-              apiBase={API_BASE}
               onEdit={handleEditRecipe} 
               onDelete={handleDeleteRecipe} />
           </div>
@@ -469,6 +513,8 @@ function App() {
         </div>
       </footer>
     </div>
+      )}
+    </>
   )
 }
 
