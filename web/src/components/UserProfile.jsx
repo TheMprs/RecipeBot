@@ -1,6 +1,6 @@
 import { User, BookOpen, Search, Filter, X } from 'lucide-react';
 import { RecipeCard } from './RecipeCard';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 const categories = ['All', 'MAIN', 'SNACK', 'SPECIAL', 'DESSERT']
 
@@ -15,19 +15,54 @@ export function UserProfile({
   user, 
   recipes, 
   language, 
-  onSelectRecipe
+  onSelectRecipe,
+  viewingProfile
 }) {
   const isRtl = language === 'he';
+  const [viewingRecipes, setViewingRecipes] = useState([]);
+  
+  // Determine which profile we're viewing
+  const currentProfile = viewingProfile || user;
+  const displayRecipes = viewingProfile ? viewingRecipes : recipes;
   
   // Get display name from Google metadata or fallback to email
-  const displayName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'User';
+  const displayName = currentProfile?.user_metadata?.full_name || currentProfile?.username || currentProfile?.email?.split('@')[0] || 'User';
   
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [isCategoryMenuOpen, setIsCategoryMenuOpen] = useState(false);
   
+  // Fetch viewing profile's public recipes
+  useEffect(() => {
+    if (viewingProfile) {
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      
+      fetch(`${supabaseUrl}/rest/v1/recipes?user_id=eq.${viewingProfile.id}&visibility=eq.public&select=*`, {
+        headers: {
+          'apikey': supabaseKey,
+          'Authorization': `Bearer ${supabaseKey}`,
+          'Content-Type': 'application/json'
+        }
+      })
+        .then(res => res.json())
+        .then(data => {
+          const formatted = (data || []).map(recipe => ({
+            id: recipe.id,
+            title: recipe.name,
+            category: recipe.category,
+            description: recipe.description,
+            ingredients: recipe.ingredients,
+            instructions: recipe.instructions
+          }));
+          setViewingRecipes(formatted);
+        })
+        .catch(err => console.error('[Data] Failed to fetch viewing profile recipes:', err.message));
+    }
+  }, [viewingProfile]);
+  
   // Filter recipes by search and category
-  const filteredRecipes = recipes.filter(recipe => {
+  const filteredRecipes = displayRecipes.filter(recipe => {
     const matchesSearch = recipe.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
                          recipe.description.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesCategory = selectedCategory === 'All' || recipe.category === selectedCategory;
@@ -37,37 +72,37 @@ export function UserProfile({
   return (
     <div>
       {/* Profile Header */}
-      <div className="bg-white rounded-2xl border border-[#e8e4dc] p-6 mb-8">
-        <div className="flex items-start gap-6" style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
+      <div className="bg-white rounded-2xl border border-[#e8e4dc] p-4 sm:p-6 mb-8">
+        <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4 sm:gap-6" style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
           {/* Avatar */}
           <div className="flex-shrink-0">
-            <div className="w-32 h-32 rounded-full bg-[#ce743e]/10 flex items-center justify-center border-4 border-[#ce743e]/20">
-              <User className="w-16 h-16 text-[#ce743e]" />
+            <div className="w-24 sm:w-32 h-24 sm:h-32 rounded-full bg-[#ce743e]/10 flex items-center justify-center border-4 border-[#ce743e]/20">
+              <User className="w-12 sm:w-16 h-12 sm:h-16 text-[#ce743e]" />
             </div>
           </div>
 
           {/* Profile Info */}
-          <div className="flex-1 pt-4">
-            <h1 className="text-3xl font-bold text-[#3d3429] mb-6 break-all whitespace-normal">{displayName}</h1>
+          <div className="flex-1 pt-0 sm:pt-4">
+            <h1 className={`text-2xl sm:text-3xl font-bold text-[#3d3429] mb-4 sm:mb-6 break-all whitespace-normal text-center ${isRtl ? 'sm:text-right' : 'sm:text-left'}`} style={{ direction: isRtl ? 'rtl' : 'ltr' }}>{displayName}</h1>
 
             {/* Stats */}
-            <div className="flex gap-8 mt-6">
+            <div className="flex justify-center sm:justify-start gap-4 sm:gap-8 mt-4 sm:mt-6">
               <div className="text-center">
-                <div className="text-xl sm:text-2xl font-bold text-[#ce743e]">{recipes.length}</div>
+                <div className="text-lg sm:text-2xl font-bold text-[#ce743e]">{displayRecipes.length}</div>
                 <div className="text-xs text-[#7a7265] uppercase tracking-wide">
                   {language === 'en' ? 'Recipes' : 'מתכונים'}
                 </div>
               </div>
               <div className="text-center">
-                <div className="text-xl sm:text-2xl font-bold text-[#ce743e]">0</div>
+                <div className="text-lg sm:text-2xl font-bold text-[#ce743e]">0</div>
                 <div className="text-xs text-[#7a7265] uppercase tracking-wide">
                   {language === 'en' ? 'Followers' : 'עוקבים'}
                 </div>
               </div>
               <div className="text-center">
-                <div className="text-xl sm:text-2xl font-bold text-[#ce743e]">0</div>
+                <div className="text-lg sm:text-2xl font-bold text-[#ce743e]">0</div>
                 <div className="text-xs text-[#7a7265] uppercase tracking-wide">
-                  {language === 'en' ? 'Following' : 'עוקב אחר'}
+                  {language === 'en' ? 'Following' : 'נעקבים'}
                 </div>
               </div>
             </div>

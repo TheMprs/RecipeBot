@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { BookOpen, Plus, Search, Filter, X, Link as LinkIcon, User as UserIcon } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { BookOpen, Plus, Search, Filter, X, Link as LinkIcon, User as UserIcon, ChevronLeft, ChevronRight } from 'lucide-react'
 import { RecipeCard } from './components/RecipeCard'
 import { RecipeDetail } from './components/RecipeDetail'
 import { RecipeForm } from './components/RecipeForm'
@@ -19,11 +19,14 @@ const categoryTranslations = {
 
 // API configuration: uses environment variable in production, /api proxy in dev
 const API_BASE = import.meta.env.VITE_API_URL || '/api'
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
 function App() {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
   const [recipes, setRecipes] = useState([])
+  const [likedRecipeIds, setLikedRecipeIds] = useState([])
   const [publicRecipes, setPublicRecipes] = useState([])
   const [language, setLanguage] = useState('he')
   const [viewMode, setViewMode] = useState('home')
@@ -38,24 +41,24 @@ function App() {
   const [isScrapingLoading, setIsScrapingLoading] = useState(false)
   const [isImporting, setIsImporting] = useState(false)
   const [importMessage, setImportMessage] = useState('')
+  const [viewingProfile, setViewingProfile] = useState(null)
+  const likedRecipesCarouselRef = useRef(null)
+  const [canScrollLeft, setCanScrollLeft] = useState(false)
+  const [canScrollRight, setCanScrollRight] = useState(true)
 
   const isRtl = language === 'he'
 
   // Check auth status on mount
   useEffect(() => {
-    console.log('Auth effect mounting...')
-    console.log('Supabase client:', supabase ? 'exists' : 'MISSING')
-    
     // Set initial loading to false after a timeout to prevent infinite loading
     const timeoutId = setTimeout(() => {
-      console.log('Timeout: forcing loading to false')
       setLoading(false)
     }, 3000)
 
     // Listen for auth changes - this will fire immediately with current session
     try {
       const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-        console.log('Auth state changed:', event, 'User:', session?.user?.email || 'null')
+        console.log('[Auth]', event, '-', session?.user?.email || 'anonymous')
         setUser(session?.user || null)
         setLoading(false)
         clearTimeout(timeoutId)
@@ -64,28 +67,50 @@ function App() {
         if (event === 'SIGNED_IN' && session?.user) {
           const user = session.user
           try {
-            // Check if profile already exists
-            const { data: existingProfile } = await supabase
-              .from('users')
-              .select('id')
-              .eq('id', user.id)
-              .single()
+            // Check if profile already exists using REST API
+            const checkRes = await fetch(
+              `${supabaseUrl}/rest/v1/users?id=eq.${user.id}`,
+              {
+                headers: {
+                  'apikey': supabaseKey,
+                  'Authorization': `Bearer ${supabaseKey}`,
+                  'Content-Type': 'application/json'
+                }
+              }
+            );
+
+            const existingProfiles = await checkRes.json();
             
             // If no profile exists, create one
-            if (!existingProfile) {
-              await supabase
-                .from('users')
-                .insert({
-                  id: user.id,
-                  email: user.email,
-                  username: user.user_metadata?.full_name || user.email.split('@')[0],
-                  bio: null,
-                  avatar_url: user.user_metadata?.avatar_url || null,
-                })
-              console.log('User profile created for Google OAuth sign-in')
+            if (!existingProfiles || existingProfiles.length === 0) {
+              const createRes = await fetch(
+                `${supabaseUrl}/rest/v1/users`,
+                {
+                  method: 'POST',
+                  headers: {
+                    'apikey': supabaseKey,
+                    'Authorization': `Bearer ${supabaseKey}`,
+                    'Content-Type': 'application/json'
+                  },
+                  body: JSON.stringify({
+                    id: user.id,
+                    email: user.email,
+                    username: user.user_metadata?.full_name || user.email.split('@')[0],
+                    bio: null,
+                    avatar_url: user.user_metadata?.avatar_url || null,
+                  })
+                }
+              );
+
+              if (createRes.ok) {
+                console.log('[Auth] Profile created for new user');
+              } else {
+                const err = await createRes.text();
+                console.error('[Auth] Failed to create profile:', err);
+              }
             }
           } catch (error) {
-            console.error('Error creating user profile:', error)
+            console.error('[Auth] Failed to create profile:', error.message)
           }
         }
       })
@@ -95,14 +120,13 @@ function App() {
         subscription?.unsubscribe()
       }
     } catch (error) {
-      console.error('Error setting up auth listener:', error)
+      console.error('[Auth] Listener setup failed:', error.message)
       setLoading(false)
       clearTimeout(timeoutId)
     }
   }, [])
 
   const handleLogout = async () => {
-    console.log('Logout clicked')
     try {
       // Add timeout to prevent hanging
       const timeoutPromise = new Promise((_, reject) =>
@@ -110,11 +134,9 @@ function App() {
       )
       
       await Promise.race([supabase.auth.signOut(), timeoutPromise])
-      console.log('Sign out complete')
       setUser(null)
     } catch (error) {
-      console.error('Logout error:', error)
-      // Force logout even if Supabase fails
+      console.error('[Auth] Logout failed:', error.message)
       setUser(null)
     }
   }
@@ -123,23 +145,22 @@ function App() {
   const fetchRecipes = async () => {
     try {
       if (user) {
-        console.log('Fetching recipes for user:', user.id)
-        
-        // Add timeout to prevent hanging
-        const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Query timeout')), 5000)
+        const response = await fetch(
+          `${supabaseUrl}/rest/v1/recipes?user_id=eq.${user.id}&select=*`,
+          {
+            headers: {
+              'apikey': supabaseKey,
+              'Authorization': `Bearer ${supabaseKey}`,
+              'Content-Type': 'application/json'
+            }
+          }
         )
         
-        const queryPromise = supabase
-          .from('recipes')
-          .select('*')
-          .eq('user_id', user.id)
-        
-        const { data, error } = await Promise.race([queryPromise, timeoutPromise])
+        const data = await response.json()
 
-        console.log('Query result:', { dataLength: data?.length, error })
-
-        if (error) throw error;
+        if (!response.ok) {
+          throw new Error(`API error: ${response.status} ${JSON.stringify(data)}`);
+        }
 
         // Format recipes for display
         const formattedRecipes = (data || []).map(recipe => ({
@@ -151,13 +172,12 @@ function App() {
           instructions: recipe.instructions
         }));
 
-        console.log('Set recipes:', formattedRecipes.length)
         setRecipes(formattedRecipes);
       } else {
         setRecipes([]);
       }
     } catch (error) {
-      console.error('Error fetching recipes:', error);
+      console.error('[Data] Failed to fetch recipes:', error.message);
       setRecipes([]);
     }
   };
@@ -165,18 +185,24 @@ function App() {
   // Fetch public recipes for home page when not logged in
   const fetchPublicRecipes = async () => {
     try {
-      console.log('Fetching public recipes...')
-      // Get all public recipes sorted by likes (descending)
-      const { data, error } = await supabase
-        .from('recipes')
-        .select('*')
-        .eq('visibility', 'public')
-        .order('id', { ascending: false })
-        .limit(50);
+      // Get all public recipes using REST API instead of JS client
+      const response = await fetch(
+        `${supabaseUrl}/rest/v1/recipes?visibility=eq.public&order=id.desc&limit=50`,
+        {
+          headers: {
+            'apikey': supabaseKey,
+            'Authorization': `Bearer ${supabaseKey}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
 
-      if (error) throw error;
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status}`);
+      }
 
-      console.log('Fetched', data?.length || 0, 'public recipes')
+      const data = await response.json();
+
       const formattedRecipes = data.map(recipe => ({
         id: recipe.id,
         title: recipe.name,
@@ -188,7 +214,7 @@ function App() {
 
       setPublicRecipes(formattedRecipes);
     } catch (error) {
-      console.error('Error fetching public recipes:', error);
+      console.error('[Data] Failed to fetch public recipes:', error.message);
       setPublicRecipes([]);
     }
   };
@@ -200,19 +226,66 @@ function App() {
       fetchPublicRecipes();
     }
     
-    // Check for shared recipe in URL (supports both ?r=<id> and ?recipe=<name> for backward compatibility)
+    // Check for shared recipe or profile in URL
     const params = new URLSearchParams(window.location.search)
+    const profileId = params.get('user')
     const recipeId = params.get('r')
     const recipeName = params.get('recipe')
     
+    // Handle profile viewing (either own or others') - check this FIRST
+    if (profileId) {
+      // If viewing own profile, just show profile view without viewingProfile set
+      if (user && profileId === user.id) {
+        setViewMode('profile')
+        setViewingProfile(null)
+        return
+      }
+      
+      // Otherwise fetch the other user's profile
+      fetch(`${supabaseUrl}/rest/v1/users?id=eq.${profileId}`, {
+        headers: {
+          'apikey': supabaseKey,
+          'Authorization': `Bearer ${supabaseKey}`,
+          'Content-Type': 'application/json'
+        }
+      })
+        .then(res => {
+          if (!res.ok) {
+            console.warn('[Data] Profile not found:', profileId);
+            window.history.replaceState({}, '', window.location.pathname);
+            return null;
+          }
+          return res.json();
+        })
+        .then(data => {
+          if (!data || data.length === 0) return;
+          const profile = data[0];
+          setViewingProfile(profile);
+          setViewMode('profile');
+        })
+        .catch(err => {
+          console.warn('[Data] Error loading profile from URL:', err.message);
+          window.history.replaceState({}, '', window.location.pathname);
+        });
+      return; // Don't process recipe parameters if viewing a profile
+    }
+    
+    // Only process recipe parameters if NOT viewing a profile
     if (recipeId) {
       // New ID-based share link
       fetch(`${API_BASE}/recipes/id/${recipeId}`)
         .then(res => {
-          if (!res.ok) throw new Error('Recipe not found')
+          if (!res.ok) {
+            console.warn('[Data] Recipe not found by ID:', recipeId);
+            // Clear the URL if recipe not found
+            window.history.replaceState({}, '', window.location.pathname);
+            return null;
+          }
           return res.json()
         })
         .then(data => {
+          if (!data) return; // Silently skip if recipe not found
+          
           const formatArray = (text) => {
             if (Array.isArray(text)) return text;
             if (typeof text === 'string') return text.split('\n').filter(i => i.trim());
@@ -230,15 +303,26 @@ function App() {
           setViewMode('detail')
           window.history.pushState({}, '', `?r=${data.id}`)
         })
-        .catch(console.error)
+        .catch(err => {
+          console.warn('[Data] Error loading recipe from URL:', err.message);
+          // Clear the URL on error
+          window.history.replaceState({}, '', window.location.pathname);
+        })
     } else if (recipeName) {
       // Backward-compatible name-based link
       fetch(`${API_BASE}/recipes/${encodeURIComponent(recipeName)}`)
         .then(res => {
-          if (!res.ok) throw new Error('Recipe not found')
+          if (!res.ok) {
+            console.warn('[Data] Recipe not found by name:', recipeName);
+            // Clear the URL if recipe not found
+            window.history.replaceState({}, '', window.location.pathname);
+            return null;
+          }
           return res.json()
         })
         .then(data => {
+          if (!data) return; // Silently skip if recipe not found
+          
           const formatArray = (text) => {
             if (Array.isArray(text)) return text;
             if (typeof text === 'string') return text.split('\n').filter(i => i.trim());
@@ -257,45 +341,40 @@ function App() {
           // Update URL to use new ID-based format
           window.history.pushState({}, '', `?r=${data.id}`)
         })
-        .catch(console.error)
+        .catch(err => {
+          console.warn('[Data] Error loading recipe from URL:', err.message);
+          // Clear the URL on error
+          window.history.replaceState({}, '', window.location.pathname);
+        })
     }
   }, [user])
 
+  // Check carousel scroll state when recipes load
+  useEffect(() => {
+    checkCarouselScroll()
+  }, [recipes])
+
   // 2. FETCH SPECIFIC RECIPE DETAILS WHEN CLICKED
   const handleSelectRecipe = (recipeObj) => {
-    // Use ID if available (more efficient), fallback to name for backward compatibility
-    const fetchUrl = recipeObj.id && typeof recipeObj.id === 'number' 
-      ? `${API_BASE}/recipes/id/${recipeObj.id}`
-      : `${API_BASE}/recipes/${encodeURIComponent(String(recipeObj.title))}`;
-    
-    fetch(fetchUrl)
-      .then(res => {
-        if (!res.ok) throw new Error('Recipe not found');
-        return res.json();
-      })
-      .then(fullRecipe => {
-        // Convert string ingredients/instructions into arrays for the UI
-        const formatArray = (text) => {
-          if (Array.isArray(text)) return text; // Already an array
-          if (typeof text === 'string') return text.split('\n').filter(i => i.trim());
-          return [];
-        };
-        
-        const recipeData = {
-          id: fullRecipe.id,
-          title: String(fullRecipe.name || fullRecipe.title || 'Unnamed'),
-          description: fullRecipe.description || '',
-          category: fullRecipe.category || 'MAIN',
-          ingredients: formatArray(fullRecipe.ingredients) || [],
-          instructions: formatArray(fullRecipe.instructions) || []
-        };
-        setSelectedRecipe(recipeData);
-        setViewMode('detail');
-        window.history.pushState({}, '', `?r=${fullRecipe.id}`);
-      })
-      .catch(err => {
-        console.error('Error loading recipe:', err);
-      });
+    // Directly use the data we already have to make navigation instant
+    const formatArray = (text) => {
+      if (Array.isArray(text)) return text;
+      if (typeof text === 'string') return text.split('\n').filter(i => i.trim());
+      return [];
+    };
+
+    const recipeData = {
+      id: recipeObj.id,
+      title: String(recipeObj.title || recipeObj.name || 'Unnamed'),
+      description: recipeObj.description || '',
+      category: recipeObj.category || 'MAIN',
+      ingredients: formatArray(recipeObj.ingredients),
+      instructions: formatArray(recipeObj.instructions)
+    };
+
+    setSelectedRecipe(recipeData);
+    setViewMode('detail');
+    window.history.pushState({}, '', `?r=${recipeObj.id}`);
   }
 
   // 3. SAVE A NEW RECIPE
@@ -321,14 +400,18 @@ function App() {
 
     try {
       // Save to Java backend
+      console.log('[Data] Saving to backend...');
       const res = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(backendFormat)
       });
 
+      console.log('[Data] Backend response:', res.status);
+
       if (res.ok) {
-        // Also save to Supabase with user_id
+        // Also save to Supabase using REST API
+        console.log('[Data] Saving to Supabase...');
         const supabaseRecipe = {
           user_id: user.id,
           name: newRecipe.title,
@@ -339,24 +422,40 @@ function App() {
           visibility: 'public' // Default to public for now
         };
 
-        const { error } = await supabase
-          .from('recipes')
-          .insert([supabaseRecipe]);
+        const supabaseRes = await fetch(
+          `${supabaseUrl}/rest/v1/recipes`,
+          {
+            method: 'POST',
+            headers: {
+              'apikey': supabaseKey,
+              'Authorization': `Bearer ${supabaseKey}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(supabaseRecipe)
+          }
+        );
 
-        if (error) {
-          console.error('Error saving to Supabase:', error);
-          // Don't fail the operation if Supabase save fails
+        console.log('[Data] Supabase response:', supabaseRes.status);
+        
+        if (!supabaseRes.ok) {
+          const errText = await supabaseRes.text();
+          console.error('[Data] Supabase save error:', errText);
+        } else {
+          console.log('[Data] Recipe saved to Supabase');
         }
 
+        console.log('[Data] Refetching recipes...');
         fetchRecipes();
         setViewMode('profile');
         setEditingRecipe(null);
       } else {
         const errorText = await res.text();
-        console.error(`Error: ${res.status}`, errorText);
+        console.error('[Data] Backend error: ${res.status}', errorText);
+        alert('Failed to save recipe to backend');
       }
     } catch (err) {
-      console.error('Error adding recipe:', err);
+      console.error('[Data] Error adding recipe:', err);
+      alert('Error: ' + err.message);
     }
   }
 
@@ -366,6 +465,21 @@ function App() {
     setViewMode('add');
   }
 
+  const handleNavigate = (mode) => {
+    setSelectedRecipe(null)
+    setEditingRecipe(null)
+    setViewingProfile(null)
+    setViewMode(mode)
+    
+    // Set URL based on view mode
+    if (mode === 'profile' && user) {
+      // Use user ID in URL so it can be shared
+      window.history.pushState({}, '', `/?user=${user.id}`)
+    } else {
+      window.history.replaceState({}, '', window.location.pathname)
+    }
+  }
+
   const handleBack = () => {
     setSelectedRecipe(null)
     setEditingRecipe(null)
@@ -373,17 +487,69 @@ function App() {
     window.history.pushState({}, '', window.location.pathname)
   }
 
-  // 4. DELETE RECIPE
-  const handleDeleteRecipe = async (recipe) => {
-    if(window.confirm(`Delete ${recipe.title}?`)) {
-      const res = await fetch(`${API_BASE}/recipes/${encodeURIComponent(recipe.title)}`, { method: 'DELETE' });
-      if (res.ok) {
-        fetchRecipes();
-        setViewMode('profile');
-      }
+  const scrollCarousel = (direction) => {
+    if (likedRecipesCarouselRef.current) {
+      const container = likedRecipesCarouselRef.current;
+      const scrollAmount = 400; // Scroll by this many pixels
+      container.scrollBy({ left: direction === 'left' ? -scrollAmount : scrollAmount, behavior: 'smooth' });
+      
+      // Check scroll state after a delay to update arrow visibility
+      setTimeout(checkCarouselScroll, 300);
     }
   }
 
+  const checkCarouselScroll = () => {
+    if (likedRecipesCarouselRef.current) {
+      const container = likedRecipesCarouselRef.current;
+      setCanScrollLeft(container.scrollLeft > 0);
+      setCanScrollRight(container.scrollLeft < container.scrollWidth - container.clientWidth - 10);
+    }
+  }
+
+  // 4. DELETE RECIPE
+  const handleDeleteRecipe = async (recipe) => {
+    console.log('[Data] Delete clicked for:', recipe.title);
+    if(window.confirm(`Delete ${recipe.title}?`)) {
+      try {
+        console.log('[Data] Confirmed delete, calling backend...');
+        // Delete from Java backend
+        const backendRes = await fetch(`${API_BASE}/recipes/${encodeURIComponent(recipe.title)}`, { method: 'DELETE' });
+        console.log('[Data] Backend response:', backendRes.status);
+        
+        if (!backendRes.ok) {
+          console.warn('[Data] Backend delete returned non-OK status');
+        }
+
+        // Delete from Supabase using REST API
+        if (recipe.id) {
+          console.log('[Data] Deleting from Supabase, id:', recipe.id);
+          const supabaseRes = await fetch(
+            `${supabaseUrl}/rest/v1/recipes?id=eq.${recipe.id}`,
+            {
+              method: 'DELETE',
+              headers: {
+                'apikey': supabaseKey,
+                'Authorization': `Bearer ${supabaseKey}`,
+                'Content-Type': 'application/json'
+              }
+            }
+          );
+
+          console.log('[Data] Supabase delete response:', supabaseRes.status);
+          if (!supabaseRes.ok) {
+            throw new Error(`Supabase delete failed: ${supabaseRes.status}`);
+          }
+        }
+
+        console.log('[Data] Delete successful, refetching recipes...');
+        fetchRecipes();
+        setViewMode('profile');
+      } catch (error) {
+        console.error('[Data] Error deleting recipe:', error);
+        alert('Failed to delete recipe');
+      }
+    }
+  }
 
   // 5. SCRAPE RECIPE FROM URL
   const handleScrapeFromUrl = async () => {
@@ -467,27 +633,27 @@ function App() {
       ) : (
     <div className="min-h-screen bg-[#f5f3ef]">
       <header className="sticky top-0 z-30 bg-[#faf9f7]/95 backdrop-blur-md border-b border-[#e8e4dc]">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
-            <button onClick={() => setViewMode('home')} className="flex items-center gap-2 group">
-              <div className="w-10 h-10 rounded-2xl bg-[#ce743e] flex items-center justify-center">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between gap-4">
+            <button onClick={() => handleNavigate('home')} className="flex items-center gap-2 group min-w-0">
+              <div className="w-10 h-10 rounded-2xl bg-[#ce743e] flex items-center justify-center flex-shrink-0">
                 <BookOpen className="w-5 h-5 text-white" />
               </div>
-              <div className="text-left">
-                <h1 className="text-lg sm:text-xl font-semibold text-[#3d3429]">Yuval's Recipe Book</h1>
+              <div className="text-left hidden sm:block">
+                <h1 className="text-lg font-semibold text-[#3d3429]">Yuval's Recipe Book</h1>
                 <p className="text-xs text-[#7a7265]">זה בתהליך לא לשפוט</p>
               </div>
             </button>
-            <div className="flex items-center gap-4">
-              <button onClick={() => setViewMode('add')} 
-                className={`flex items-center gap-2 text-[#64748b] hover:text-[#1e293b] transition-colors`}>
+            <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0">
+              <button onClick={() => handleNavigate('add')} 
+                className={`flex items-center gap-2 text-[#64748b] hover:text-[#1e293b] transition-colors p-2`}>
                 <Plus className="w-5 h-5"/>
               </button>
-              <button onClick={() => setViewMode('profile')}
-                className="flex items-center gap-2 text-[#64748b] hover:text-[#1e293b] transition-colors">
+              <button onClick={() => handleNavigate('profile')}
+                className="flex items-center gap-2 text-[#64748b] hover:text-[#1e293b] transition-colors p-2">
                 <UserIcon className="w-5 h-5"/>
               </button>
               <button onClick={handleLogout}
-                className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors text-sm">
+                className="px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors text-xs sm:text-sm whitespace-nowrap">
                 Logout
               </button>
             </div>
@@ -496,27 +662,42 @@ function App() {
 
       <main className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
         {viewMode === 'home' && (
-          <div style={{ direction: language === 'he' ? 'rtl' : 'ltr' }} className="space-y-16">
-            {/* Saved Recipes Section */}
+          <div style={{ direction: language === 'he' ? 'rtl' : 'ltr' }} >
+            {/* Liked Recipes Section */}
             <section>
-              <div className="mb-8">
+              <div className="mb-1">
                 <div className="flex items-center gap-3 mb-2">
                   <div className="w-1 h-8 bg-[#ce743e] rounded-full"></div>
-                  <h2 className="text-3xl font-bold text-[#3d3429]">{language === 'en' ? 'My Saved Recipes' : 'המתכונים השמורים שלי'}</h2>
+                  <h2 className="text-3xl font-bold text-[#3d3429]">
+                    {language === 'en' ? 'My Liked Recipes' : 'המתכונים שאהבתי'}
+                  </h2>
                 </div>
-                <p className="text-[#7a7265] text-sm ml-4">{displayRecipes.length} {language === 'en' ? 'recipes' : 'מתכונים'}</p>
+                <p className="text-[#7a7265] text-sm ml-4">
+                  {displayRecipes.length} {language === 'en' ? 'recipes' : 'מתכונים'}
+                </p>
               </div>
               {displayRecipes.length > 0 ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-                  {displayRecipes.slice(0, 6).map((recipe) => (
-                    <RecipeCard 
-                      key={recipe.id} 
-                      recipe={recipe} 
-                      language={language}
-                      onSelect={handleSelectRecipe} 
-                      showCategory={true} 
-                    />
-                  ))}
+                <div className="relative w-full">
+                  {/* Carousel Container */}
+                  <div
+                    ref={likedRecipesCarouselRef}
+                    onScroll={checkCarouselScroll}
+                    className="flex gap-4 sm:gap-6 overflow-x-auto scroll-smooth py-2"
+                    style={{ scrollBehavior: 'smooth', WebkitOverflowScrolling: 'touch' }}
+                  >
+                    {displayRecipes.map((recipe) => (
+                      <div key={recipe.id} className=" flex-shrink-0 w-80 sm:w-96">
+                        <div>
+                          <RecipeCard 
+                            className="h-full"
+                            recipe={recipe} 
+                            language={language}
+                            onSelect={handleSelectRecipe} 
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               ) : (
                 <div className="text-center py-16 bg-gradient-to-br from-[#faf9f7] to-[#f5f3ef] rounded-3xl border-2 border-dashed border-[#e8e4dc]">
@@ -528,7 +709,7 @@ function App() {
 
             {/* Most Prepped Section */}
             <section>
-              <div className="mb-8">
+              <div className="mb-4">
                 <div className="flex items-center gap-3 mb-2">
                   <div className="w-1 h-8 bg-[#ce743e] rounded-full"></div>
                   <h2 className="text-3xl font-bold text-[#3d3429]">{language === 'en' ? 'Your Most Prepped' : 'המתכונים המוכנים ביותר'}</h2>
@@ -549,85 +730,8 @@ function App() {
             recipes={recipes} 
             language={language}
             onSelectRecipe={handleSelectRecipe}
+            viewingProfile={viewingProfile}
           />
-        )}
-
-        {viewMode === 'dashboard' && (
-          <div className="transition-all duration-300 ease-out opacity-100 translate-y-0">
-             <div className="mb-8 flex items-center">
-                  <div className="relative flex-1 z-40">
-                    <Search className={`absolute top-1/2 -translate-y-1/2 w-4 h-4 text-[#7a7265] ${language === 'he' ? 'right-4' : 'left-4'}`} />
-                    <input 
-                        type="text" 
-                        placeholder={language === 'en' ? 'Search recipes...' : '...חפש מתכונים'} 
-                        value={searchQuery} 
-                        onChange={(e) => setSearchQuery(e.target.value)} 
-                        className={`w-full py-3 bg-white border border-[#e8e4dc] rounded-2xl text-[#3d3429] placeholder:text-[#7a7265] focus:outline-none focus:ring-2 focus:ring-[#b86535]/20 ${language === 'he' ? 'pr-11 pl-14 sm:pl-32 text-right' : 'pl-11 pr-14 sm:pr-32'}`}
-                        />
-
-                    {/* Category Filter */}
-                    <div className={`absolute top-1/2 -translate-y-1/2 ${language === 'he' ? 'left-2' : 'right-2'}`}>
-                      <button
-                        onClick={() => setIsCategoryMenuOpen(!isCategoryMenuOpen)}
-                        className={`flex items-center gap-1.5 py-1.5 px-3 rounded-xl transition-colors ${
-                          selectedCategory !== 'All'
-                            ? 'bg-[#ce743e]/10 text-[#ce743e] font-semibold'
-                            : 'bg-[#f5f3ef] text-[#7a7265] hover:bg-[#e8e4dc]'
-                        }`}
-                      >
-                        <Filter className="w-3.5 h-3.5" />
-                        <span className="hidden sm:inline text-xs font-medium">
-                          {selectedCategory === 'All' 
-                            ? (language === 'en' ? 'Filter' : 'סינון')
-                            : (language === 'en' ? selectedCategory : categoryTranslations[selectedCategory] || selectedCategory)}
-                        </span>
-                      </button>
-
-                      {isCategoryMenuOpen && (
-                        <>
-                          <div className="fixed inset-0 z-10" onClick={() => setIsCategoryMenuOpen(false)} />
-                          <div className={`absolute top-full mt-3 z-20 bg-white rounded-2xl border border-[#e8e4dc] shadow-lg overflow-hidden min-w-[160px] ${language === 'he' ? 'left-0' : 'right-0'}`}>
-                            {categories.map((cat) => (
-                              <button
-                                key={cat}
-                                onClick={() => {
-                                  setSelectedCategory(cat)
-                                  setIsCategoryMenuOpen(false)
-                                }}
-                                className={`w-full px-4 py-2.5 text-sm text-left transition-colors ${
-                                  selectedCategory === cat
-                                    ? 'bg-[#ce743e]/10 text-[#ce743e] font-semibold'
-                                    : 'text-[#3d3429] hover:bg-[#f5f3ef]'
-                                } ${isRtl ? 'text-right' : 'text-left'}`}
-                              >
-                                {cat === 'All' ? (language === 'en' ? 'All' : 'הכל') : (language === 'en' ? cat : categoryTranslations[cat] || cat)}
-                              </button>
-                            ))}
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  </div>
-              </div>
-               
-              {displayRecipes.length > 0 ? (
-                <div style={{ direction: isRtl ? 'rtl' : 'ltr' }} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6" >
-                  {displayRecipes.map((recipe) => (
-                    <RecipeCard 
-                      key={recipe.id} 
-                      recipe={recipe} 
-                      language={language}
-                      onSelect={handleSelectRecipe} 
-                      showCategory={false} 
-                    />
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center py-16">
-                  <p className="text-[#7a7265]">No recipes found. Add one!</p>
-                </div>
-              )}
-          </div>
         )}
 
         {viewMode === 'detail' && selectedRecipe && (

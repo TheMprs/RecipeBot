@@ -45,7 +45,7 @@ export function RecipeCard({ recipe, language = 'en', apiBase = '/api', onSelect
 
       {/* Content area */}
       <div className="px-5 py-4 flex flex-col flex-grow">
-        <p className={`text-[#7a7265] text-sm line-clamp-2 flex-grow ${isRtl ? 'text-right' : 'text-left'}`}>
+        <p className={`text-[#7a7265] text-sm line-clamp-1 flex-grow ${isRtl ? 'text-right' : 'text-left'}`}>
           {recipe.description}
         </p>
         
