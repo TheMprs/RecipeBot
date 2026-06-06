@@ -24,6 +24,7 @@ public class webManager {
         app.post("/api/recipes/scrape", this::scrapeRecipeFromUrl);
         app.get("/api/recipes/{name}/share", this::getShareableRecipe);
         app.post("/api/link", this::linkTelegramAccount);
+        app.delete("/api/account", this::deleteAccount);
     }
 
     public void getShareableRecipe(Context ctx) {
@@ -64,6 +65,26 @@ public class webManager {
 
         db.linkTelegramUser(chatId, userId);
         ctx.result("Account linked successfully");
+    }
+
+    public void deleteAccount(Context ctx) {
+        String authHeader = ctx.header("Authorization");
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            ctx.status(401).result("Missing Authorization header");
+            return;
+        }
+        String jwt = authHeader.substring(7);
+        String userId = db.getUserIdFromJwt(jwt);
+        if (userId == null) {
+            ctx.status(401).result("Invalid or expired session");
+            return;
+        }
+        boolean ok = db.deleteAccount(userId);
+        if (ok) {
+            ctx.status(204);
+        } else {
+            ctx.status(500).result("Failed to delete account");
+        }
     }
 
     public void scrapeRecipeFromUrl(Context ctx) {

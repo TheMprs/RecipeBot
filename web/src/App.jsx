@@ -45,6 +45,12 @@ function App() {
   const likedRecipesCarouselRef = useRef(null)
   const [canScrollLeft, setCanScrollLeft] = useState(false)
   const [canScrollRight, setCanScrollRight] = useState(true)
+  const [hoveringCarousel, setHoveringCarousel] = useState(false)
+  const [cookCounts, setCookCounts] = useState({})
+  const [globalQuery, setGlobalQuery] = useState('')
+  const [globalResults, setGlobalResults] = useState({ users: [], recipes: [] })
+  const [showGlobalResults, setShowGlobalResults] = useState(false)
+  const globalSearchRef = useRef(null)
 
   const isRtl = language === 'he'
 
@@ -171,7 +177,8 @@ function App() {
           category: recipe.category,
           description: recipe.description,
           ingredients: recipe.ingredients,
-          instructions: recipe.instructions
+          instructions: recipe.instructions,
+          created_at: recipe.created_at
         }));
 
         setRecipes(formattedRecipes);
@@ -221,9 +228,72 @@ function App() {
     }
   };
 
+  const fetchCookCounts = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) return;
+      const res = await fetch(
+        `${supabaseUrl}/rest/v1/cook_logs?user_id=eq.${user.id}&select=recipe_id`,
+        { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${session.access_token}` } }
+      );
+      if (!res.ok) return;
+      const data = await res.json();
+      const counts = {};
+      for (const row of data) counts[row.recipe_id] = (counts[row.recipe_id] || 0) + 1;
+      setCookCounts(counts);
+    } catch (err) {
+      console.error('[Data] Failed to fetch cook counts:', err.message);
+    }
+  };
+
+  const handleMarkMade = async (recipe) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) throw new Error('Not authenticated');
+      const res = await fetch(`${supabaseUrl}/rest/v1/cook_logs`, {
+        method: 'POST',
+        headers: {
+          'apikey': supabaseKey,
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'return=minimal'
+        },
+        body: JSON.stringify({ user_id: user.id, recipe_id: recipe.id })
+      });
+      if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
+      fetchCookCounts();
+    } catch (err) {
+      console.error('[Data] Failed to log cook:', err.message);
+      alert('Failed to log cook: ' + err.message);
+    }
+  };
+
+  const loadRecipeFromSupabase = (filter) => {
+    fetch(`${supabaseUrl}/rest/v1/recipes?${filter}&select=*&limit=1`, {
+      headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` }
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (!data || data.length === 0) { window.history.replaceState({}, '', window.location.pathname); return; }
+        const r = data[0];
+        setSelectedRecipe({
+          id: r.id,
+          title: String(r.name || 'Unnamed'),
+          description: r.description || '',
+          category: r.category || 'MAIN',
+          ingredients: Array.isArray(r.ingredients) ? r.ingredients : [],
+          instructions: Array.isArray(r.instructions) ? r.instructions : []
+        });
+        setViewMode('detail');
+        window.history.pushState({}, '', `?r=${r.id}`);
+      })
+      .catch(() => window.history.replaceState({}, '', window.location.pathname));
+  };
+
   useEffect(() => {
     if (user) {
       fetchRecipes();
+      fetchCookCounts();
     } else {
       fetchPublicRecipes();
     }
@@ -317,34 +387,6 @@ function App() {
       return; // Don't process recipe parameters if viewing a profile
     }
     
-    const loadRecipeFromSupabase = (filter) => {
-      fetch(`${supabaseUrl}/rest/v1/recipes?${filter}&select=*&limit=1`, {
-        headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` }
-      })
-        .then(res => res.json())
-        .then(data => {
-          if (!data || data.length === 0) {
-            window.history.replaceState({}, '', window.location.pathname);
-            return;
-          }
-          const r = data[0];
-          setSelectedRecipe({
-            id: r.id,
-            title: String(r.name || 'Unnamed'),
-            description: r.description || '',
-            category: r.category || 'MAIN',
-            ingredients: Array.isArray(r.ingredients) ? r.ingredients : [],
-            instructions: Array.isArray(r.instructions) ? r.instructions : []
-          });
-          setViewMode('detail');
-          window.history.pushState({}, '', `?r=${r.id}`);
-        })
-        .catch(err => {
-          console.warn('[Data] Error loading recipe from URL:', err.message);
-          window.history.replaceState({}, '', window.location.pathname);
-        });
-    };
-
     // Only process recipe parameters if NOT viewing a profile
     if (recipeId) {
       loadRecipeFromSupabase(`id=eq.${encodeURIComponent(recipeId)}`);
@@ -357,6 +399,81 @@ function App() {
   useEffect(() => {
     checkCarouselScroll()
   }, [recipes])
+
+  // Wheel → horizontal scroll, active only while hovering the carousel section
+  useEffect(() => {
+    if (!hoveringCarousel) return
+
+    let target = null
+    let rafId = null
+
+    const animate = () => {
+      const el = likedRecipesCarouselRef.current
+      if (!el) { rafId = null; return }
+      const diff = target - el.scrollLeft
+      if (Math.abs(diff) < 1) { el.scrollLeft = target; rafId = null; return }
+      el.scrollLeft += diff * 0.15
+      rafId = requestAnimationFrame(animate)
+    }
+
+    const onWheel = (e) => {
+      const el = likedRecipesCarouselRef.current
+      if (!el) return
+      e.preventDefault()
+      if (target === null) target = el.scrollLeft
+      const isRtl = getComputedStyle(el).direction === 'rtl'
+      const step = Math.sign(e.deltaY) * 120 * (isRtl ? -1 : 1)
+      const maxScroll = el.scrollWidth - el.clientWidth
+      target = isRtl
+        ? Math.min(0, Math.max(-maxScroll, target + step))
+        : Math.max(0, Math.min(maxScroll, target + step))
+      if (!rafId) rafId = requestAnimationFrame(animate)
+    }
+
+    window.addEventListener('wheel', onWheel, { passive: false })
+    return () => {
+      window.removeEventListener('wheel', onWheel)
+      if (rafId) cancelAnimationFrame(rafId)
+    }
+  }, [hoveringCarousel])
+
+  // Global search — debounced, queries users + public recipes
+  useEffect(() => {
+    if (!globalQuery.trim()) { setGlobalResults({ users: [], recipes: [] }); return }
+    const timer = setTimeout(async () => {
+      const q = encodeURIComponent(`*${globalQuery.trim()}*`)
+      const headers = { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` }
+      const [usersRes, recipesRes] = await Promise.all([
+        fetch(`${supabaseUrl}/rest/v1/users?username=ilike.${q}&select=id,username&limit=4`, { headers }),
+        fetch(`${supabaseUrl}/rest/v1/recipes?name=ilike.${q}&visibility=eq.public&select=id,name,category,user_id&limit=4`, { headers })
+      ])
+      const [users, recipesRaw] = await Promise.all([usersRes.json(), recipesRes.json()])
+      const recipes = Array.isArray(recipesRaw) ? recipesRaw : []
+
+      // Batch-resolve author usernames
+      const userIds = [...new Set(recipes.map(r => r.user_id).filter(Boolean))]
+      let usernameMap = {}
+      if (userIds.length > 0) {
+        const authorsRes = await fetch(`${supabaseUrl}/rest/v1/users?id=in.(${userIds.join(',')})&select=id,username`, { headers })
+        const authors = await authorsRes.json()
+        if (Array.isArray(authors)) authors.forEach(a => { usernameMap[a.id] = a.username })
+      }
+
+      setGlobalResults({
+        users: Array.isArray(users) ? users : [],
+        recipes: recipes.map(r => ({ ...r, authorUsername: usernameMap[r.user_id] || null }))
+      })
+      setShowGlobalResults(true)
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [globalQuery])
+
+  // Close search results on outside click
+  useEffect(() => {
+    const handler = (e) => { if (globalSearchRef.current && !globalSearchRef.current.contains(e.target)) setShowGlobalResults(false) }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
 
   // 2. FETCH SPECIFIC RECIPE DETAILS WHEN CLICKED
   const handleSelectRecipe = (recipeObj) => {
@@ -634,8 +751,94 @@ function App() {
       <main className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
         {viewMode === 'home' && (
           <div style={{ direction: language === 'he' ? 'rtl' : 'ltr' }} >
+
+            {/* Global Search */}
+            <div ref={globalSearchRef} className="relative mb-8">
+              <div className="relative">
+                <Search className={`absolute top-1/2 -translate-y-1/2 w-4 h-4 text-[#7a7265] ${isRtl ? 'right-4' : 'left-4'}`} />
+                <input
+                  type="text"
+                  value={globalQuery}
+                  onChange={e => setGlobalQuery(e.target.value)}
+                  onFocus={() => globalQuery.trim() && setShowGlobalResults(true)}
+                  onKeyDown={e => {
+                    if (e.key !== 'Enter') return
+                    const firstUser = globalResults.users[0]
+                    const firstRecipe = globalResults.recipes[0]
+                    if (firstUser) {
+                      setViewingProfile(firstUser); setViewMode('profile')
+                      setShowGlobalResults(false); setGlobalQuery('')
+                      window.history.pushState({}, '', `/?user=${firstUser.id}`)
+                    } else if (firstRecipe) {
+                      loadRecipeFromSupabase(`id=eq.${firstRecipe.id}`)
+                      setShowGlobalResults(false); setGlobalQuery('')
+                    }
+                  }}
+                  placeholder={language === 'en' ? 'Search recipes and people...' : 'חפש מתכונים ואנשים...'}
+                  className={`w-full py-3 bg-white border border-[#e8e4dc] rounded-2xl text-[#3d3429] placeholder:text-[#7a7265] focus:outline-none focus:ring-2 focus:ring-[#b86535]/20 focus:border-[#b86535] transition-all ${isRtl ? `pr-11 ${globalQuery ? 'pl-10' : 'pl-4'} text-right` : `pl-11 ${globalQuery ? 'pr-10' : 'pr-4'}`}`}
+                />
+                {globalQuery && (
+                  <button onClick={() => { setGlobalQuery(''); setShowGlobalResults(false) }}
+                    className={`absolute top-1/2 -translate-y-1/2 text-[#7a7265] hover:text-[#3d3429] transition-colors ${isRtl ? 'left-3' : 'right-3'}`}>
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+
+              {showGlobalResults && globalQuery.trim() && globalResults.users.length === 0 && globalResults.recipes.length === 0 && (
+                <div className="absolute top-full mt-2 w-full bg-white border border-[#e8e4dc] rounded-2xl shadow-lg z-50 px-4 py-4">
+                  <p className="text-sm text-[#7a7265] text-center">{language === 'en' ? 'No results found' : 'לא נמצאו תוצאות'}</p>
+                </div>
+              )}
+
+              {showGlobalResults && (globalResults.users.length > 0 || globalResults.recipes.length > 0) && (
+                <div className="absolute top-full mt-2 w-full bg-white border border-[#e8e4dc] rounded-2xl shadow-lg z-50 overflow-hidden">
+                  {globalResults.users.length > 0 && (
+                    <div>
+                      <p className="px-4 pt-3 pb-1 text-xs font-semibold text-[#7a7265] uppercase tracking-wide">{language === 'en' ? 'People' : 'אנשים'}</p>
+                      {globalResults.users.map(u => (
+                        <button key={u.id} onClick={() => {
+                          setViewingProfile(u)
+                          setViewMode('profile')
+                          setShowGlobalResults(false)
+                          setGlobalQuery('')
+                          window.history.pushState({}, '', `/?user=${u.id}`)
+                        }} className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-[#f5f3ef] transition-colors">
+                          <div className="w-8 h-8 rounded-full bg-[#ce743e]/10 flex items-center justify-center flex-shrink-0">
+                            <UserIcon className="w-4 h-4 text-[#ce743e]" />
+                          </div>
+                          <span className="text-sm text-[#3d3429] font-medium text-start">{u.username}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {globalResults.recipes.length > 0 && (
+                    <div>
+                      <p className="px-4 pt-3 pb-1 text-xs font-semibold text-[#7a7265] uppercase tracking-wide">{language === 'en' ? 'Recipes' : 'מתכונים'}</p>
+                      {globalResults.recipes.map(r => (
+                        <button key={r.id} onClick={() => {
+                          loadRecipeFromSupabase(`id=eq.${r.id}`)
+                          setShowGlobalResults(false)
+                          setGlobalQuery('')
+                        }} className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-[#f5f3ef] transition-colors">
+                          <div className="w-8 h-8 rounded-full bg-[#ce743e]/10 flex items-center justify-center flex-shrink-0">
+                            <BookOpen className="w-4 h-4 text-[#ce743e]" />
+                          </div>
+                          <div className="text-start">
+                            <p className="text-sm text-[#3d3429] font-medium">{r.name}</p>
+                            <p className="text-xs text-[#7a7265]">{r.category}{r.authorUsername ? ` · ${r.authorUsername}` : ''}</p>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <div className="h-2" />
+                </div>
+              )}
+            </div>
+
             {/* Liked Recipes Section */}
-            <section>
+            <section className="carousel-section" onMouseEnter={() => setHoveringCarousel(true)} onMouseLeave={() => setHoveringCarousel(false)}>
               <div className="mb-1">
                 <div className="flex items-center gap-3 mb-2">
                   <div className="w-1 h-8 bg-[#ce743e] rounded-full"></div>
@@ -649,12 +852,14 @@ function App() {
               </div>
               {displayRecipes.length > 0 ? (
                 <div className="relative w-full">
+                  <div className="pointer-events-none absolute left-0 top-0 bottom-3 w-6 z-10 bg-gradient-to-r from-[#f5f3ef]/80 to-transparent" />
+                  <div className="pointer-events-none absolute right-0 top-0 bottom-3 w-6 z-10 bg-gradient-to-l from-[#f5f3ef]/80 to-transparent" />
                   {/* Carousel Container */}
                   <div
                     ref={likedRecipesCarouselRef}
                     onScroll={checkCarouselScroll}
-                    className="flex gap-4 sm:gap-6 overflow-x-auto scroll-smooth py-2"
-                    style={{ scrollBehavior: 'smooth', WebkitOverflowScrolling: 'touch' }}
+                    className="carousel-scroll flex gap-4 sm:gap-6 overflow-x-auto py-2 pb-3"
+                    style={{ WebkitOverflowScrolling: 'touch' }}
                   >
                     {displayRecipes.map((recipe) => (
                       <div key={recipe.id} className=" flex-shrink-0 w-80 sm:w-96">
@@ -687,32 +892,84 @@ function App() {
                 </div>
                 <p className="text-[#7a7265] text-sm ml-4">{language === 'en' ? 'Track your cooking habits' : 'עקוב אחרי הרגלי הבישול שלך'}</p>
               </div>
-              <div className="text-center py-16 bg-gradient-to-br from-[#faf9f7] to-[#f5f3ef] rounded-3xl border-2 border-dashed border-[#e8e4dc]">
-                <BookOpen className="w-12 h-12 text-[#ce743e]/30 mx-auto mb-4" />
-                <p className="text-[#3d3429] font-medium text-lg">{language === 'en' ? 'Coming Soon!' : 'בקרוב!'}</p>
-              </div>
+              {(() => {
+                const mostPrepped = [...recipes]
+                  .filter(r => cookCounts[r.id] > 0)
+                  .sort((a, b) => (cookCounts[b.id] || 0) - (cookCounts[a.id] || 0))
+                  .slice(0, 3);
+
+                if (mostPrepped.length === 0) return (
+                  <div className="text-center py-16 bg-gradient-to-br from-[#faf9f7] to-[#f5f3ef] rounded-3xl border-2 border-dashed border-[#e8e4dc]">
+                    <BookOpen className="w-12 h-12 text-[#ce743e]/30 mx-auto mb-4" />
+                    <p className="text-[#7a7265] font-medium">{language === 'en' ? 'No recipes cooked yet' : 'עדיין לא בישלת מתכונים'}</p>
+                  </div>
+                );
+
+                const podiumOrder = mostPrepped.length === 1
+                  ? [null, mostPrepped[0], null]
+                  : mostPrepped.length === 2
+                  ? [mostPrepped[1], mostPrepped[0], null]
+                  : [mostPrepped[1], mostPrepped[0], mostPrepped[2]];
+
+                const medals = ['🥇', '🥈', '🥉'];
+                const podiumHeights = ['h-24', 'h-36', 'h-16'];
+                const podiumColors = ['bg-[#C0C0C0]', 'bg-[#D4AF37]', 'bg-[#CD7F32]'];
+                const podiumPositions = [1, 0, 2]; // which recipe index each slot holds
+
+                return (
+                  <div className="flex items-end justify-center gap-2 pt-8">
+                    {podiumOrder.map((recipe, slot) => {
+                      const rank = podiumPositions[slot];
+                      return (
+                        <div key={slot} className="flex flex-col items-center flex-1 max-w-[200px]">
+                          {recipe ? (
+                            <>
+                              <span className="text-2xl mb-1">{medals[rank]}</span>
+                              <button
+                                onClick={() => handleSelectRecipe(recipe)}
+                                className="w-full mb-2 px-3 py-2 bg-white rounded-2xl border border-[#e8e4dc] hover:border-[#ce743e]/50 hover:shadow-sm transition-all text-center"
+                              >
+                                <p className="text-sm font-semibold text-[#3d3429] truncate">{recipe.title}</p>
+                                <p className="text-xs text-[#7a7265] mt-0.5">{language === 'en' ? `made ${cookCounts[recipe.id]} times` : cookCounts[recipe.id] === 1 ? 'הוכן פעם אחת' : cookCounts[recipe.id] === 2 ? 'הוכן פעמיים' : `הוכן ${cookCounts[recipe.id]} פעמים`}</p>
+                              </button>
+                              <div className={`w-full rounded-t-xl ${podiumHeights[slot]} ${podiumColors[slot]} flex items-start justify-center pt-2`}>
+                                <span className="text-white font-bold text-lg">{rank + 1}</span>
+                              </div>
+                            </>
+                          ) : (
+                            <div className={`w-full ${podiumHeights[slot]} ${podiumColors[slot]} opacity-20 rounded-t-xl`} />
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
             </section>
           </div>
         )}
 
         {viewMode === 'profile' && (
-          <UserProfile 
-            user={user} 
-            recipes={recipes} 
+          <UserProfile
+            user={user}
+            recipes={recipes}
             language={language}
             onSelectRecipe={handleSelectRecipe}
             viewingProfile={viewingProfile}
+            cookCounts={cookCounts}
           />
         )}
 
         {viewMode === 'detail' && selectedRecipe && (
           <div className="transition-all duration-300 ease-out opacity-100 translate-y-0">
-            <RecipeDetail 
-              recipe={selectedRecipe} 
-              onBack={handleBack} 
+            <RecipeDetail
+              recipe={selectedRecipe}
+              onBack={handleBack}
               language={language}
-              onEdit={handleEditRecipe} 
-              onDelete={handleDeleteRecipe} />
+              onEdit={handleEditRecipe}
+              onDelete={handleDeleteRecipe}
+              onMarkMade={handleMarkMade}
+              cookCount={cookCounts[selectedRecipe?.id] || 0} />
           </div>
         )}
 

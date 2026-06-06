@@ -172,6 +172,40 @@ public class SupabaseHandler {
         return null;
     }
 
+    // Deletes all user data and the auth account. Returns true on success.
+    public boolean deleteAccount(String userId) {
+        try {
+            // Delete all user data first
+            for (String path : new String[]{
+                "/recipes?user_id=eq." + encode(userId),
+                "/cook_logs?user_id=eq." + encode(userId),
+                "/telegram_auth?user_id=eq." + encode(userId),
+                "/users?id=eq." + encode(userId)
+            }) {
+                HttpResponse<String> res = client.send(
+                    base(path).DELETE().build(),
+                    HttpResponse.BodyHandlers.ofString()
+                );
+                if (res.statusCode() >= 400) {
+                    System.err.println("[Supabase] deleteAccount data cleanup failed on " + path + ": " + res.statusCode() + " " + res.body());
+                }
+            }
+
+            // Delete the auth user via admin API
+            HttpRequest req = HttpRequest.newBuilder()
+                    .uri(URI.create(supabaseUrl + "/auth/v1/admin/users/" + userId))
+                    .header("apikey", serviceKey)
+                    .header("Authorization", "Bearer " + serviceKey)
+                    .DELETE()
+                    .build();
+            HttpResponse<String> res = client.send(req, HttpResponse.BodyHandlers.ofString());
+            return res.statusCode() == 200 || res.statusCode() == 204;
+        } catch (Exception e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
+
     // addRecipe overload that attributes the recipe to a specific user
     public void addRecipe(Recipe recipe, String userId) {
         String previous = defaultUserId;

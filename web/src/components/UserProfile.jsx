@@ -1,6 +1,7 @@
-import { User, BookOpen, Search, Filter, X } from 'lucide-react';
+import { User, BookOpen, Search, Filter, X, Settings } from 'lucide-react';
 import { RecipeCard } from './RecipeCard';
 import { useState, useEffect } from 'react';
+import { supabase } from '../supabaseClient';
 
 const categories = ['All', 'MAIN', 'SNACK', 'SPECIAL', 'DESSERT']
 
@@ -11,26 +12,36 @@ const categoryTranslations = {
   'SPECIAL': 'מיוחד'
 }
 
-export function UserProfile({ 
-  user, 
-  recipes, 
-  language, 
+export function UserProfile({
+  user,
+  recipes,
+  language,
   onSelectRecipe,
-  viewingProfile
+  viewingProfile,
+  cookCounts = {},
+  apiBase = '/api',
+  onLogout
 }) {
   const isRtl = language === 'he';
   const [viewingRecipes, setViewingRecipes] = useState([]);
-  
+  const [ownProfile, setOwnProfile] = useState(null);
+  const [showEditProfile, setShowEditProfile] = useState(false);
+  const [editUsername, setEditUsername] = useState('');
+  const [editBio, setEditBio] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+
   // Determine which profile we're viewing
   const currentProfile = viewingProfile || user;
   const displayRecipes = viewingProfile ? viewingRecipes : recipes;
-  
-  // Get display name from Google metadata or fallback to email
-  const displayName = currentProfile?.user_metadata?.full_name || currentProfile?.username || currentProfile?.email?.split('@')[0] || 'User';
-  
+
+  // Prefer custom username over Google name
+  const displayName = ownProfile?.username || currentProfile?.username || currentProfile?.user_metadata?.full_name || currentProfile?.email?.split('@')[0] || 'User';
+
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
+  const [sortBy, setSortBy] = useState('most-prepped');
   const [isCategoryMenuOpen, setIsCategoryMenuOpen] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   
   // Fetch viewing profile's public recipes
   useEffect(() => {
@@ -53,26 +64,100 @@ export function UserProfile({
             category: recipe.category,
             description: recipe.description,
             ingredients: recipe.ingredients,
-            instructions: recipe.instructions
+            instructions: recipe.instructions,
+            created_at: recipe.created_at
           }));
           setViewingRecipes(formatted);
         })
         .catch(err => console.error('[Data] Failed to fetch viewing profile recipes:', err.message));
     }
   }, [viewingProfile]);
-  
-  // Filter recipes by search and category
-  const filteredRecipes = displayRecipes.filter(recipe => {
-    const matchesSearch = recipe.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         recipe.description.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesCategory = selectedCategory === 'All' || recipe.category === selectedCategory;
-    return matchesSearch && matchesCategory;
-  });
+
+  useEffect(() => {
+    if (!viewingProfile && user) {
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      fetch(`${supabaseUrl}/rest/v1/users?id=eq.${user.id}&select=username,bio`, {
+        headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` }
+      })
+        .then(res => res.json())
+        .then(data => { if (data?.[0]) setOwnProfile(data[0]); })
+        .catch(() => {});
+    }
+  }, [user, viewingProfile]);
+
+  const handleSaveProfile = async () => {
+    setIsSaving(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) throw new Error('Not authenticated');
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      const res = await fetch(`${supabaseUrl}/rest/v1/users?id=eq.${user.id}`, {
+        method: 'PATCH',
+        headers: {
+          'apikey': supabaseKey,
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'return=minimal'
+        },
+        body: JSON.stringify({ username: editUsername.trim(), bio: editBio.trim() })
+      });
+      if (!res.ok) throw new Error(`${res.status}`);
+      setOwnProfile(prev => ({ ...prev, username: editUsername.trim(), bio: editBio.trim() }));
+      setShowEditProfile(false);
+    } catch (err) {
+      alert('Failed to save: ' + err.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    if (!window.confirm(language === 'en'
+      ? 'This will permanently delete your account and all your recipes. This cannot be undone. Are you sure?'
+      : 'פעולה זו תמחק לצמיתות את חשבונך וכל המתכונים שלך. לא ניתן לבטל. האם אתה בטוח?'
+    )) return;
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) throw new Error('Not authenticated');
+      const res = await fetch(`${apiBase}/account`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${session.access_token}` }
+      });
+      if (!res.ok) throw new Error(await res.text());
+      await supabase.auth.signOut();
+      if (onLogout) onLogout();
+    } catch (err) {
+      alert('Failed to delete account: ' + err.message);
+    }
+  };
+
+  const filteredRecipes = displayRecipes
+    .filter(recipe => {
+      const matchesSearch = recipe.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                           recipe.description.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesCategory = selectedCategory === 'All' || recipe.category === selectedCategory;
+      return matchesSearch && matchesCategory;
+    })
+    .sort((a, b) => {
+      if (sortBy === 'alphabetical') return a.title.localeCompare(b.title);
+      if (sortBy === 'most-prepped') return (cookCounts[b.id] || 0) - (cookCounts[a.id] || 0);
+      return new Date(b.created_at) - new Date(a.created_at); // date (newest first)
+    });
   
   return (
     <div>
       {/* Profile Header */}
-      <div className="bg-white rounded-2xl border border-[#e8e4dc] p-4 sm:p-6 mb-8">
+      <div className="bg-white rounded-2xl border border-[#e8e4dc] p-4 sm:p-6 mb-8 relative">
+        {!viewingProfile && (
+          <button
+            onClick={() => setShowSettings(true)}
+            className={`absolute top-4 ${isRtl ? 'left-4' : 'right-4'} p-2 text-[#7a7265] hover:text-[#3d3429] hover:bg-[#f5f3ef] rounded-xl transition-colors`}
+          >
+            <Settings className="w-5 h-5" />
+          </button>
+        )}
         <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4 sm:gap-6" style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
           {/* Avatar */}
           <div className="flex-shrink-0">
@@ -112,7 +197,7 @@ export function UserProfile({
 
       {/* Search and Filter */}
       <div className="mb-8 flex items-center">
-        <div className="relative flex-1 z-40">
+        <div className="relative flex-1 z-10">
           <Search className={`absolute top-1/2 -translate-y-1/2 w-4 h-4 text-[#7a7265] ${language === 'he' ? 'right-4' : 'left-4'}`} />
           <input 
             type="text" 
@@ -134,30 +219,46 @@ export function UserProfile({
             >
               <Filter className="w-3.5 h-3.5" />
               <span className="hidden sm:inline text-xs font-medium">
-                {selectedCategory === 'All' 
-                  ? (language === 'en' ? 'Filter' : 'סינון')
-                  : (language === 'en' ? selectedCategory : categoryTranslations[selectedCategory] || selectedCategory)}
+                {selectedCategory !== 'All'
+                  ? (language === 'en' ? selectedCategory : categoryTranslations[selectedCategory] || selectedCategory)
+                  : (language === 'en' ? 'Filter' : 'סינון')}
               </span>
             </button>
 
             {isCategoryMenuOpen && (
               <>
                 <div className="fixed inset-0 z-10" onClick={() => setIsCategoryMenuOpen(false)} />
-                <div className={`absolute top-full mt-3 z-20 bg-white rounded-2xl border border-[#e8e4dc] shadow-lg overflow-hidden min-w-[160px] ${language === 'he' ? 'left-0' : 'right-0'}`}>
+                <div className={`absolute top-full mt-3 z-20 bg-white rounded-2xl border border-[#e8e4dc] shadow-lg overflow-hidden min-w-[180px] ${language === 'he' ? 'left-0' : 'right-0'}`}>
+                  <div className="px-4 py-2 text-xs font-semibold text-[#7a7265] uppercase tracking-wide border-b border-[#f5f3ef]">
+                    {language === 'en' ? 'Category' : 'קטגוריה'}
+                  </div>
                   {categories.map((cat) => (
                     <button
                       key={cat}
-                      onClick={() => {
-                        setSelectedCategory(cat)
-                        setIsCategoryMenuOpen(false)
-                      }}
-                      className={`w-full px-4 py-2.5 text-sm text-left transition-colors ${
-                        selectedCategory === cat
-                          ? 'bg-[#ce743e]/10 text-[#ce743e] font-semibold'
-                          : 'text-[#3d3429] hover:bg-[#f5f3ef]'
+                      onClick={() => { setSelectedCategory(cat); setIsCategoryMenuOpen(false); }}
+                      className={`w-full px-4 py-2.5 text-sm transition-colors ${
+                        selectedCategory === cat ? 'bg-[#ce743e]/10 text-[#ce743e] font-semibold' : 'text-[#3d3429] hover:bg-[#f5f3ef]'
                       } ${isRtl ? 'text-right' : 'text-left'}`}
                     >
                       {cat === 'All' ? (language === 'en' ? 'All' : 'הכל') : (language === 'en' ? cat : categoryTranslations[cat] || cat)}
+                    </button>
+                  ))}
+                  <div className="px-4 py-2 text-xs font-semibold text-[#7a7265] uppercase tracking-wide border-t border-b border-[#f5f3ef] mt-1">
+                    {language === 'en' ? 'Sort by' : 'מיון לפי'}
+                  </div>
+                  {[
+                    { value: 'most-prepped', en: 'Most prepped', he: 'הוכן הכי הרבה' },
+                    { value: 'date', en: 'Date added', he: 'תאריך הוספה' },
+                    { value: 'alphabetical', en: 'Alphabetical', he: 'א-ב' },
+                  ].map(opt => (
+                    <button
+                      key={opt.value}
+                      onClick={() => { setSortBy(opt.value); setIsCategoryMenuOpen(false); }}
+                      className={`w-full px-4 py-2.5 text-sm transition-colors ${
+                        sortBy === opt.value ? 'bg-[#ce743e]/10 text-[#ce743e] font-semibold' : 'text-[#3d3429] hover:bg-[#f5f3ef]'
+                      } ${isRtl ? 'text-right' : 'text-left'}`}
+                    >
+                      {language === 'en' ? opt.en : opt.he}
                     </button>
                   ))}
                 </div>
@@ -187,6 +288,110 @@ export function UserProfile({
             {language === 'en' ? 'No recipes found' : 'לא נמצאו מתכונים'}
           </p>
         </div>
+      )}
+      {/* Settings Modal */}
+      {showSettings && (
+        <>
+          <div
+            className="fixed inset-0 z-40 backdrop-blur-sm bg-black/30"
+            onClick={() => { setShowSettings(false); setShowEditProfile(false); }}
+          />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={() => setShowSettings(false)}>
+            <div
+              onClick={e => e.stopPropagation()}
+              className="bg-white rounded-3xl shadow-xl w-full max-w-md overflow-hidden"
+              style={{ direction: isRtl ? 'rtl' : 'ltr' }}
+            >
+              {/* Modal Header */}
+              <div className="flex items-center justify-between px-6 py-5 border-b border-[#e8e4dc]">
+                <h2 className="text-lg font-semibold text-[#3d3429]">
+                  {language === 'en' ? 'Settings' : 'הגדרות'}
+                </h2>
+                <button
+                  onClick={() => { setShowSettings(false); setShowEditProfile(false); }}
+                  className="p-2 text-[#7a7265] hover:text-[#3d3429] hover:bg-[#f5f3ef] rounded-xl transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Modal Body */}
+              <div className="px-6 py-4 space-y-1">
+                {showEditProfile ? (
+                  <div className="space-y-4 py-2">
+                    <div>
+                      <label className="block text-xs font-semibold text-[#7a7265] uppercase tracking-wide mb-1.5">
+                        {language === 'en' ? 'Username' : 'שם משתמש'}
+                      </label>
+                      <input
+                        type="text"
+                        value={editUsername}
+                        onChange={e => setEditUsername(e.target.value)}
+                        maxLength={32}
+                        className="w-full px-4 py-2.5 bg-[#faf9f7] border border-[#e8e4dc] rounded-2xl text-[#3d3429] focus:outline-none focus:ring-2 focus:ring-[#b86535]/20 focus:border-[#b86535] text-sm transition-all"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-[#7a7265] uppercase tracking-wide mb-1.5">
+                        {language === 'en' ? 'Bio' : 'ביוגרפיה'}
+                      </label>
+                      <textarea
+                        value={editBio}
+                        onChange={e => setEditBio(e.target.value)}
+                        maxLength={160}
+                        rows={3}
+                        className="w-full px-4 py-2.5 bg-[#faf9f7] border border-[#e8e4dc] rounded-2xl text-[#3d3429] focus:outline-none focus:ring-2 focus:ring-[#b86535]/20 focus:border-[#b86535] text-sm transition-all resize-none"
+                      />
+                    </div>
+                    <div className="flex gap-2 pt-1">
+                      <button
+                        onClick={() => setShowEditProfile(false)}
+                        className="flex-1 px-4 py-2.5 bg-[#f5f3ef] text-[#3d3429] rounded-2xl text-sm font-medium hover:bg-[#e8e4dc] transition-colors"
+                      >
+                        {language === 'en' ? 'Cancel' : 'ביטול'}
+                      </button>
+                      <button
+                        onClick={handleSaveProfile}
+                        disabled={isSaving || !editUsername.trim()}
+                        className="flex-1 px-4 py-2.5 bg-[#ce743e] text-white rounded-2xl text-sm font-medium hover:bg-[#b86535] disabled:opacity-50 transition-colors"
+                      >
+                        {isSaving ? (language === 'en' ? 'Saving...' : 'שומר...') : (language === 'en' ? 'Save' : 'שמור')}
+                      </button>
+                    </div>
+                    <div className="pt-4 border-t border-[#e8e4dc] mt-2">
+                      <button
+                        onClick={handleDeleteAccount}
+                        className="w-full text-start px-4 py-3 rounded-2xl text-red-500 hover:bg-red-50 transition-colors text-sm font-medium"
+                      >
+                        {language === 'en' ? 'Delete account' : 'מחיקת חשבון'}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <p className="text-xs font-semibold text-[#7a7265] uppercase tracking-wide px-2 pb-1">
+                      {language === 'en' ? 'Account' : 'חשבון'}
+                    </p>
+                    <button
+                      onClick={() => {
+                        setEditUsername(ownProfile?.username || user?.user_metadata?.full_name || '');
+                        setEditBio(ownProfile?.bio || '');
+                        setShowEditProfile(true);
+                      }}
+                      className="w-full text-start px-4 py-3 rounded-2xl text-[#3d3429] hover:bg-[#f5f3ef] transition-colors text-sm font-medium"
+                    >
+                      {language === 'en' ? 'Edit profile' : 'עריכת פרופיל'}
+                    </button>
+                    <button className="w-full text-start px-4 py-3 rounded-2xl text-[#3d3429] hover:bg-[#f5f3ef] transition-colors text-sm font-medium">
+                      {language === 'en' ? 'Privacy' : 'פרטיות'}
+                    </button>
+                  </>
+                )}
+              </div>
+
+            </div>
+          </div>
+        </>
       )}
     </div>
   );

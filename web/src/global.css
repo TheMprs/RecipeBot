@@ -2,11 +2,36 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Modern scrollbar styles */
+/* Hide all scrollbars globally */
 ::-webkit-scrollbar {
-  display:none;
+  display: none;
 }
-
 * {
   scrollbar-width: none;
+}
+
+/* Carousel scrollbar — invisible by default, branded on section hover */
+.carousel-scroll::-webkit-scrollbar {
+  display: block;
+  height: 4px;
+}
+.carousel-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.carousel-scroll::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 9999px;
+  transition: background 0.3s;
+}
+.carousel-section:hover .carousel-scroll::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.1);
+}
+
+/* Firefox */
+.carousel-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+.carousel-section:hover .carousel-scroll {
+  scrollbar-color: rgba(0, 0, 0, 0.1) transparent;
 }
