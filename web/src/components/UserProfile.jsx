@@ -24,18 +24,32 @@ export function UserProfile({
 }) {
   const isRtl = language === 'he';
   const [viewingRecipes, setViewingRecipes] = useState([]);
-  const [ownProfile, setOwnProfile] = useState(null);
+  const [ownProfile, setOwnProfile] = useState(() => {
+    if (!user?.id) return null;
+    try {
+      const cached = localStorage.getItem(`profile_${user.id}`);
+      return cached ? JSON.parse(cached) : null;
+    } catch { return null; }
+  });
   const [showEditProfile, setShowEditProfile] = useState(false);
-  const [editUsername, setEditUsername] = useState('');
+  const [editDisplayName, setEditDisplayName] = useState('');
+  const [editHandle, setEditHandle] = useState('');
   const [editBio, setEditBio] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
   // Determine which profile we're viewing
   const currentProfile = viewingProfile || user;
   const displayRecipes = viewingProfile ? viewingRecipes : recipes;
+  const profileData = viewingProfile || ownProfile;
 
-  // Prefer custom username over Google name
-  const displayName = ownProfile?.username || currentProfile?.username || currentProfile?.user_metadata?.full_name || currentProfile?.email?.split('@')[0] || 'User';
+  const displayName = profileData?.display_name || profileData?.username || currentProfile?.user_metadata?.full_name || 'User';
+  const handle = profileData?.username;
+  // For own profile: avatar is in the session JWT immediately — no wait needed
+  const rawAvatarUrl = viewingProfile
+    ? profileData?.avatar_url
+    : (ownProfile?.avatar_url || user?.user_metadata?.avatar_url);
+  // s288 covers retina for our 128px display, -no removes Google's overlay
+  const avatarUrl = rawAvatarUrl?.replace(/=s\d+.*$/, '=s288-c-no');
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
@@ -77,11 +91,16 @@ export function UserProfile({
     if (!viewingProfile && user) {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
       const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-      fetch(`${supabaseUrl}/rest/v1/users?id=eq.${user.id}&select=username,bio`, {
+      fetch(`${supabaseUrl}/rest/v1/users?id=eq.${user.id}&select=username,display_name,bio,avatar_url`, {
         headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` }
       })
         .then(res => res.json())
-        .then(data => { if (data?.[0]) setOwnProfile(data[0]); })
+        .then(data => {
+          if (data?.[0]) {
+            setOwnProfile(data[0]);
+            localStorage.setItem(`profile_${user.id}`, JSON.stringify(data[0]));
+          }
+        })
         .catch(() => {});
     }
   }, [user, viewingProfile]);
@@ -101,10 +120,12 @@ export function UserProfile({
           'Content-Type': 'application/json',
           'Prefer': 'return=minimal'
         },
-        body: JSON.stringify({ username: editUsername.trim(), bio: editBio.trim() })
+        body: JSON.stringify({ display_name: editDisplayName.trim(), username: editHandle.trim(), bio: editBio.trim() })
       });
       if (!res.ok) throw new Error(`${res.status}`);
-      setOwnProfile(prev => ({ ...prev, username: editUsername.trim(), bio: editBio.trim() }));
+      const updated = { ...ownProfile, display_name: editDisplayName.trim(), username: editHandle.trim(), bio: editBio.trim() };
+      setOwnProfile(updated);
+      localStorage.setItem(`profile_${user.id}`, JSON.stringify(updated));
       setShowEditProfile(false);
     } catch (err) {
       alert('Failed to save: ' + err.message);
@@ -161,14 +182,25 @@ export function UserProfile({
         <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4 sm:gap-6" style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
           {/* Avatar */}
           <div className="flex-shrink-0">
-            <div className="w-24 sm:w-32 h-24 sm:h-32 rounded-full bg-[#ce743e]/10 flex items-center justify-center border-4 border-[#ce743e]/20">
-              <User className="w-12 sm:w-16 h-12 sm:h-16 text-[#ce743e]" />
+            <div className="w-24 sm:w-32 h-24 sm:h-32 rounded-full border-4 border-[#ce743e]/20 overflow-hidden bg-[#ce743e]/10 flex items-center justify-center">
+              {avatarUrl ? (
+                <img
+                  src={avatarUrl}
+                  alt={displayName}
+                  className="w-full h-full object-cover"
+                  onError={e => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
+                />
+              ) : null}
+              <div className={`w-full h-full items-center justify-center ${avatarUrl ? 'hidden' : 'flex'}`}>
+                <User className="w-12 sm:w-16 h-12 sm:h-16 text-[#ce743e]" />
+              </div>
             </div>
           </div>
 
           {/* Profile Info */}
           <div className="flex-1 pt-0 sm:pt-4">
-            <h1 className={`text-2xl sm:text-3xl font-bold text-[#3d3429] mb-4 sm:mb-6 break-all whitespace-normal text-center ${isRtl ? 'sm:text-right' : 'sm:text-left'}`} style={{ direction: isRtl ? 'rtl' : 'ltr' }}>{displayName}</h1>
+            <h1 className={`text-2xl sm:text-3xl font-bold text-[#3d3429] mb-1 break-all whitespace-normal text-center ${isRtl ? 'sm:text-right' : 'sm:text-left'}`} style={{ direction: isRtl ? 'rtl' : 'ltr' }}>{displayName}</h1>
+            {handle && <p className={`text-sm text-[#7a7265] mb-4 sm:mb-6 text-center ${isRtl ? 'sm:text-right' : 'sm:text-left'}`}>@{handle}</p>}
 
             {/* Stats */}
             <div className="flex justify-center sm:justify-start gap-4 sm:gap-8 mt-4 sm:mt-6">
@@ -321,15 +353,33 @@ export function UserProfile({
                   <div className="space-y-4 py-2">
                     <div>
                       <label className="block text-xs font-semibold text-[#7a7265] uppercase tracking-wide mb-1.5">
-                        {language === 'en' ? 'Username' : 'שם משתמש'}
+                        {language === 'en' ? 'Display Name' : 'שם תצוגה'}
                       </label>
                       <input
                         type="text"
-                        value={editUsername}
-                        onChange={e => setEditUsername(e.target.value)}
-                        maxLength={32}
+                        value={editDisplayName}
+                        onChange={e => setEditDisplayName(e.target.value)}
+                        maxLength={64}
+                        placeholder={language === 'en' ? 'Your name' : 'השם שלך'}
                         className="w-full px-4 py-2.5 bg-[#faf9f7] border border-[#e8e4dc] rounded-2xl text-[#3d3429] focus:outline-none focus:ring-2 focus:ring-[#b86535]/20 focus:border-[#b86535] text-sm transition-all"
                       />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-[#7a7265] uppercase tracking-wide mb-1.5">
+                        {language === 'en' ? 'Handle' : 'שם משתמש'}
+                      </label>
+                      <div className="relative">
+                        <span className="absolute top-1/2 -translate-y-1/2 left-4 text-[#7a7265] text-sm">@</span>
+                        <input
+                          type="text"
+                          value={editHandle}
+                          onChange={e => setEditHandle(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
+                          maxLength={32}
+                          placeholder="yourhandle"
+                          className="w-full pl-8 pr-4 py-2.5 bg-[#faf9f7] border border-[#e8e4dc] rounded-2xl text-[#3d3429] focus:outline-none focus:ring-2 focus:ring-[#b86535]/20 focus:border-[#b86535] text-sm transition-all"
+                        />
+                      </div>
+                      <p className="text-xs text-[#7a7265] mt-1">{language === 'en' ? 'Letters, numbers and underscores only' : 'אותיות, מספרים וקווים תחתיים בלבד'}</p>
                     </div>
                     <div>
                       <label className="block text-xs font-semibold text-[#7a7265] uppercase tracking-wide mb-1.5">
@@ -352,7 +402,7 @@ export function UserProfile({
                       </button>
                       <button
                         onClick={handleSaveProfile}
-                        disabled={isSaving || !editUsername.trim()}
+                        disabled={isSaving || !editHandle.trim()}
                         className="flex-1 px-4 py-2.5 bg-[#ce743e] text-white rounded-2xl text-sm font-medium hover:bg-[#b86535] disabled:opacity-50 transition-colors"
                       >
                         {isSaving ? (language === 'en' ? 'Saving...' : 'שומר...') : (language === 'en' ? 'Save' : 'שמור')}
@@ -374,7 +424,8 @@ export function UserProfile({
                     </p>
                     <button
                       onClick={() => {
-                        setEditUsername(ownProfile?.username || user?.user_metadata?.full_name || '');
+                        setEditDisplayName(ownProfile?.display_name || '');
+                        setEditHandle(ownProfile?.username || '');
                         setEditBio(ownProfile?.bio || '');
                         setShowEditProfile(true);
                       }}

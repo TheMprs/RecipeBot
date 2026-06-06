@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { BookOpen, Plus, Search, Filter, X, Link as LinkIcon, User as UserIcon, ChevronLeft, ChevronRight } from 'lucide-react'
+import { BookOpen, Plus, Search, Filter, X, Link as LinkIcon, User as UserIcon, ChevronLeft, ChevronRight, LogOut } from 'lucide-react'
 import { RecipeCard } from './components/RecipeCard'
 import { RecipeDetail } from './components/RecipeDetail'
 import { RecipeForm } from './components/RecipeForm'
@@ -87,33 +87,25 @@ function App() {
 
             const existingProfiles = await checkRes.json();
             
-            // If no profile exists, create one
+            // If no profile exists, create one — use UUID as default username (always unique)
             if (!existingProfiles || existingProfiles.length === 0) {
-              const createRes = await fetch(
-                `${supabaseUrl}/rest/v1/users`,
-                {
-                  method: 'POST',
-                  headers: {
-                    'apikey': supabaseKey,
-                    'Authorization': `Bearer ${session.access_token}`,
-                    'Content-Type': 'application/json'
-                  },
-                  body: JSON.stringify({
-                    id: user.id,
-                    email: user.email,
-                    username: user.user_metadata?.full_name || user.email.split('@')[0],
-                    bio: null,
-                    avatar_url: user.user_metadata?.avatar_url || null,
-                  })
-                }
-              );
-
-              if (createRes.ok) {
-                console.log('[Auth] Profile created for new user');
-              } else {
-                const err = await createRes.text();
-                console.error('[Auth] Failed to create profile:', err);
-              }
+              const createRes = await fetch(`${supabaseUrl}/rest/v1/users`, {
+                method: 'POST',
+                headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  id: user.id, email: user.email, username: user.id,
+                  display_name: user.user_metadata?.full_name || '',
+                  bio: null, avatar_url: user.user_metadata?.avatar_url || null,
+                })
+              })
+              if (!createRes.ok) console.error('[Auth] Failed to create profile:', await createRes.text())
+            } else if (user.user_metadata?.avatar_url) {
+              // Refresh avatar URL on every login in case Google rotated it
+              fetch(`${supabaseUrl}/rest/v1/users?id=eq.${user.id}`, {
+                method: 'PATCH',
+                headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ avatar_url: user.user_metadata.avatar_url })
+              })
             }
           } catch (error) {
             console.error('[Auth] Failed to create profile:', error.message)
@@ -359,7 +351,7 @@ function App() {
       }
       
       // Otherwise fetch the other user's profile
-      fetch(`${supabaseUrl}/rest/v1/users?id=eq.${profileId}`, {
+      fetch(`${supabaseUrl}/rest/v1/users?id=eq.${profileId}&select=id,username,display_name,bio,avatar_url`, {
         headers: {
           'apikey': supabaseKey,
           'Authorization': `Bearer ${supabaseKey}`,
@@ -444,7 +436,7 @@ function App() {
       const q = encodeURIComponent(`*${globalQuery.trim()}*`)
       const headers = { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` }
       const [usersRes, recipesRes] = await Promise.all([
-        fetch(`${supabaseUrl}/rest/v1/users?username=ilike.${q}&select=id,username&limit=4`, { headers }),
+        fetch(`${supabaseUrl}/rest/v1/users?or=(username.ilike.${q},display_name.ilike.${q})&select=id,username,display_name,avatar_url&limit=4`, { headers }),
         fetch(`${supabaseUrl}/rest/v1/recipes?name=ilike.${q}&visibility=eq.public&select=id,name,category,user_id&limit=4`, { headers })
       ])
       const [users, recipesRaw] = await Promise.all([usersRes.json(), recipesRes.json()])
@@ -741,8 +733,9 @@ function App() {
                 <UserIcon className="w-5 h-5"/>
               </button>
               <button onClick={handleLogout}
-                className="px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors text-xs sm:text-sm whitespace-nowrap">
-                Logout
+                className="flex items-center gap-1.5 px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors text-xs sm:text-sm whitespace-nowrap">
+                <LogOut className="w-4 h-4" />
+                <span className="hidden sm:inline">Logout</span>
               </button>
             </div>
         </div>
@@ -804,10 +797,15 @@ function App() {
                           setGlobalQuery('')
                           window.history.pushState({}, '', `/?user=${u.id}`)
                         }} className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-[#f5f3ef] transition-colors">
-                          <div className="w-8 h-8 rounded-full bg-[#ce743e]/10 flex items-center justify-center flex-shrink-0">
-                            <UserIcon className="w-4 h-4 text-[#ce743e]" />
+                          <div className="w-8 h-8 rounded-full bg-[#ce743e]/10 flex-shrink-0 overflow-hidden">
+                            {u.avatar_url
+                              ? <img src={u.avatar_url} alt="" className="w-full h-full object-cover" />
+                              : <div className="w-full h-full flex items-center justify-center"><UserIcon className="w-4 h-4 text-[#ce743e]" /></div>}
                           </div>
-                          <span className="text-sm text-[#3d3429] font-medium text-start">{u.username}</span>
+                          <div className="text-start">
+                            <p className="text-sm text-[#3d3429] font-medium">{u.display_name || u.username}</p>
+                            <p className="text-xs text-[#7a7265]">@{u.username}</p>
+                          </div>
                         </button>
                       ))}
                     </div>
@@ -917,6 +915,7 @@ function App() {
                 const podiumPositions = [1, 0, 2]; // which recipe index each slot holds
 
                 return (
+                  <div>
                   <div className="flex items-end justify-center gap-2 pt-8">
                     {podiumOrder.map((recipe, slot) => {
                       const rank = podiumPositions[slot];
@@ -943,6 +942,8 @@ function App() {
                       );
                     })}
                   </div>
+                  <div style={{ height: '2px', backgroundColor: '#e8e4dc', width: '100%', display: 'block', flexShrink: 0 }} />
+                  </div>
                 );
               })()}
             </section>
@@ -957,6 +958,8 @@ function App() {
             onSelectRecipe={handleSelectRecipe}
             viewingProfile={viewingProfile}
             cookCounts={cookCounts}
+            apiBase={API_BASE}
+            onLogout={() => setUser(null)}
           />
         )}
 
