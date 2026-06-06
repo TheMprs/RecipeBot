@@ -20,20 +20,20 @@ public class Main {
         String botUserId = dotenv.get("BOT_USER_ID", null);
         if (botUserId != null) db.setDefaultUserId(botUserId);
 
-        // bot init
         boolean debug = args.length > 0 && args[0].equals("-debug");
         if (debug) System.out.println("[Mode] DEBUG — using test bot");
 
+        LinkTokenStore tokenStore = new LinkTokenStore();
+
         TelegramBotsApi telegramBotsApi = new TelegramBotsApi(DefaultBotSession.class);
-        Bot bot = new Bot(db, debug);
+        Bot bot = new Bot(db, debug, tokenStore);
         telegramBotsApi.registerBot(bot);
 
-        // web server init
         Javalin app = Javalin.create(config -> {
             config.bundledPlugins.enableCors(cors -> cors.addRule(it -> it.anyHost()));
         }).start(8080);
 
-        webManager webManager = new webManager(db);
+        webManager webManager = new webManager(db, tokenStore);
         webManager.registerRoutes(app);
     }
 }

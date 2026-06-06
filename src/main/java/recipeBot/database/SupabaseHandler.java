@@ -10,6 +10,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.*;
 
 public class SupabaseHandler {
+    private final String supabaseUrl;
     private final String baseUrl;
     private final String serviceKey;
     private String defaultUserId;
@@ -17,6 +18,7 @@ public class SupabaseHandler {
     private final Gson gson;
 
     public SupabaseHandler(String supabaseUrl, String serviceKey) {
+        this.supabaseUrl = supabaseUrl;
         this.baseUrl = supabaseUrl + "/rest/v1";
         this.serviceKey = serviceKey;
         this.client = HttpClient.newHttpClient();
@@ -115,6 +117,67 @@ public class SupabaseHandler {
         } catch (Exception e) {
             e.printStackTrace();
         }
+    }
+
+    // *** TELEGRAM AUTH ***
+
+    public void linkTelegramUser(long chatId, String userId) {
+        JsonObject body = new JsonObject();
+        body.addProperty("telegram_chat_id", chatId);
+        body.addProperty("user_id", userId);
+
+        HttpRequest req = base("/telegram_auth")
+                .header("Prefer", "resolution=merge-duplicates")
+                .POST(HttpRequest.BodyPublishers.ofString(gson.toJson(body)))
+                .build();
+        try {
+            HttpResponse<String> res = client.send(req, HttpResponse.BodyHandlers.ofString());
+            if (res.statusCode() >= 400) {
+                System.err.println("[Supabase] linkTelegramUser failed: " + res.statusCode() + " " + res.body());
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    public String getLinkedUserId(long chatId) {
+        HttpRequest req = base("/telegram_auth?telegram_chat_id=eq." + chatId + "&select=user_id")
+                .GET().build();
+        try {
+            HttpResponse<String> res = client.send(req, HttpResponse.BodyHandlers.ofString());
+            JsonArray arr = gson.fromJson(res.body(), JsonArray.class);
+            if (arr.size() > 0) return arr.get(0).getAsJsonObject().get("user_id").getAsString();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return null;
+    }
+
+    // Validates a Supabase JWT and returns the user's UUID, or null if invalid.
+    public String getUserIdFromJwt(String jwt) {
+        HttpRequest req = HttpRequest.newBuilder()
+                .uri(URI.create(supabaseUrl + "/auth/v1/user"))
+                .header("apikey", serviceKey)
+                .header("Authorization", "Bearer " + jwt)
+                .GET()
+                .build();
+        try {
+            HttpResponse<String> res = client.send(req, HttpResponse.BodyHandlers.ofString());
+            if (res.statusCode() == 200) {
+                return gson.fromJson(res.body(), JsonObject.class).get("id").getAsString();
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return null;
+    }
+
+    // addRecipe overload that attributes the recipe to a specific user
+    public void addRecipe(Recipe recipe, String userId) {
+        String previous = defaultUserId;
+        defaultUserId = userId;
+        addRecipe(recipe);
+        defaultUserId = previous;
     }
 
     // *** PRIVATE HELPERS ***

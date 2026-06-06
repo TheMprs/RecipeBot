@@ -73,7 +73,7 @@ function App() {
               {
                 headers: {
                   'apikey': supabaseKey,
-                  'Authorization': `Bearer ${supabaseKey}`,
+                  'Authorization': `Bearer ${session.access_token}`,
                   'Content-Type': 'application/json'
                 }
               }
@@ -89,7 +89,7 @@ function App() {
                   method: 'POST',
                   headers: {
                     'apikey': supabaseKey,
-                    'Authorization': `Bearer ${supabaseKey}`,
+                    'Authorization': `Bearer ${session.access_token}`,
                     'Content-Type': 'application/json'
                   },
                   body: JSON.stringify({
@@ -145,12 +145,14 @@ function App() {
   const fetchRecipes = async () => {
     try {
       if (user) {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.access_token) { setRecipes([]); return; }
         const response = await fetch(
           `${supabaseUrl}/rest/v1/recipes?user_id=eq.${user.id}&select=*`,
           {
             headers: {
               'apikey': supabaseKey,
-              'Authorization': `Bearer ${supabaseKey}`,
+              'Authorization': `Bearer ${session.access_token}`,
               'Content-Type': 'application/json'
             }
           }
@@ -231,6 +233,51 @@ function App() {
     const profileId = params.get('user')
     const recipeId = params.get('r')
     const recipeName = params.get('recipe')
+    const linkToken = params.get('link_token')
+
+    // Handle Telegram account linking
+    if (linkToken) {
+      window.history.replaceState({}, '', window.location.pathname)
+      if (!user) {
+        sessionStorage.setItem('pending_link_token', linkToken)
+      } else {
+        supabase.auth.getSession().then(({ data: { session } }) => {
+          fetch(`${API_BASE}/link`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${session?.access_token}`
+            },
+            body: JSON.stringify({ token: linkToken })
+          }).then(res => {
+            if (res.ok) alert('Telegram account linked successfully!')
+            else res.text().then(t => alert('Linking failed: ' + t))
+          })
+        })
+      }
+      return
+    }
+
+    // Complete pending link after login
+    if (user) {
+      const pendingToken = sessionStorage.getItem('pending_link_token')
+      if (pendingToken) {
+        sessionStorage.removeItem('pending_link_token')
+        supabase.auth.getSession().then(({ data: { session } }) => {
+          fetch(`${API_BASE}/link`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${session?.access_token}`
+            },
+            body: JSON.stringify({ token: pendingToken })
+          }).then(res => {
+            if (res.ok) alert('Telegram account linked successfully!')
+            else res.text().then(t => alert('Linking failed: ' + t))
+          })
+        })
+      }
+    }
     
     // Handle profile viewing (either own or others') - check this FIRST
     if (profileId) {
@@ -343,7 +390,8 @@ function App() {
 
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      const userToken = session?.access_token ?? supabaseKey;
+      if (!session?.access_token) throw new Error('Not authenticated');
+      const userToken = session.access_token;
 
       if (editingRecipe) {
         const res = await fetch(
@@ -450,7 +498,8 @@ function App() {
     if (!window.confirm(`Delete ${recipe.title}?`)) return;
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      const userToken = session?.access_token ?? supabaseKey;
+      if (!session?.access_token) throw new Error('Not authenticated');
+      const userToken = session.access_token;
 
       const res = await fetch(
         `${supabaseUrl}/rest/v1/recipes?id=eq.${recipe.id}`,

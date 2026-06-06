@@ -1,7 +1,5 @@
 package recipeBot;
 
-import org.jsoup.Jsoup;
-import org.jsoup.nodes.Document;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.methods.updatingmessages.EditMessageReplyMarkup;
@@ -30,17 +28,16 @@ public class Bot extends TelegramLongPollingBot {
     private final Dotenv dotenv = Dotenv.load();
     private final GeminiHandler gemini = new GeminiHandler(dotenv.get("GEMINI_API_KEY"));
     private final boolean debug;
+    private final LinkTokenStore tokenStore;
 
-    // tracks recipe addition progress
     private Map<Long, State> userState = new HashMap<>();
-    // temp storage for recipe building
     private Map<Long, Recipe> tempRecipes = new HashMap<>();
-    // tracks last sent message for each user to enable message editing
     private Map<Long, Integer> lastSentMsg = new HashMap<>();
 
-    public Bot(SupabaseHandler dbHandler, boolean debug) {
+    public Bot(SupabaseHandler dbHandler, boolean debug, LinkTokenStore tokenStore) {
         this.db = dbHandler;
         this.debug = debug;
+        this.tokenStore = tokenStore;
     }
 
     @Override
@@ -55,27 +52,35 @@ public class Bot extends TelegramLongPollingBot {
 
     @Override
     public void onUpdateReceived(Update update) {
-        // handle button presses here
-        if (update.hasCallbackQuery()) {
-            var callbackQuery = update.getCallbackQuery();
-            var id = callbackQuery.getMessage().getChatId();
-            removePreviousKeyboard(id);
-            handleCallback(callbackQuery);
-        }
-        // handle messages here
-        else if (update.hasMessage()) {
-            var message = update.getMessage();
-            if (message.hasText()) {
-                var id = message.getChatId();
-                removePreviousKeyboard(id);
+        Long chatId = extractChatId(update);
+        if (chatId == null) return;
 
-                if (message.isCommand()) {
-                    handleCommand(id, message);
-                } else if (userState.containsKey(id)) {
-                    handleInput(id, message);
-                }
+        // Block unlinked users — send them the linking flow
+        if (db.getLinkedUserId(chatId) == null) {
+            String token = tokenStore.generate(chatId);
+            String link = "https://babrecipebook.vercel.app/?link_token=" + token;
+            sendText(chatId, "Please link your RecipeBook account to use this bot:\n" + link);
+            return;
+        }
+
+        if (update.hasCallbackQuery()) {
+            removePreviousKeyboard(chatId);
+            handleCallback(update.getCallbackQuery());
+        } else if (update.hasMessage() && update.getMessage().hasText()) {
+            removePreviousKeyboard(chatId);
+            Message message = update.getMessage();
+            if (message.isCommand()) {
+                handleCommand(chatId, message);
+            } else if (userState.containsKey(chatId)) {
+                handleInput(chatId, message);
             }
         }
+    }
+
+    private Long extractChatId(Update update) {
+        if (update.hasCallbackQuery()) return update.getCallbackQuery().getMessage().getChatId();
+        if (update.hasMessage()) return update.getMessage().getChatId();
+        return null;
     }
 
     public void handleCallback(CallbackQuery callbackQuery) {
@@ -340,8 +345,9 @@ public class Bot extends TelegramLongPollingBot {
             }
             recipe.setInstructions(instructions);
             
-            // save recipe to database
-            db.addRecipe(recipe);
+            // save recipe attributed to the linked user
+            String linkedUserId = db.getLinkedUserId(id);
+            db.addRecipe(recipe, linkedUserId);
 
             // clean up addition process
             userState.remove(id);
@@ -354,18 +360,19 @@ public class Bot extends TelegramLongPollingBot {
 
         if (state == State.WAITING_FOR_URL) {
             String url = message.getText();
-
             sendText(id, "Processing URL");
 
-            String rawText = extractTextFromUrl(url);
-            Recipe extractedRecipe = gemini.extractRecipeFromText(rawText);
-
-            if (extractedRecipe != null && extractedRecipe.getName() != null) {
-                db.addRecipe(extractedRecipe);
-                sendText(id, "Recipe imported successfully!");
-            } else {
-                sendText(id,
-                        "Failed to extract recipe from the provided URL. Please make sure it's a valid recipe page and try again.");
+            try {
+                String rawText = UrlFetcher.fetch(url);
+                Recipe extractedRecipe = gemini.extractRecipeFromText(rawText);
+                if (extractedRecipe != null && extractedRecipe.getName() != null) {
+                    db.addRecipe(extractedRecipe, db.getLinkedUserId(id));
+                    sendText(id, "Recipe imported successfully!");
+                } else {
+                    sendText(id, "Failed to extract recipe from the provided URL. Please make sure it's a valid recipe page and try again.");
+                }
+            } catch (Exception e) {
+                sendText(id, "Invalid URL: " + e.getMessage());
             }
 
             userState.remove(id);
@@ -537,22 +544,6 @@ public class Bot extends TelegramLongPollingBot {
         } catch (TelegramApiException e) {
             e.printStackTrace();
             ;
-        }
-    }
-
-    private String extractTextFromUrl(String url) {
-        try {
-            return Jsoup.connect(url)
-                    .userAgent(
-                            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-                    .referrer("http://www.google.com")
-                    .header("Accept-Language", "he-IL,he;q=0.9,en-US;q=0.8,en;q=0.7")
-                    .timeout(10000) // Give it 10 seconds to load
-                    .get()
-                    .text();
-        } catch (Exception e) {
-            e.printStackTrace();
-            return null;
         }
     }
 
