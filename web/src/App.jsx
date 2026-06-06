@@ -270,82 +270,39 @@ function App() {
       return; // Don't process recipe parameters if viewing a profile
     }
     
+    const loadRecipeFromSupabase = (filter) => {
+      fetch(`${supabaseUrl}/rest/v1/recipes?${filter}&select=*&limit=1`, {
+        headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` }
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (!data || data.length === 0) {
+            window.history.replaceState({}, '', window.location.pathname);
+            return;
+          }
+          const r = data[0];
+          setSelectedRecipe({
+            id: r.id,
+            title: String(r.name || 'Unnamed'),
+            description: r.description || '',
+            category: r.category || 'MAIN',
+            ingredients: Array.isArray(r.ingredients) ? r.ingredients : [],
+            instructions: Array.isArray(r.instructions) ? r.instructions : []
+          });
+          setViewMode('detail');
+          window.history.pushState({}, '', `?r=${r.id}`);
+        })
+        .catch(err => {
+          console.warn('[Data] Error loading recipe from URL:', err.message);
+          window.history.replaceState({}, '', window.location.pathname);
+        });
+    };
+
     // Only process recipe parameters if NOT viewing a profile
     if (recipeId) {
-      // New ID-based share link
-      fetch(`${API_BASE}/recipes/id/${recipeId}`)
-        .then(res => {
-          if (!res.ok) {
-            console.warn('[Data] Recipe not found by ID:', recipeId);
-            // Clear the URL if recipe not found
-            window.history.replaceState({}, '', window.location.pathname);
-            return null;
-          }
-          return res.json()
-        })
-        .then(data => {
-          if (!data) return; // Silently skip if recipe not found
-          
-          const formatArray = (text) => {
-            if (Array.isArray(text)) return text;
-            if (typeof text === 'string') return text.split('\n').filter(i => i.trim());
-            return [];
-          };
-          const recipeData = {
-            id: data.id,
-            title: String(data.name || data.title || 'Unnamed'),
-            description: data.description || '',
-            category: data.category || 'MAIN',
-            ingredients: formatArray(data.ingredients) || [],
-            instructions: formatArray(data.instructions) || []
-          };
-          setSelectedRecipe(recipeData)
-          setViewMode('detail')
-          window.history.pushState({}, '', `?r=${data.id}`)
-        })
-        .catch(err => {
-          console.warn('[Data] Error loading recipe from URL:', err.message);
-          // Clear the URL on error
-          window.history.replaceState({}, '', window.location.pathname);
-        })
+      loadRecipeFromSupabase(`id=eq.${encodeURIComponent(recipeId)}`);
     } else if (recipeName) {
-      // Backward-compatible name-based link
-      fetch(`${API_BASE}/recipes/${encodeURIComponent(recipeName)}`)
-        .then(res => {
-          if (!res.ok) {
-            console.warn('[Data] Recipe not found by name:', recipeName);
-            // Clear the URL if recipe not found
-            window.history.replaceState({}, '', window.location.pathname);
-            return null;
-          }
-          return res.json()
-        })
-        .then(data => {
-          if (!data) return; // Silently skip if recipe not found
-          
-          const formatArray = (text) => {
-            if (Array.isArray(text)) return text;
-            if (typeof text === 'string') return text.split('\n').filter(i => i.trim());
-            return [];
-          };
-          const recipeData = {
-            id: data.id,
-            title: String(data.name || data.title || 'Unnamed'),
-            description: data.description || '',
-            category: data.category || 'MAIN',
-            ingredients: formatArray(data.ingredients) || [],
-            instructions: formatArray(data.instructions) || []
-          };
-          setSelectedRecipe(recipeData)
-          setViewMode('detail')
-          // Update URL to use new ID-based format
-          window.history.pushState({}, '', `?r=${data.id}`)
-        })
-        .catch(err => {
-          console.warn('[Data] Error loading recipe from URL:', err.message);
-          // Clear the URL on error
-          window.history.replaceState({}, '', window.location.pathname);
-        })
+      loadRecipeFromSupabase(`name=eq.${encodeURIComponent(recipeName)}`);
     }
   }, [user])
 
@@ -384,77 +341,59 @@ function App() {
       return;
     }
 
-    // Convert arrays back to strings for your Java backend
-    const backendFormat = {
-      name: newRecipe.title,
-      category: newRecipe.category,
-      description: newRecipe.description,
-      ingredients: newRecipe.ingredients,
-      instructions: newRecipe.instructions,
-    };
-
-    const method = editingRecipe ? 'PUT' : 'POST';
-    const url = editingRecipe ? `${API_BASE}/recipes/${encodeURIComponent(editingRecipe.title)}` : `${API_BASE}/recipes`;
-    
-    console.log(`[DEBUG] ${method} request to ${url}`, backendFormat, 'editingRecipe:', editingRecipe);
-
     try {
-      // Save to Java backend
-      console.log('[Data] Saving to backend...');
-      const res = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(backendFormat)
-      });
+      const { data: { session } } = await supabase.auth.getSession();
+      const userToken = session?.access_token ?? supabaseKey;
 
-      console.log('[Data] Backend response:', res.status);
-
-      if (res.ok) {
-        // Also save to Supabase using REST API
-        console.log('[Data] Saving to Supabase...');
-        const supabaseRecipe = {
-          user_id: user.id,
-          name: newRecipe.title,
-          category: newRecipe.category,
-          description: newRecipe.description,
-          ingredients: newRecipe.ingredients,
-          instructions: newRecipe.instructions,
-          visibility: 'public' // Default to public for now
-        };
-
-        const supabaseRes = await fetch(
+      if (editingRecipe) {
+        const res = await fetch(
+          `${supabaseUrl}/rest/v1/recipes?id=eq.${editingRecipe.id}`,
+          {
+            method: 'PATCH',
+            headers: {
+              'apikey': supabaseKey,
+              'Authorization': `Bearer ${userToken}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              name: newRecipe.title,
+              category: newRecipe.category,
+              description: newRecipe.description,
+              ingredients: newRecipe.ingredients,
+              instructions: newRecipe.instructions,
+            })
+          }
+        );
+        if (!res.ok) throw new Error(`Update failed: ${res.status} ${await res.text()}`);
+      } else {
+        const res = await fetch(
           `${supabaseUrl}/rest/v1/recipes`,
           {
             method: 'POST',
             headers: {
               'apikey': supabaseKey,
-              'Authorization': `Bearer ${supabaseKey}`,
+              'Authorization': `Bearer ${userToken}`,
               'Content-Type': 'application/json'
             },
-            body: JSON.stringify(supabaseRecipe)
+            body: JSON.stringify({
+              user_id: user.id,
+              name: newRecipe.title,
+              category: newRecipe.category,
+              description: newRecipe.description,
+              ingredients: newRecipe.ingredients,
+              instructions: newRecipe.instructions,
+              visibility: 'public'
+            })
           }
         );
-
-        console.log('[Data] Supabase response:', supabaseRes.status);
-        
-        if (!supabaseRes.ok) {
-          const errText = await supabaseRes.text();
-          console.error('[Data] Supabase save error:', errText);
-        } else {
-          console.log('[Data] Recipe saved to Supabase');
-        }
-
-        console.log('[Data] Refetching recipes...');
-        fetchRecipes();
-        setViewMode('profile');
-        setEditingRecipe(null);
-      } else {
-        const errorText = await res.text();
-        console.error('[Data] Backend error: ${res.status}', errorText);
-        alert('Failed to save recipe to backend');
+        if (!res.ok) throw new Error(`Insert failed: ${res.status} ${await res.text()}`);
       }
+
+      fetchRecipes();
+      setViewMode('profile');
+      setEditingRecipe(null);
     } catch (err) {
-      console.error('[Data] Error adding recipe:', err);
+      console.error('[Data] Error saving recipe:', err);
       alert('Error: ' + err.message);
     }
   }
@@ -508,46 +447,29 @@ function App() {
 
   // 4. DELETE RECIPE
   const handleDeleteRecipe = async (recipe) => {
-    console.log('[Data] Delete clicked for:', recipe.title);
-    if(window.confirm(`Delete ${recipe.title}?`)) {
-      try {
-        console.log('[Data] Confirmed delete, calling backend...');
-        // Delete from Java backend
-        const backendRes = await fetch(`${API_BASE}/recipes/${encodeURIComponent(recipe.title)}`, { method: 'DELETE' });
-        console.log('[Data] Backend response:', backendRes.status);
-        
-        if (!backendRes.ok) {
-          console.warn('[Data] Backend delete returned non-OK status');
-        }
+    if (!window.confirm(`Delete ${recipe.title}?`)) return;
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const userToken = session?.access_token ?? supabaseKey;
 
-        // Delete from Supabase using REST API
-        if (recipe.id) {
-          console.log('[Data] Deleting from Supabase, id:', recipe.id);
-          const supabaseRes = await fetch(
-            `${supabaseUrl}/rest/v1/recipes?id=eq.${recipe.id}`,
-            {
-              method: 'DELETE',
-              headers: {
-                'apikey': supabaseKey,
-                'Authorization': `Bearer ${supabaseKey}`,
-                'Content-Type': 'application/json'
-              }
-            }
-          );
-
-          console.log('[Data] Supabase delete response:', supabaseRes.status);
-          if (!supabaseRes.ok) {
-            throw new Error(`Supabase delete failed: ${supabaseRes.status}`);
+      const res = await fetch(
+        `${supabaseUrl}/rest/v1/recipes?id=eq.${recipe.id}`,
+        {
+          method: 'DELETE',
+          headers: {
+            'apikey': supabaseKey,
+            'Authorization': `Bearer ${userToken}`,
+            'Content-Type': 'application/json'
           }
         }
+      );
+      if (!res.ok) throw new Error(`Delete failed: ${res.status}`);
 
-        console.log('[Data] Delete successful, refetching recipes...');
-        fetchRecipes();
-        setViewMode('profile');
-      } catch (error) {
-        console.error('[Data] Error deleting recipe:', error);
-        alert('Failed to delete recipe');
-      }
+      fetchRecipes();
+      setViewMode('profile');
+    } catch (error) {
+      console.error('[Data] Error deleting recipe:', error);
+      alert('Failed to delete recipe');
     }
   }
 
