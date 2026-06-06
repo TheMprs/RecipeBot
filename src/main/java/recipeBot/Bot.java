@@ -17,7 +17,7 @@ import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.Keyboard
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 
 import io.github.cdimascio.dotenv.Dotenv;
-import recipeBot.database.DatabaseHandler;
+import recipeBot.database.SupabaseHandler;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -26,12 +26,10 @@ import java.util.List;
 import java.util.Map;
 
 public class Bot extends TelegramLongPollingBot {
-    // database handler for recipe storage
-    private final DatabaseHandler db;
-    // dotenv for environment variable management
+    private final SupabaseHandler db;
     private final Dotenv dotenv = Dotenv.load();
-    // GeminiHandler for AI interactions
     private final GeminiHandler gemini = new GeminiHandler(dotenv.get("GEMINI_API_KEY"));
+    private final boolean debug;
 
     // tracks recipe addition progress
     private Map<Long, State> userState = new HashMap<>();
@@ -40,19 +38,19 @@ public class Bot extends TelegramLongPollingBot {
     // tracks last sent message for each user to enable message editing
     private Map<Long, Integer> lastSentMsg = new HashMap<>();
 
-    public Bot(DatabaseHandler dbHandler) {
+    public Bot(SupabaseHandler dbHandler, boolean debug) {
         this.db = dbHandler;
+        this.debug = debug;
     }
 
     @Override
     public String getBotUsername() {
-        return "@Yuvals_Recipe_Book_bot";
-        //return "@recipe_book_test_bot";
+        return debug ? "@recipe_book_test_bot" : "@Yuvals_Recipe_Book_bot";
     }
 
     @Override
     public String getBotToken() {
-        return dotenv.get("BOT_TOKEN");
+        return dotenv.get(debug ? "TEST_BOT_TOKEN" : "BOT_TOKEN");
     }
 
     @Override
@@ -194,8 +192,7 @@ public class Bot extends TelegramLongPollingBot {
 
             recipe.setCategory(category);
 
-            int recipeId = db.getIdOf(recipe.getName());
-            db.updateRecipe(recipeId, "category", category.toString());
+            db.updateRecipe(recipe.getId(), "category", category.toString());
             sendText(id, "Recipe category updated successfully!");
 
             return;
@@ -212,9 +209,7 @@ public class Bot extends TelegramLongPollingBot {
                 String botName = getBotUsername().replace("@", ""); // remove @ from bot username for link formatting
 
                 for (Recipe recipe : recipes) {
-                    int idOfRecipe = db.getIdOf(recipe.getName());
-
-                    String recipeLink = "https://t.me/" + botName + "?start=show_" + idOfRecipe;
+                    String recipeLink = "https://t.me/" + botName + "?start=show_" + recipe.getId();
 
                     sb.append("<a href=\"" + recipeLink + "\">" + recipe.getName() + "</a>\n");
                 }
@@ -272,21 +267,17 @@ public class Bot extends TelegramLongPollingBot {
         }
 
         if (text.equals("/list")) {
-            // code to list all recipes
-            List<String> recipes = db.getAllRecipeNames();
+            List<Recipe> recipes = db.getAllRecipes();
 
             if (recipes.isEmpty()) {
                 sendText(chatId, "No recipes found. Add some with /recipe!");
             } else {
                 StringBuilder sb = new StringBuilder("<b><u>Recipes:</u></b>\n");
-                String botName = getBotUsername().replace("@", ""); // remove @ from bot username for link formatting
+                String botName = getBotUsername().replace("@", "");
 
-                for (String recipeName : recipes) {
-                    int id = db.getIdOf(recipeName);
-
-                    String recipeLink = "https://t.me/" + botName + "?start=show_" + id;
-
-                    sb.append("<a href=\"" + recipeLink + "\">" + recipeName + "</a>\n");
+                for (Recipe recipe : recipes) {
+                    String recipeLink = "https://t.me/" + botName + "?start=show_" + recipe.getId();
+                    sb.append("<a href=\"" + recipeLink + "\">" + recipe.getName() + "</a>\n");
                 }
                 sendText(chatId, sb.toString());
             }
@@ -384,50 +375,33 @@ public class Bot extends TelegramLongPollingBot {
 
         if (state == State.EDITING_NAME) {
             Recipe recipeToEdit = tempRecipes.get(id);
-            int recipeId = db.getIdOf(recipeToEdit.getName());
-
-            db.updateRecipe(recipeId, "name", message.getText());
+            db.updateRecipe(recipeToEdit.getId(), "name", message.getText());
             sendText(id, "Recipe name updated successfully!");
-
             return;
         }
 
         if (state == State.EDITING_DESCRIPTION) {
             Recipe recipeToEdit = tempRecipes.get(id);
-            int recipeId = db.getIdOf(recipeToEdit.getName());
-
-
-            db.updateRecipe(recipeId, "description", message.getText());
+            db.updateRecipe(recipeToEdit.getId(), "description", message.getText());
             sendText(id, "Recipe description updated successfully!");
-
             return;
         }
 
         if (state == State.EDITING_INGREDIENTS) {
             Recipe recipeToEdit = tempRecipes.get(id);
-            int recipeId = db.getIdOf(recipeToEdit.getName());
-
             String[] rawIngredients = message.getText().split("\n");
-            for (int i = 0; i < rawIngredients.length; i++) {
-                rawIngredients[i] = rawIngredients[i].trim();
-            }
-            db.updateRecipe(recipeId, "ingredients", String.join(";", rawIngredients));
+            for (int i = 0; i < rawIngredients.length; i++) rawIngredients[i] = rawIngredients[i].trim();
+            db.updateRecipe(recipeToEdit.getId(), "ingredients", String.join(";", rawIngredients));
             sendText(id, "Recipe ingredients updated successfully!");
-
             return;
         }
 
         if (state == State.EDITING_INSTRUCTIONS) {
             Recipe recipeToEdit = tempRecipes.get(id);
-            int recipeId = db.getIdOf(recipeToEdit.getName());
-
             String[] instructions = message.getText().split("\n");
-            for (int i = 0; i < instructions.length; i++) {
-                instructions[i] = instructions[i].trim();
-            }
-            db.updateRecipe(recipeId, "instructions", String.join(";", instructions));
+            for (int i = 0; i < instructions.length; i++) instructions[i] = instructions[i].trim();
+            db.updateRecipe(recipeToEdit.getId(), "instructions", String.join(";", instructions));
             sendText(id, "Recipe instructions updated successfully!");
-
             return;
         }
 
@@ -525,18 +499,18 @@ public class Bot extends TelegramLongPollingBot {
         List<List<InlineKeyboardButton>> rows = new ArrayList<>();
         List<InlineKeyboardButton> row1 = new ArrayList<>();
 
-        int recipeId = db.getIdOf(recipe.getName());
+        String recipeId = recipe.getId();
 
         InlineKeyboardButton delBtn = new InlineKeyboardButton();
         delBtn.setText("🗑 Delete");
         delBtn.setCallbackData("DELETE_" + recipeId);
         row1.add(delBtn);
-        
+
         InlineKeyboardButton editBtn = new InlineKeyboardButton();
         editBtn.setText("✏️ Edit");
         editBtn.setCallbackData("EDIT_" + recipeId);
         row1.add(editBtn);
-        
+
         InlineKeyboardButton shareBtn = new InlineKeyboardButton();
         shareBtn.setText("📤 Share");
         try {

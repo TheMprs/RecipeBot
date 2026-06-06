@@ -23,18 +23,6 @@ jobs:
     - name: Build with Maven
       run: mvn --batch-mode clean package -DskipTests -Djava.net.preferIPv4Stack=true
 
-    - name: Backup Database Before Deploy
-      uses: appleboy/ssh-action@v0.1.10
-      with:
-        host: ${{ secrets.GCP_HOST }}
-        username: ${{ secrets.GCP_USERNAME }}
-        key: ${{ secrets.GCP_SSH_KEY }}
-        script: |
-          mkdir -p /home/${{ secrets.GCP_USERNAME }}/RecipeBot/db-backup
-          find /home/${{ secrets.GCP_USERNAME }}/RecipeBot -maxdepth 1 \( -name "*.db" -o -name "*.mv.db" -o -name "*.h2.db" \) -exec cp {} /home/${{ secrets.GCP_USERNAME }}/RecipeBot/db-backup/ \;
-          echo "✓ Database backed up"
-          ls -lah /home/${{ secrets.GCP_USERNAME }}/RecipeBot/db-backup/
-
     - name: Copy JAR to Google Cloud VM
       uses: appleboy/scp-action@v0.1.4
       with:
@@ -44,17 +32,6 @@ jobs:
         source: "target/*-jar-with-dependencies.jar"
         target: "/home/${{ secrets.GCP_USERNAME }}/RecipeBot/"
         strip_components: 1
-
-    - name: Restore Database After Deploy
-      uses: appleboy/ssh-action@v0.1.10
-      with:
-        host: ${{ secrets.GCP_HOST }}
-        username: ${{ secrets.GCP_USERNAME }}
-        key: ${{ secrets.GCP_SSH_KEY }}
-        script: |
-          cp /home/${{ secrets.GCP_USERNAME }}/RecipeBot/db-backup/* /home/${{ secrets.GCP_USERNAME }}/RecipeBot/ 2>/dev/null || true
-          echo "✓ Database restored"
-          ls -lah /home/${{ secrets.GCP_USERNAME }}/RecipeBot/*.db* 2>/dev/null || echo "No database files"
 
     - name: Copy .env to VM
       uses: appleboy/ssh-action@v0.1.10

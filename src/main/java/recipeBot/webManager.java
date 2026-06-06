@@ -1,57 +1,23 @@
 package recipeBot;
 
-import recipeBot.database.DatabaseHandler;
+import recipeBot.database.SupabaseHandler;
 import io.javalin.Javalin;
 import io.javalin.http.Context;
 import io.github.cdimascio.dotenv.Dotenv;
 
 public class webManager {
-    private final DatabaseHandler db;
+    private final SupabaseHandler db;
     private final GeminiHandler gemini;
     private final Dotenv dotenv = Dotenv.load();
 
-    public webManager(DatabaseHandler db) {
+    public webManager(SupabaseHandler db) {
         this.db = db;
         this.gemini = new GeminiHandler(dotenv.get("GEMINI_API_KEY"));
     }
 
     public void registerRoutes(Javalin app) {
-        app.get("/api/recipes", this::getAllRecipes);
-        app.get("/api/recipes/id/{id}", this::getRecipeById);
-        app.get("/api/recipes/{name}", this::getOneRecipe);
-        app.get("/api/recipes/{name}/share", this::getShareableRecipe);
-        app.post("/api/recipes", this::addRecipe);
-        app.put("/api/recipes/{name}", this::updateRecipe);
-        app.delete("/api/recipes/{name}", this::deleteRecipe);
         app.post("/api/recipes/scrape", this::scrapeRecipeFromUrl);
-    }
-
-    public void getAllRecipes(Context ctx) {
-        // This method will be called by the web server to get all recipes from the database
-        // Returns full Recipe objects with IDs to eliminate N+1 queries on the frontend
-        ctx.json(db.getAllRecipes());    
-    }
-
-    public void getRecipeById(Context ctx) {
-        // Get recipe by numeric ID (for share link resolution)
-        String id = ctx.pathParam("id");
-        Recipe recipe = db.getRecipeById(id);
-        if (recipe != null) {
-            ctx.json(recipe);
-        } else {
-            ctx.status(404).result("Recipe not found");
-        }
-    }
-
-    public void getOneRecipe(Context ctx) {
-        // This method will be called by the web server to get a single recipe from the database
-        String name = ctx.pathParam("name");
-        Recipe recipe = db.getRecipeByName(name);
-        if (recipe != null) {
-            ctx.json(recipe);
-        } else {
-            ctx.status(404).result("Recipe not found");
-        }
+        app.get("/api/recipes/{name}/share", this::getShareableRecipe);
     }
 
     public void getShareableRecipe(Context ctx) {
@@ -64,59 +30,20 @@ public class webManager {
         }
     }
 
-    public void addRecipe(Context ctx) {
-        try {
-            // Convert the JSON from React directly into a Java Recipe object
-            Recipe newRecipe = ctx.bodyAsClass(Recipe.class); 
-            
-            db.addRecipe(newRecipe);
-            ctx.status(201).result("Recipe added successfully");
-        } catch (Exception e) {
-            e.printStackTrace();
-            ctx.status(400).result("Invalid request data: " + e.getMessage());
-        }
-    }
-
-    public void updateRecipe(Context ctx) {
-        try {
-            String oldName = ctx.pathParam("name");
-            Recipe updatedRecipe = ctx.bodyAsClass(Recipe.class);
-            
-            // Delete old recipe and add updated one with new name
-            db.deleteRecipe(oldName);
-            
-            db.addRecipe(updatedRecipe);
-            
-            ctx.status(200).result("Recipe updated successfully");
-        } catch (Exception e) {
-            e.printStackTrace();
-            ctx.status(400).result("Invalid request data: " + e.getMessage());
-        }
-    }
-
-    public void deleteRecipe(Context ctx) {
-        String name = ctx.pathParam("name");
-        db.deleteRecipe(name);
-        ctx.status(200).result("Recipe deleted successfully");
-    }
-
     public void scrapeRecipeFromUrl(Context ctx) {
         try {
-            // Get URL from request body
             String url = ctx.body();
             if (url == null || url.trim().isEmpty()) {
                 ctx.status(400).result("URL is required");
                 return;
             }
 
-            // Extract text from URL
             String rawText = extractTextFromUrl(url);
             if (rawText == null || rawText.isEmpty()) {
                 ctx.status(400).result("Failed to fetch content from URL");
                 return;
             }
 
-            // Extract recipe using Gemini
             Recipe extractedRecipe = gemini.extractRecipeFromText(rawText);
             if (extractedRecipe != null && extractedRecipe.getName() != null) {
                 ctx.json(extractedRecipe);

@@ -4,13 +4,7 @@ target/
 !**/src/test/**/target/
 
 ### IntelliJ IDEA ###
-.idea/modules.xml
-.idea/jarRepositories.xml
-.idea/compiler.xml
-.idea/libraries/
-*.iws
-*.iml
-*.ipr
+.idea/
 
 ### Eclipse ###
 .apt_generated
@@ -39,3 +33,12 @@ build/
 
 ### Environment Variables ###
 .env
+.env.*
+
+### Claude ###
+.claude/
+.agents/
+skills-lock.json
+
+### Database ###
+data/

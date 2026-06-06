@@ -1,11 +1,10 @@
 package recipeBot;
 
 public class Recipe {
-    private int id = -1; // -1 means "not yet persisted"
+    private String id = null;
     private String name;
     private Category category;
     private String description;
-    private boolean favorite = false; // default value
     private String[] ingredients;
     private String[] instructions;
 
@@ -25,25 +24,6 @@ public class Recipe {
         this.instructions = null;
     }
 
-    public Recipe(String text) {
-        // constructor to parse recipe from SQL text input
-        String[] parts = text.split(",");
-        this.name = parts[0];
-        this.category = Category.valueOf(parts[1].toUpperCase());
-        this.description = parts[2];
-        this.ingredients = parts[3].split(";"); //  ingredients are separated by semicolons
-        this.instructions = parts[4].split(";"); //  instructions are separated by semicolons
-    }
-
-    // add recipe to favorite list
-    public void favorite() {
-        this.favorite = true;
-    }
-
-    // remove recipe from favorite list
-    public void unfavorite() {
-        this.favorite = false;
-    }
 
     public String getName() { return this.name; }
     public Category getCategory() { return this.category; }
@@ -56,10 +36,8 @@ public class Recipe {
     public void setDescription(String description) { this.description = description; }
     public void setIngredients(String[] ingredients) { this.ingredients = ingredients; }
     public void setInstructions(String[] instructions) { this.instructions = instructions; }
-    public boolean isFavorite() { return this.favorite; }
-    
-    public int getId() { return this.id; }
-    public void setId(int id) { this.id = id; }
+    public String getId() { return this.id; }
+    public void setId(String id) { this.id = id; }
 
     @Override
     public String toString() {
