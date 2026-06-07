@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import { supabase } from '../supabaseClient';
 
 export default function Login({ onLoginSuccess }) {
@@ -42,7 +42,7 @@ export default function Login({ onLoginSuccess }) {
       <button
         onClick={handleGoogleSignIn}
         disabled={loading}
-        className="w-full bg-gradient-to-r from-[#ce743e] to-[#b86535] text-white p-4 rounded-2xl hover:from-[#b86535] hover:to-[#a5582d] disabled:opacity-50 font-semibold transition-all flex items-center justify-center gap-3 mb-6 shadow-md hover:shadow-lg"
+        className="w-full bg-gradient-to-r from-[#e67e22] to-[#cf711f] text-white p-4 rounded-2xl hover:from-[#cf711f] hover:to-[#b8621a] disabled:opacity-50 font-semibold transition-all flex items-center justify-center gap-3 mb-6 shadow-md hover:shadow-lg"
       >
         {loading ? (
           <>

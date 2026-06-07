@@ -1,14 +1,8 @@
-import { useState, useEffect } from 'react'
-import { ArrowLeft, ArrowRight, Users, ChefHat, Check, Pencil, Trash2, RotateCcw, UtensilsCrossed, Share2 } from 'lucide-react'
+﻿import { useState, useEffect, useRef } from 'react'
+import { ArrowLeft, ArrowRight, Users, ChefHat, Check, Pencil, Trash2, RotateCcw, UtensilsCrossed, Share2, Heart, Copy, Bookmark, Plus } from 'lucide-react'
 
 const COOKIE_NAME_PREFIX = 'recipe_ingredients_'
 
-const categoryTranslations = {
-  'MAIN': 'עיקרית',
-  'DESSERT': 'קינוח',
-  'SNACK': 'חטיף',
-  'SPECIAL': 'מיוחד'
-}
 
 function getCookie(name) {
   if (typeof document === 'undefined') return null
@@ -25,9 +19,12 @@ function setCookie(name, value, days = 30) {
   document.cookie = `${name}=${value};expires=${expires.toUTCString()};path=/;SameSite=Lax`
 }
 
-export function RecipeDetail({ recipe, language = 'en', apiBase = '/api', onBack, onEdit, onDelete, onMarkMade, cookCount = 0 }) {
+export function RecipeDetail({ recipe, language = 'en', apiBase = '/api', onBack, onEdit, onDelete, onMarkMade, cookCount = 0, likeCount = 0, isLiked = false, onToggleLike, onDuplicate, onSelectAuthor, userCategories = [], currentRecipeCategories = [], onToggleRecipeCategory, onCreateCategory }) {
   const cookieName = `${COOKIE_NAME_PREFIX}${recipe.id}`
   const isRtl = language === 'he'
+  const [showCategoryDropdown, setShowCategoryDropdown] = useState(false)
+  const [newCategoryInput, setNewCategoryInput] = useState('')
+  const categoryDropdownRef = useRef(null)
 
   const [checkedIngredients, setCheckedIngredients] = useState(() => {
     const saved = getCookie(cookieName)
@@ -65,6 +62,12 @@ export function RecipeDetail({ recipe, language = 'en', apiBase = '/api', onBack
 
   const [copied, setCopied] = useState(false)
   const [marked, setMarked] = useState(false)
+
+  useEffect(() => {
+    const handler = (e) => { if (categoryDropdownRef.current && !categoryDropdownRef.current.contains(e.target)) setShowCategoryDropdown(false) }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
 
   const handleMarkMade = () => {
     if (!onMarkMade) return
@@ -113,20 +116,89 @@ export function RecipeDetail({ recipe, language = 'en', apiBase = '/api', onBack
             <Share2 className="w-4 h-4" />
             <span className="hidden sm:inline">{copied ? 'Copied!' : 'Share'}</span>
           </button>
-          <button
-            onClick={() => onEdit(recipe)}
-            className="flex items-center gap-2 px-3 py-2 text-sm text-[#64748b] hover:text-[#ce743e] hover:bg-[#f8fafc] rounded-xl transition-colors"
-          >
-            <Pencil className="w-4 h-4" />
-            <span className="hidden sm:inline">Edit</span>
-          </button>
-          <button
-            onClick={() => onDelete(recipe)}
-            className="flex items-center gap-2 px-3 py-2 text-sm text-[#64748b] hover:text-red-500 hover:bg-red-50 rounded-xl transition-colors"
-          >
-            <Trash2 className="w-4 h-4" />
-            <span className="hidden sm:inline">Delete</span>
-          </button>
+          {onToggleRecipeCategory && (
+            <div className="relative" ref={categoryDropdownRef}>
+              <button
+                onClick={() => setShowCategoryDropdown(v => !v)}
+                className={`flex items-center gap-2 px-3 py-2 text-sm rounded-xl transition-colors ${
+                  currentRecipeCategories.length > 0 ? 'text-[#ce743e] bg-[#ce743e]/10' : 'text-[#64748b] hover:text-[#ce743e] hover:bg-[#f8fafc]'
+                }`}
+              >
+                <Bookmark className={`w-4 h-4 ${currentRecipeCategories.length > 0 ? 'fill-[#ce743e]' : ''}`} />
+                <span className="hidden sm:inline">{language === 'en' ? 'Save to' : 'שמור'}</span>
+              </button>
+              {showCategoryDropdown && (
+                <div className={`absolute top-full mt-2 z-50 bg-white border border-[#e8e4dc] rounded-2xl shadow-lg overflow-hidden min-w-[200px] ${isRtl ? 'right-0' : 'left-0'}`}>
+                  {userCategories.length === 0 && !onCreateCategory && (
+                    <p className="px-4 py-3 text-sm text-[#7a7265]">{language === 'en' ? 'No categories yet' : 'אין קטגוריות עדיין'}</p>
+                  )}
+                  {userCategories.map(cat => {
+                    const isSaved = currentRecipeCategories.includes(cat.id)
+                    return (
+                      <button
+                        key={cat.id}
+                        onClick={() => onToggleRecipeCategory(recipe.id, cat.id)}
+                        className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors hover:bg-[#f5f3ef] ${isRtl ? 'text-right flex-row-reverse' : 'text-left'}`}
+                      >
+                        <div className={`w-4 h-4 rounded flex-shrink-0 flex items-center justify-center border-2 transition-colors ${isSaved ? 'bg-[#ce743e] border-[#ce743e]' : 'border-[#e2e8f0]'}`}>
+                          {isSaved && <Check className="w-2.5 h-2.5 text-white" />}
+                        </div>
+                        <span className="text-[#3d3429]">{cat.name}</span>
+                      </button>
+                    )
+                  })}
+                  {onCreateCategory && (
+                    <form
+                      onSubmit={async e => {
+                        e.preventDefault()
+                        const val = newCategoryInput.trim()
+                        if (!val) return
+                        const newCat = await onCreateCategory(val)
+                        if (newCat) onToggleRecipeCategory(recipe.id, newCat.id)
+                        setNewCategoryInput('')
+                      }}
+                      className="border-t border-[#e8e4dc] px-3 py-2 flex items-center gap-2"
+                    >
+                      <Plus className="w-3.5 h-3.5 text-[#7a7265] flex-shrink-0" />
+                      <input
+                        value={newCategoryInput}
+                        onChange={e => setNewCategoryInput(e.target.value)}
+                        placeholder={language === 'en' ? 'New category...' : 'קטגוריה חדשה...'}
+                        className="flex-1 text-sm text-[#3d3429] placeholder:text-[#7a7265] focus:outline-none bg-transparent"
+                      />
+                    </form>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+          {onDuplicate && (
+            <button
+              onClick={() => onDuplicate(recipe)}
+              className="flex items-center gap-2 px-3 py-2 text-sm text-[#64748b] hover:text-[#e67e22] hover:bg-[#f8fafc] rounded-xl transition-colors"
+            >
+              <Copy className="w-4 h-4" />
+              <span className="hidden sm:inline">{language === 'en' ? 'Dupe' : 'שכפל'}</span>
+            </button>
+          )}
+          {onEdit && (
+            <button
+              onClick={() => onEdit(recipe)}
+              className="flex items-center gap-2 px-3 py-2 text-sm text-[#64748b] hover:text-[#e67e22] hover:bg-[#f8fafc] rounded-xl transition-colors"
+            >
+              <Pencil className="w-4 h-4" />
+              <span className="hidden sm:inline">Edit</span>
+            </button>
+          )}
+          {onDelete && (
+            <button
+              onClick={() => onDelete(recipe)}
+              className="flex items-center gap-2 px-3 py-2 text-sm text-[#64748b] hover:text-red-500 hover:bg-red-50 rounded-xl transition-colors"
+            >
+              <Trash2 className="w-4 h-4" />
+              <span className="hidden sm:inline">Delete</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -136,41 +208,64 @@ export function RecipeDetail({ recipe, language = 'en', apiBase = '/api', onBack
           <div className="flex items-start justify-between gap-4 mb-4 w-full">
             <div>
               <span className="inline-block px-3 py-1 rounded-full text-xs font-medium bg-[#f8fafc] text-[#5a5248] mb-3">
-                {language === 'en' ? recipe.category : (categoryTranslations[recipe.category] || recipe.category)}
+                {recipe.category}
               </span>
               <h1 className="text-2xl sm:text-3xl font-bold text-[#1e293b] text-balance">
                 {recipe.title}
               </h1>
+              {recipe.authorUsername && (
+                <button
+                  onClick={() => onSelectAuthor && onSelectAuthor(recipe.authorId)}
+                  className="mt-1.5 text-sm text-[#7a7265] hover:text-[#e67e22] transition-colors"
+                >
+                  @{recipe.authorUsername}
+                </button>
+              )}
             </div>
-            {onMarkMade && (
-              <button
-                onClick={handleMarkMade}
-                className={`flex-shrink-0 flex flex-col items-center gap-1 px-3 py-2 rounded-2xl border transition-all duration-200 ${
-                  marked
-                    ? 'bg-[#ce743e] border-[#ce743e] text-white'
-                    : 'bg-[#faf9f7] border-[#e8e4dc] text-[#7a7265] hover:border-[#ce743e]/50 hover:text-[#ce743e]'
-                }`}
-              >
-                <ChefHat className="w-5 h-5" />
-                <span className="text-xs font-medium leading-none">
-                  {marked ? (language === 'en' ? 'Logged!' : 'נרשם!') : cookCount > 0 ? `${cookCount}×` : (language === 'en' ? 'Made it' : 'הכנתי')}
-                </span>
-              </button>
-            )}
+            <div className="flex items-center gap-2 flex-shrink-0">
+              {onToggleLike && (
+                <button
+                  onClick={() => onToggleLike(recipe.id)}
+                  className={`flex flex-col items-center gap-1 px-3 py-2 rounded-2xl border transition-all duration-200 ${
+                    isLiked
+                      ? 'bg-red-50 border-red-200 text-red-500'
+                      : 'bg-[#faf9f7] border-[#e8e4dc] text-[#7a7265] hover:border-red-200 hover:text-red-400'
+                  }`}
+                >
+                  <Heart className={`w-5 h-5 ${isLiked ? 'fill-red-500' : ''}`} />
+                  <span className="text-xs font-medium leading-none">{likeCount > 0 ? likeCount : '—'}</span>
+                </button>
+              )}
+              {onMarkMade && (
+                <button
+                  onClick={handleMarkMade}
+                  className={`flex flex-col items-center gap-1 px-3 py-2 rounded-2xl border transition-all duration-200 ${
+                    marked
+                      ? 'bg-[#e67e22] border-[#e67e22] text-white'
+                      : 'bg-[#faf9f7] border-[#e8e4dc] text-[#7a7265] hover:border-[#e67e22]/50 hover:text-[#e67e22]'
+                  }`}
+                >
+                  <ChefHat className="w-5 h-5" />
+                  <span className="text-xs font-medium leading-none">
+                    {marked ? (language === 'en' ? 'Logged!' : 'נרשם!') : cookCount > 0 ? `${cookCount}×` : (language === 'en' ? 'Made it' : 'הכנתי')}
+                  </span>
+                </button>
+              )}
+            </div>
           </div>
 
           <p className={`text-[#64748b] leading-relaxed mb-6 `}>{recipe.description}</p>
 
           <div className={`flex flex-wrap items-center gap-4 sm:gap-6 text-sm text-[#64748b] ${isRtl ? 'text-right' : 'text-left'}`}>
             <div className={`flex items-center gap-2}`}>
-              <div className="w-8 h-8 rounded-full bg-[#ce743e]/10 flex items-center justify-center">
-                <Users className="w-4 h-4 text-[#ce743e]"/>
+              <div className="w-8 h-8 rounded-full bg-[#e67e22]/10 flex items-center justify-center">
+                <Users className="w-4 h-4 text-[#e67e22]"/>
               </div>
               <span className="ms-1">{language === 'en' ? '4 servings' : '4 מנות'}</span>
             </div>
             <div className={`flex items-center gap-2}`}>
-              <div className="w-8 h-8 rounded-full bg-[#ce743e]/10 flex items-center justify-center">
-                <ChefHat className="w-4 h-4 text-[#ce743e]" />
+              <div className="w-8 h-8 rounded-full bg-[#e67e22]/10 flex items-center justify-center">
+                <ChefHat className="w-4 h-4 text-[#e67e22]" />
               </div>
               <span className="ms-1">{language === 'en' ? `${recipe.ingredients.length} ingredients` : `${recipe.ingredients.length} מצרכים`}</span>
             </div>
@@ -185,8 +280,8 @@ export function RecipeDetail({ recipe, language = 'en', apiBase = '/api', onBack
         <div className="lg:col-span-2">
           <div className="bg-white rounded-3xl border border-[#e2e8f0]/50 shadow-sm p-6">
             <div className="flex items-center gap-2 mb-3">
-              <div className="w-7 h-7 rounded-full bg-[#ce743e]/10 flex items-center justify-center flex-shrink-0">
-                <UtensilsCrossed className="w-4 h-4 text-[#ce743e]" />
+              <div className="w-7 h-7 rounded-full bg-[#e67e22]/10 flex items-center justify-center flex-shrink-0">
+                <UtensilsCrossed className="w-4 h-4 text-[#e67e22]" />
               </div>
               <h2 className="text-lg font-semibold text-[#1e293b] flex-1">
                 {language === 'en' ? 'Ingredients' : 'מצרכים'}
@@ -207,7 +302,7 @@ export function RecipeDetail({ recipe, language = 'en', apiBase = '/api', onBack
                       <button
                         onClick={() => toggleIngredient(ingredient)}
                         className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all duration-200 ${
-                          isChecked ? 'bg-[#ce743e] border-[#ce743e]' : 'border-[#e2e8f0] hover:border-[#ce743e]/50'
+                          isChecked ? 'bg-[#e67e22] border-[#e67e22]' : 'border-[#e2e8f0] hover:border-[#e67e22]/50'
                         }`}
                       >
                         {isChecked && <Check className="w-3 h-3 text-white" />}
@@ -227,8 +322,8 @@ export function RecipeDetail({ recipe, language = 'en', apiBase = '/api', onBack
         <div className="lg:col-span-3">
           <div className="bg-white rounded-3xl border border-[#e2e8f0]/50 shadow-sm p-6">
             <h2 className={`text-lg font-semibold text-[#1e293b] mb-6 flex items-center gap-2}`}>
-              <span className="w-7 h-7 rounded-full bg-[#ce743e]/10 flex items-center justify-center">
-                <ChefHat className="w-4 h-4 text-[#ce743e]" />
+              <span className="w-7 h-7 rounded-full bg-[#e67e22]/10 flex items-center justify-center">
+                <ChefHat className="w-4 h-4 text-[#e67e22]" />
               </span>
               <span className="ms-2">
                 {language === 'en' ? 'Instructions' : 'הוראות'}

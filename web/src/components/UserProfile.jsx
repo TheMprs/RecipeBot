@@ -1,16 +1,8 @@
-import { User, BookOpen, Search, Filter, X, Settings } from 'lucide-react';
-import { RecipeCard } from './RecipeCard';
-import { useState, useEffect } from 'react';
+﻿import { User, BookOpen, Search, Filter, X, Settings, Plus, ChevronLeft } from 'lucide-react';
+import { RecipeCard, RecipeCardSkeleton } from './RecipeCard';
+import { ConfirmDialog } from './ConfirmDialog';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../supabaseClient';
-
-const categories = ['All', 'MAIN', 'SNACK', 'SPECIAL', 'DESSERT']
-
-const categoryTranslations = {
-  'MAIN': 'עיקרית',
-  'DESSERT': 'קינוח',
-  'SNACK': 'חטיף',
-  'SPECIAL': 'מיוחד'
-}
 
 export function UserProfile({
   user,
@@ -20,10 +12,18 @@ export function UserProfile({
   viewingProfile,
   cookCounts = {},
   apiBase = '/api',
-  onLogout
+  onLogout,
+  userCategories = [],
+  recipeCategories = {},
+  onCreateCategory,
+  onDeleteCategory,
+  onToggleRecipeCategory,
+  onRenameCategory,
+  onHandleChange,
 }) {
   const isRtl = language === 'he';
   const [viewingRecipes, setViewingRecipes] = useState([]);
+  const [recipesLoading, setRecipesLoading] = useState(false);
   const [ownProfile, setOwnProfile] = useState(() => {
     if (!user?.id) return null;
     try {
@@ -51,19 +51,54 @@ export function UserProfile({
   // s288 covers retina for our 128px display, -no removes Google's overlay
   const avatarUrl = rawAvatarUrl?.replace(/=s\d+.*$/, '=s288-c-no');
 
+  const [likeCounts, setLikeCounts] = useState({});
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('All');
+  const [selectedCategoryName, setSelectedCategoryName] = useState(null);
   const [sortBy, setSortBy] = useState('most-prepped');
-  const [isCategoryMenuOpen, setIsCategoryMenuOpen] = useState(false);
+  const [sortOrder, setSortOrder] = useState('desc');
+  const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showRecipeSettings, setShowRecipeSettings] = useState(false);
+  const [defaultVisibility, setDefaultVisibility] = useState(() => localStorage.getItem('defaultRecipeVisibility') || 'public');
+  const [editingCategoryId, setEditingCategoryId] = useState(null);
+  const [editingCategoryName, setEditingCategoryName] = useState('');
+  const [newCategoryInput, setNewCategoryInput] = useState('');
+  const [showNewCategoryInput, setShowNewCategoryInput] = useState(false);
+  const [confirmDialog, setConfirmDialog] = useState(null);
+  const newCategoryInputRef = useRef(null);
+  const filterMenuRef = useRef(null);
+
+  useEffect(() => {
+    const handler = (e) => { if (filterMenuRef.current && !filterMenuRef.current.contains(e.target)) setIsFilterMenuOpen(false) }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
   
+  const fetchLikeCounts = async (ids) => {
+    if (!ids.length) return;
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+    try {
+      const res = await fetch(
+        `${supabaseUrl}/rest/v1/recipe_likes?recipe_id=in.(${ids.join(',')})&select=recipe_id`,
+        { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` } }
+      );
+      if (!res.ok) return;
+      const data = await res.json();
+      const counts = {};
+      for (const row of data) counts[row.recipe_id] = (counts[row.recipe_id] || 0) + 1;
+      setLikeCounts(counts);
+    } catch {}
+  };
+
   // Fetch viewing profile's public recipes
   useEffect(() => {
     if (viewingProfile) {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
       const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-      
-      fetch(`${supabaseUrl}/rest/v1/recipes?user_id=eq.${viewingProfile.id}&visibility=eq.public&select=*`, {
+
+      setRecipesLoading(true);
+      fetch(`${supabaseUrl}/rest/v1/recipes?user_id=eq.${viewingProfile.id}&visibility=eq.public&select=*,recipe_likes(recipe_id)`, {
         headers: {
           'apikey': supabaseKey,
           'Authorization': `Bearer ${supabaseKey}`,
@@ -79,13 +114,27 @@ export function UserProfile({
             description: recipe.description,
             ingredients: recipe.ingredients,
             instructions: recipe.instructions,
-            created_at: recipe.created_at
+            created_at: recipe.created_at,
+            likeCount: recipe.recipe_likes?.length || 0
           }));
           setViewingRecipes(formatted);
+          const counts = {};
+          formatted.forEach(r => { counts[r.id] = r.likeCount; });
+          setLikeCounts(counts);
         })
-        .catch(err => console.error('[Data] Failed to fetch viewing profile recipes:', err.message));
+        .catch(err => console.error('[Data] Failed to fetch viewing profile recipes:', err.message))
+        .finally(() => setRecipesLoading(false));
     }
   }, [viewingProfile]);
+
+  // Populate like counts for own recipes from embedded data
+  useEffect(() => {
+    if (!viewingProfile && recipes.length > 0) {
+      const counts = {};
+      recipes.forEach(r => { counts[r.id] = r.likeCount || 0; });
+      setLikeCounts(counts);
+    }
+  }, [recipes, viewingProfile]);
 
   useEffect(() => {
     if (!viewingProfile && user) {
@@ -104,6 +153,13 @@ export function UserProfile({
         .catch(() => {});
     }
   }, [user, viewingProfile]);
+
+  const handleSetDefaultVisibility = (v) => {
+    setDefaultVisibility(v);
+    localStorage.setItem('defaultRecipeVisibility', v);
+  };
+
+  const closeSettings = () => { setShowSettings(false); setShowEditProfile(false); setShowRecipeSettings(false); };
 
   const handleSaveProfile = async () => {
     setIsSaving(true);
@@ -126,6 +182,7 @@ export function UserProfile({
       const updated = { ...ownProfile, display_name: editDisplayName.trim(), username: editHandle.trim(), bio: editBio.trim() };
       setOwnProfile(updated);
       localStorage.setItem(`profile_${user.id}`, JSON.stringify(updated));
+      if (onHandleChange) onHandleChange(editHandle.trim());
       setShowEditProfile(false);
     } catch (err) {
       alert('Failed to save: ' + err.message);
@@ -135,10 +192,18 @@ export function UserProfile({
   };
 
   const handleDeleteAccount = async () => {
-    if (!window.confirm(language === 'en'
-      ? 'This will permanently delete your account and all your recipes. This cannot be undone. Are you sure?'
-      : 'פעולה זו תמחק לצמיתות את חשבונך וכל המתכונים שלך. לא ניתן לבטל. האם אתה בטוח?'
-    )) return;
+    const confirmed = await new Promise(resolve => {
+      setConfirmDialog({
+        title: language === 'en' ? 'Delete account?' : 'מחיקת חשבון?',
+        message: language === 'en'
+          ? 'This will permanently delete your account and all your recipes. This cannot be undone.'
+          : 'פעולה זו תמחק לצמיתות את חשבונך וכל המתכונים שלך. לא ניתן לבטל.',
+        confirmLabel: language === 'en' ? 'Delete account' : 'מחק חשבון',
+        onConfirm: () => { setConfirmDialog(null); resolve(true); },
+        onCancel: () => { setConfirmDialog(null); resolve(false); },
+      });
+    });
+    if (!confirmed) return;
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) throw new Error('Not authenticated');
@@ -158,13 +223,19 @@ export function UserProfile({
     .filter(recipe => {
       const matchesSearch = recipe.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
                            recipe.description.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesCategory = selectedCategory === 'All' || recipe.category === selectedCategory;
+      const matchesCategory = !selectedCategoryName || (
+        recipeCategories[recipe.id]?.some(catId =>
+          userCategories.find(c => c.id === catId)?.name === selectedCategoryName
+        ) || recipe.category === selectedCategoryName
+      );
       return matchesSearch && matchesCategory;
     })
     .sort((a, b) => {
-      if (sortBy === 'alphabetical') return a.title.localeCompare(b.title);
-      if (sortBy === 'most-prepped') return (cookCounts[b.id] || 0) - (cookCounts[a.id] || 0);
-      return new Date(b.created_at) - new Date(a.created_at); // date (newest first)
+      let cmp = 0;
+      if (sortBy === 'alphabetical') cmp = a.title.localeCompare(b.title);
+      else if (sortBy === 'most-prepped') cmp = (cookCounts[b.id] || 0) - (cookCounts[a.id] || 0);
+      else cmp = new Date(b.created_at) - new Date(a.created_at);
+      return sortOrder === 'asc' ? -cmp : cmp;
     });
   
   return (
@@ -182,7 +253,7 @@ export function UserProfile({
         <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4 sm:gap-6" style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
           {/* Avatar */}
           <div className="flex-shrink-0">
-            <div className="w-24 sm:w-32 h-24 sm:h-32 rounded-full border-4 border-[#ce743e]/20 overflow-hidden bg-[#ce743e]/10 flex items-center justify-center">
+            <div className="w-24 sm:w-32 h-24 sm:h-32 rounded-full border-4 border-[#e67e22]/20 overflow-hidden bg-[#e67e22]/10 flex items-center justify-center">
               {avatarUrl ? (
                 <img
                   src={avatarUrl}
@@ -192,7 +263,7 @@ export function UserProfile({
                 />
               ) : null}
               <div className={`w-full h-full items-center justify-center ${avatarUrl ? 'hidden' : 'flex'}`}>
-                <User className="w-12 sm:w-16 h-12 sm:h-16 text-[#ce743e]" />
+                <User className="w-12 sm:w-16 h-12 sm:h-16 text-[#e67e22]" />
               </div>
             </div>
           </div>
@@ -205,19 +276,19 @@ export function UserProfile({
             {/* Stats */}
             <div className="flex justify-center sm:justify-start gap-4 sm:gap-8 mt-4 sm:mt-6">
               <div className="text-center">
-                <div className="text-lg sm:text-2xl font-bold text-[#ce743e]">{displayRecipes.length}</div>
+                <div className="text-lg sm:text-2xl font-bold text-[#e67e22]">{displayRecipes.length}</div>
                 <div className="text-xs text-[#7a7265] uppercase tracking-wide">
                   {language === 'en' ? 'Recipes' : 'מתכונים'}
                 </div>
               </div>
               <div className="text-center">
-                <div className="text-lg sm:text-2xl font-bold text-[#ce743e]">0</div>
+                <div className="text-lg sm:text-2xl font-bold text-[#e67e22]">0</div>
                 <div className="text-xs text-[#7a7265] uppercase tracking-wide">
                   {language === 'en' ? 'Followers' : 'עוקבים'}
                 </div>
               </div>
               <div className="text-center">
-                <div className="text-lg sm:text-2xl font-bold text-[#ce743e]">0</div>
+                <div className="text-lg sm:text-2xl font-bold text-[#e67e22]">0</div>
                 <div className="text-xs text-[#7a7265] uppercase tracking-wide">
                   {language === 'en' ? 'Following' : 'נעקבים'}
                 </div>
@@ -227,81 +298,128 @@ export function UserProfile({
         </div>
       </div>
 
-      {/* Search and Filter */}
+      {/* Category pills — own profile only */}
+      {!viewingProfile && (
+        <div className="flex items-center gap-2 mb-4 overflow-x-auto pb-1" style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
+          <button
+            onClick={() => setSelectedCategoryName(null)}
+            className={`flex-shrink-0 px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+              !selectedCategoryName ? 'bg-[#e67e22] text-white' : 'bg-white border border-[#e8e4dc] text-[#7a7265] hover:border-[#e67e22]/40'
+            }`}
+          >
+            {language === 'en' ? 'All' : 'הכל'}
+          </button>
+          {userCategories.map(cat => (
+            <button
+              key={cat.id}
+              onClick={() => setSelectedCategoryName(selectedCategoryName === cat.name ? null : cat.name)}
+              className={`flex-shrink-0 rounded-full text-sm font-medium transition-colors px-3 py-1.5 ${
+                selectedCategoryName === cat.name ? 'bg-[#e67e22] text-white' : 'bg-white border border-[#e8e4dc] text-[#7a7265] hover:border-[#e67e22]/40'
+              }`}
+            >
+              {cat.name}
+            </button>
+          ))}
+          {showNewCategoryInput ? (
+            <form
+              onSubmit={async e => {
+                e.preventDefault();
+                const val = newCategoryInput.trim();
+                if (val) await onCreateCategory(val);
+                setNewCategoryInput('');
+                setShowNewCategoryInput(false);
+              }}
+              className="flex-shrink-0"
+            >
+              <input
+                ref={newCategoryInputRef}
+                autoFocus
+                value={newCategoryInput}
+                onChange={e => setNewCategoryInput(e.target.value)}
+                onBlur={() => { setShowNewCategoryInput(false); setNewCategoryInput(''); }}
+                onKeyDown={e => { if (e.key === 'Escape') { setShowNewCategoryInput(false); setNewCategoryInput(''); } }}
+                placeholder={language === 'en' ? 'Name...' : 'שם...'}
+                className="w-28 px-3 py-1.5 text-sm border border-[#e67e22] rounded-full focus:outline-none bg-white text-[#3d3429]"
+              />
+            </form>
+          ) : (
+            <button
+              onClick={() => setShowNewCategoryInput(true)}
+              className="flex-shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-full text-sm text-[#7a7265] border border-dashed border-[#e8e4dc] hover:border-[#e67e22]/40 hover:text-[#e67e22] transition-colors"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              {language === 'en' ? 'New' : 'חדש'}
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Search and sort */}
       <div className="mb-8 flex items-center">
         <div className="relative flex-1 z-10">
           <Search className={`absolute top-1/2 -translate-y-1/2 w-4 h-4 text-[#7a7265] ${language === 'he' ? 'right-4' : 'left-4'}`} />
-          <input 
-            type="text" 
-            placeholder={language === 'en' ? 'Search recipes...' : '...חפש מתכונים'} 
-            value={searchQuery} 
-            onChange={(e) => setSearchQuery(e.target.value)} 
-            className={`w-full py-3 bg-white border border-[#e8e4dc] rounded-2xl text-[#3d3429] placeholder:text-[#7a7265] focus:outline-none focus:ring-2 focus:ring-[#b86535]/20 ${language === 'he' ? 'pr-11 pl-14 sm:pl-32 text-right' : 'pl-11 pr-14 sm:pr-32'}`}
+          <input
+            type="text"
+            placeholder={language === 'en' ? 'Search recipes...' : '...חפש מתכונים'}
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            className={`w-full py-3 bg-white border border-[#e8e4dc] rounded-2xl text-[#3d3429] placeholder:text-[#7a7265] focus:outline-none focus:ring-2 focus:ring-[#cf711f]/20 ${language === 'he' ? 'pr-11 pl-14 sm:pl-32 text-right' : 'pl-11 pr-14 sm:pr-32'}`}
           />
-
-          {/* Category Filter */}
-          <div className={`absolute top-1/2 -translate-y-1/2 ${language === 'he' ? 'left-2' : 'right-2'}`}>
+          <div ref={filterMenuRef} className={`absolute top-1/2 -translate-y-1/2 ${language === 'he' ? 'left-2' : 'right-2'}`}>
             <button
-              onClick={() => setIsCategoryMenuOpen(!isCategoryMenuOpen)}
+              onClick={() => setIsFilterMenuOpen(!isFilterMenuOpen)}
               className={`flex items-center gap-1.5 py-1.5 px-3 rounded-xl transition-colors ${
-                selectedCategory !== 'All'
-                  ? 'bg-[#ce743e]/10 text-[#ce743e] font-semibold'
-                  : 'bg-[#f5f3ef] text-[#7a7265] hover:bg-[#e8e4dc]'
+                sortBy !== 'most-prepped' ? 'bg-[#e67e22]/10 text-[#e67e22] font-semibold' : 'bg-[#f5f3ef] text-[#7a7265] hover:bg-[#e8e4dc]'
               }`}
             >
               <Filter className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline text-xs font-medium">
-                {selectedCategory !== 'All'
-                  ? (language === 'en' ? selectedCategory : categoryTranslations[selectedCategory] || selectedCategory)
-                  : (language === 'en' ? 'Filter' : 'סינון')}
-              </span>
+              <span className="hidden sm:inline text-xs font-medium">{language === 'en' ? 'Sort' : 'מיון'}</span>
             </button>
-
-            {isCategoryMenuOpen && (
-              <>
-                <div className="fixed inset-0 z-10" onClick={() => setIsCategoryMenuOpen(false)} />
+            {isFilterMenuOpen && (
                 <div className={`absolute top-full mt-3 z-20 bg-white rounded-2xl border border-[#e8e4dc] shadow-lg overflow-hidden min-w-[180px] ${language === 'he' ? 'left-0' : 'right-0'}`}>
                   <div className="px-4 py-2 text-xs font-semibold text-[#7a7265] uppercase tracking-wide border-b border-[#f5f3ef]">
-                    {language === 'en' ? 'Category' : 'קטגוריה'}
-                  </div>
-                  {categories.map((cat) => (
-                    <button
-                      key={cat}
-                      onClick={() => { setSelectedCategory(cat); setIsCategoryMenuOpen(false); }}
-                      className={`w-full px-4 py-2.5 text-sm transition-colors ${
-                        selectedCategory === cat ? 'bg-[#ce743e]/10 text-[#ce743e] font-semibold' : 'text-[#3d3429] hover:bg-[#f5f3ef]'
-                      } ${isRtl ? 'text-right' : 'text-left'}`}
-                    >
-                      {cat === 'All' ? (language === 'en' ? 'All' : 'הכל') : (language === 'en' ? cat : categoryTranslations[cat] || cat)}
-                    </button>
-                  ))}
-                  <div className="px-4 py-2 text-xs font-semibold text-[#7a7265] uppercase tracking-wide border-t border-b border-[#f5f3ef] mt-1">
                     {language === 'en' ? 'Sort by' : 'מיון לפי'}
                   </div>
                   {[
                     { value: 'most-prepped', en: 'Most prepped', he: 'הוכן הכי הרבה' },
                     { value: 'date', en: 'Date added', he: 'תאריך הוספה' },
                     { value: 'alphabetical', en: 'Alphabetical', he: 'א-ב' },
-                  ].map(opt => (
-                    <button
-                      key={opt.value}
-                      onClick={() => { setSortBy(opt.value); setIsCategoryMenuOpen(false); }}
-                      className={`w-full px-4 py-2.5 text-sm transition-colors ${
-                        sortBy === opt.value ? 'bg-[#ce743e]/10 text-[#ce743e] font-semibold' : 'text-[#3d3429] hover:bg-[#f5f3ef]'
-                      } ${isRtl ? 'text-right' : 'text-left'}`}
-                    >
-                      {language === 'en' ? opt.en : opt.he}
-                    </button>
-                  ))}
+                  ].map(opt => {
+                    const isActive = sortBy === opt.value;
+                    return (
+                      <button
+                        key={opt.value}
+                        onClick={() => {
+                          if (isActive) {
+                            setSortOrder(o => o === 'desc' ? 'asc' : 'desc');
+                          } else {
+                            setSortBy(opt.value);
+                            setSortOrder('desc');
+                          }
+                        }}
+                        className={`w-full px-4 py-2.5 text-sm transition-colors flex items-center justify-between gap-2 ${
+                          isActive ? 'bg-[#e67e22]/10 text-[#e67e22] font-semibold' : 'text-[#3d3429] hover:bg-[#f5f3ef]'
+                        } ${isRtl ? 'flex-row-reverse' : ''}`}
+                      >
+                        <span>{language === 'en' ? opt.en : opt.he}</span>
+                        {isActive && (
+                          <span className="text-[10px]">{sortOrder === 'desc' ? '▼' : '▲'}</span>
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
-              </>
             )}
           </div>
         </div>
       </div>
 
       {/* Recipes Grid */}
-      {filteredRecipes.length > 0 ? (
+      {recipesLoading ? (
+        <div style={{ direction: isRtl ? 'rtl' : 'ltr' }} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+          {[...Array(6)].map((_, i) => <RecipeCardSkeleton key={i} />)}
+        </div>
+      ) : filteredRecipes.length > 0 ? (
         <div style={{ direction: isRtl ? 'rtl' : 'ltr' }} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
           {filteredRecipes.map((recipe) => (
             <RecipeCard
@@ -310,6 +428,7 @@ export function UserProfile({
               language={language}
               onSelect={onSelectRecipe}
               showCategory={false}
+              likeCount={likeCounts[recipe.id]}
             />
           ))}
         </div>
@@ -324,11 +443,8 @@ export function UserProfile({
       {/* Settings Modal */}
       {showSettings && (
         <>
-          <div
-            className="fixed inset-0 z-40 backdrop-blur-sm bg-black/30"
-            onClick={() => { setShowSettings(false); setShowEditProfile(false); }}
-          />
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={() => setShowSettings(false)}>
+          <div className="fixed inset-0 z-40 backdrop-blur-sm bg-black/30" onClick={closeSettings} />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={closeSettings}>
             <div
               onClick={e => e.stopPropagation()}
               className="bg-white rounded-3xl shadow-xl w-full max-w-md overflow-hidden"
@@ -336,19 +452,28 @@ export function UserProfile({
             >
               {/* Modal Header */}
               <div className="flex items-center justify-between px-6 py-5 border-b border-[#e8e4dc]">
-                <h2 className="text-lg font-semibold text-[#3d3429]">
-                  {language === 'en' ? 'Settings' : 'הגדרות'}
-                </h2>
-                <button
-                  onClick={() => { setShowSettings(false); setShowEditProfile(false); }}
-                  className="p-2 text-[#7a7265] hover:text-[#3d3429] hover:bg-[#f5f3ef] rounded-xl transition-colors"
-                >
+                <div className="flex items-center gap-2">
+                  {(showEditProfile || showRecipeSettings) && (
+                    <button
+                      onClick={() => { setShowEditProfile(false); setShowRecipeSettings(false); setEditingCategoryId(null); }}
+                      className="p-1.5 text-[#7a7265] hover:text-[#3d3429] hover:bg-[#f5f3ef] rounded-xl transition-colors"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
+                  )}
+                  <h2 className="text-lg font-semibold text-[#3d3429]">
+                    {showRecipeSettings
+                      ? (language === 'en' ? 'Recipe Settings' : 'הגדרות מתכון')
+                      : (language === 'en' ? 'Settings' : 'הגדרות')}
+                  </h2>
+                </div>
+                <button onClick={closeSettings} className="p-2 text-[#7a7265] hover:text-[#3d3429] hover:bg-[#f5f3ef] rounded-xl transition-colors">
                   <X className="w-5 h-5" />
                 </button>
               </div>
 
               {/* Modal Body */}
-              <div className="px-6 py-4 space-y-1">
+              <div className="px-6 py-4 space-y-1 max-h-[70vh] overflow-y-auto">
                 {showEditProfile ? (
                   <div className="space-y-4 py-2">
                     <div>
@@ -361,7 +486,7 @@ export function UserProfile({
                         onChange={e => setEditDisplayName(e.target.value)}
                         maxLength={64}
                         placeholder={language === 'en' ? 'Your name' : 'השם שלך'}
-                        className="w-full px-4 py-2.5 bg-[#faf9f7] border border-[#e8e4dc] rounded-2xl text-[#3d3429] focus:outline-none focus:ring-2 focus:ring-[#b86535]/20 focus:border-[#b86535] text-sm transition-all"
+                        className="w-full px-4 py-2.5 bg-[#faf9f7] border border-[#e8e4dc] rounded-2xl text-[#3d3429] focus:outline-none focus:ring-2 focus:ring-[#cf711f]/20 focus:border-[#cf711f] text-sm transition-all"
                       />
                     </div>
                     <div>
@@ -376,10 +501,10 @@ export function UserProfile({
                           onChange={e => setEditHandle(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
                           maxLength={32}
                           placeholder="yourhandle"
-                          className="w-full pl-8 pr-4 py-2.5 bg-[#faf9f7] border border-[#e8e4dc] rounded-2xl text-[#3d3429] focus:outline-none focus:ring-2 focus:ring-[#b86535]/20 focus:border-[#b86535] text-sm transition-all"
+                          className="w-full pl-8 pr-4 py-2.5 bg-[#faf9f7] border border-[#e8e4dc] rounded-2xl text-[#3d3429] focus:outline-none focus:ring-2 focus:ring-[#cf711f]/20 focus:border-[#cf711f] text-sm transition-all"
                         />
                       </div>
-                      <p className="text-xs text-[#7a7265] mt-1">{language === 'en' ? 'Letters, numbers and underscores only' : 'אותיות, מספרים וקווים תחתיים בלבד'}</p>
+                      <p className="text-xs text-[#7a7265] mt-1">{language === 'en' ? 'Letters, numbers and underscores only' : 'אותיות, מספרים וקווים תחתונים בלבד'}</p>
                     </div>
                     <div>
                       <label className="block text-xs font-semibold text-[#7a7265] uppercase tracking-wide mb-1.5">
@@ -390,7 +515,7 @@ export function UserProfile({
                         onChange={e => setEditBio(e.target.value)}
                         maxLength={160}
                         rows={3}
-                        className="w-full px-4 py-2.5 bg-[#faf9f7] border border-[#e8e4dc] rounded-2xl text-[#3d3429] focus:outline-none focus:ring-2 focus:ring-[#b86535]/20 focus:border-[#b86535] text-sm transition-all resize-none"
+                        className="w-full px-4 py-2.5 bg-[#faf9f7] border border-[#e8e4dc] rounded-2xl text-[#3d3429] focus:outline-none focus:ring-2 focus:ring-[#cf711f]/20 focus:border-[#cf711f] text-sm transition-all resize-none"
                       />
                     </div>
                     <div className="flex gap-2 pt-1">
@@ -403,7 +528,7 @@ export function UserProfile({
                       <button
                         onClick={handleSaveProfile}
                         disabled={isSaving || !editHandle.trim()}
-                        className="flex-1 px-4 py-2.5 bg-[#ce743e] text-white rounded-2xl text-sm font-medium hover:bg-[#b86535] disabled:opacity-50 transition-colors"
+                        className="flex-1 px-4 py-2.5 bg-[#e67e22] text-white rounded-2xl text-sm font-medium hover:bg-[#cf711f] disabled:opacity-50 transition-colors"
                       >
                         {isSaving ? (language === 'en' ? 'Saving...' : 'שומר...') : (language === 'en' ? 'Save' : 'שמור')}
                       </button>
@@ -415,6 +540,125 @@ export function UserProfile({
                       >
                         {language === 'en' ? 'Delete account' : 'מחיקת חשבון'}
                       </button>
+                    </div>
+                  </div>
+                ) : showRecipeSettings ? (
+                  <div className="space-y-5 py-2">
+                    {/* Default Visibility */}
+                    <div>
+                      <p className="text-xs font-semibold text-[#7a7265] uppercase tracking-wide mb-2">
+                        {language === 'en' ? 'Default Visibility' : 'נראות ברירת מחדל'}
+                      </p>
+                      <div className="flex gap-2">
+                        {['public', 'private'].map(v => (
+                          <button
+                            key={v}
+                            onClick={() => handleSetDefaultVisibility(v)}
+                            className={`flex-1 py-2.5 rounded-2xl text-sm font-medium transition-colors border ${
+                              defaultVisibility === v
+                                ? 'bg-[#e67e22] text-white border-[#e67e22]'
+                                : 'bg-[#faf9f7] text-[#3d3429] border-[#e8e4dc] hover:bg-[#f5f3ef]'
+                            }`}
+                          >
+                            {v === 'public'
+                              ? (language === 'en' ? 'Public' : 'ציבורי')
+                              : (language === 'en' ? 'Private' : 'פרטי')}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Categories */}
+                    <div>
+                      <p className="text-xs font-semibold text-[#7a7265] uppercase tracking-wide mb-2">
+                        {language === 'en' ? 'Categories' : 'קטגוריות'}
+                      </p>
+                      <div className="space-y-1">
+                        {userCategories.map(cat => (
+                          <div key={cat.id} className="flex items-center gap-2 px-3 py-2 rounded-2xl bg-[#faf9f7] border border-[#e8e4dc]">
+                            {editingCategoryId === cat.id ? (
+                              <>
+                                <input
+                                  autoFocus
+                                  value={editingCategoryName}
+                                  onChange={e => setEditingCategoryName(e.target.value)}
+                                  onKeyDown={e => {
+                                    if (e.key === 'Enter' && editingCategoryName.trim()) {
+                                      onRenameCategory(cat.id, editingCategoryName.trim());
+                                      setEditingCategoryId(null);
+                                    }
+                                    if (e.key === 'Escape') setEditingCategoryId(null);
+                                  }}
+                                  className="flex-1 bg-transparent text-sm text-[#3d3429] focus:outline-none"
+                                />
+                                <button
+                                  onClick={() => {
+                                    if (editingCategoryName.trim()) onRenameCategory(cat.id, editingCategoryName.trim());
+                                    setEditingCategoryId(null);
+                                  }}
+                                  className="text-xs text-[#e67e22] font-medium hover:text-[#cf711f]"
+                                >
+                                  {language === 'en' ? 'Save' : 'שמור'}
+                                </button>
+                              </>
+                            ) : (
+                              <>
+                                <span className="flex-1 text-sm text-[#3d3429]">{cat.name}</span>
+                                <button
+                                  onClick={() => { setEditingCategoryId(cat.id); setEditingCategoryName(cat.name); }}
+                                  className="text-xs text-[#7a7265] hover:text-[#3d3429] px-1"
+                                >
+                                  {language === 'en' ? 'Rename' : 'שנה שם'}
+                                </button>
+                                <button
+                                  onClick={() => { if (selectedCategoryName === cat.name) setSelectedCategoryName(null); onDeleteCategory(cat.id); }}
+                                  className="text-xs text-red-400 hover:text-red-600 px-1"
+                                >
+                                  {language === 'en' ? 'Delete' : 'מחק'}
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+
+                      {showNewCategoryInput ? (
+                        <div className="flex gap-2 mt-2">
+                          <input
+                            ref={newCategoryInputRef}
+                            autoFocus
+                            value={newCategoryInput}
+                            onChange={e => setNewCategoryInput(e.target.value)}
+                            onKeyDown={async e => {
+                              if (e.key === 'Enter' && newCategoryInput.trim()) {
+                                await onCreateCategory(newCategoryInput.trim());
+                                setNewCategoryInput('');
+                                setShowNewCategoryInput(false);
+                              }
+                              if (e.key === 'Escape') { setShowNewCategoryInput(false); setNewCategoryInput(''); }
+                            }}
+                            placeholder={language === 'en' ? 'Category name' : 'שם קטגוריה'}
+                            className="flex-1 px-3 py-2 bg-[#faf9f7] border border-[#e8e4dc] rounded-2xl text-sm text-[#3d3429] focus:outline-none focus:border-[#cf711f]"
+                          />
+                          <button
+                            onClick={async () => {
+                              if (newCategoryInput.trim()) await onCreateCategory(newCategoryInput.trim());
+                              setNewCategoryInput('');
+                              setShowNewCategoryInput(false);
+                            }}
+                            className="px-3 py-2 bg-[#e67e22] text-white rounded-2xl text-sm font-medium hover:bg-[#cf711f]"
+                          >
+                            {language === 'en' ? 'Add' : 'הוסף'}
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setShowNewCategoryInput(true)}
+                          className="mt-2 w-full px-4 py-2.5 bg-[#faf9f7] border border-dashed border-[#e8e4dc] rounded-2xl text-sm text-[#7a7265] hover:bg-[#f5f3ef] hover:text-[#3d3429] transition-colors"
+                        >
+                          + {language === 'en' ? 'Add category' : 'הוסף קטגוריה'}
+                        </button>
+                      )}
                     </div>
                   </div>
                 ) : (
@@ -433,8 +677,14 @@ export function UserProfile({
                     >
                       {language === 'en' ? 'Edit profile' : 'עריכת פרופיל'}
                     </button>
-                    <button className="w-full text-start px-4 py-3 rounded-2xl text-[#3d3429] hover:bg-[#f5f3ef] transition-colors text-sm font-medium">
-                      {language === 'en' ? 'Privacy' : 'פרטיות'}
+                    <p className="text-xs font-semibold text-[#7a7265] uppercase tracking-wide px-2 pt-3 pb-1">
+                      {language === 'en' ? 'Recipes' : 'מתכונים'}
+                    </p>
+                    <button
+                      onClick={() => setShowRecipeSettings(true)}
+                      className="w-full text-start px-4 py-3 rounded-2xl text-[#3d3429] hover:bg-[#f5f3ef] transition-colors text-sm font-medium"
+                    >
+                      {language === 'en' ? 'Recipe settings' : 'הגדרות מתכון'}
                     </button>
                   </>
                 )}
@@ -443,6 +693,17 @@ export function UserProfile({
             </div>
           </div>
         </>
+      )}
+
+      {confirmDialog && (
+        <ConfirmDialog
+          language={language}
+          title={confirmDialog.title}
+          message={confirmDialog.message}
+          confirmLabel={confirmDialog.confirmLabel}
+          onConfirm={confirmDialog.onConfirm}
+          onCancel={confirmDialog.onCancel}
+        />
       )}
     </div>
   );

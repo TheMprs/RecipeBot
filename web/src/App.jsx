@@ -1,21 +1,13 @@
-import { useState, useEffect, useRef } from 'react'
-import { BookOpen, Plus, Search, Filter, X, Link as LinkIcon, User as UserIcon, ChevronLeft, ChevronRight, LogOut } from 'lucide-react'
-import { RecipeCard } from './components/RecipeCard'
+﻿import { useState, useEffect, useRef } from 'react'
+import { BookOpen, Plus, Search, Filter, X, Link as LinkIcon, User as UserIcon, ChevronLeft, ChevronRight, LogOut, Heart } from 'lucide-react'
+import { RecipeCard, RecipeCardSkeleton } from './components/RecipeCard'
 import { RecipeDetail } from './components/RecipeDetail'
 import { RecipeForm } from './components/RecipeForm'
 import { UserProfile } from './components/UserProfile'
+import { ConfirmDialog } from './components/ConfirmDialog'
 import Login from './components/Login'
 import { supabase } from './supabaseClient'
 import './global.css'
-
-const categories = ['All', 'MAIN', 'SNACK', 'SPECIAL', 'DESSERT']
-
-const categoryTranslations = {
-  'MAIN': 'עיקרית',
-  'DESSERT': 'קינוח',
-  'SNACK': 'חטיף',
-  'SPECIAL': 'מיוחד'
-}
 
 // API configuration: uses environment variable in production, /api proxy in dev
 const API_BASE = import.meta.env.VITE_API_URL || '/api'
@@ -24,18 +16,21 @@ const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
 function App() {
   const [user, setUser] = useState(null)
+  const [userHandle, setUserHandle] = useState(null)
   const [loading, setLoading] = useState(true)
   const [recipes, setRecipes] = useState([])
-  const [likedRecipeIds, setLikedRecipeIds] = useState([])
+  const [topLikedRecipes, setTopLikedRecipes] = useState([])
+  const [recipeLikeCount, setRecipeLikeCount] = useState(0)
+  const [recipeIsLiked, setRecipeIsLiked] = useState(false)
   const [publicRecipes, setPublicRecipes] = useState([])
   const [language, setLanguage] = useState('he')
   const [viewMode, setViewMode] = useState('home')
   const [showLoginModal, setShowLoginModal] = useState(false)
   const [selectedRecipe, setSelectedRecipe] = useState(null)
   const [editingRecipe, setEditingRecipe] = useState(null)
-  const [searchQuery, setSearchQuery] = useState('')
-  const [selectedCategory, setSelectedCategory] = useState('All')
-  const [isCategoryMenuOpen, setIsCategoryMenuOpen] = useState(false)
+  const [userCategories, setUserCategories] = useState([])
+  const [recipeCategories, setRecipeCategories] = useState({})
+  const [showRecipeForm, setShowRecipeForm] = useState(false)
   const [showUrlModal, setShowUrlModal] = useState(false)
   const [urlInput, setUrlInput] = useState('')
   const [isScrapingLoading, setIsScrapingLoading] = useState(false)
@@ -47,10 +42,12 @@ function App() {
   const [canScrollRight, setCanScrollRight] = useState(true)
   const [hoveringCarousel, setHoveringCarousel] = useState(false)
   const [cookCounts, setCookCounts] = useState({})
+  const [carouselLoading, setCarouselLoading] = useState(true)
   const [globalQuery, setGlobalQuery] = useState('')
   const [globalResults, setGlobalResults] = useState({ users: [], recipes: [] })
   const [showGlobalResults, setShowGlobalResults] = useState(false)
   const globalSearchRef = useRef(null)
+  const [confirmDialog, setConfirmDialog] = useState(null)
 
   const isRtl = language === 'he'
 
@@ -124,18 +121,31 @@ function App() {
     }
   }, [])
 
+  useEffect(() => {
+    if (!user) { setUserHandle(null); return }
+    fetch(`${supabaseUrl}/rest/v1/users?id=eq.${user.id}&select=username`, {
+      headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` }
+    }).then(r => r.json()).then(d => { if (d?.[0]?.username) setUserHandle(d[0].username) }).catch(() => {})
+  }, [user])
+
   const handleLogout = async () => {
     try {
-      // Add timeout to prevent hanging
       const timeoutPromise = new Promise((_, reject) =>
         setTimeout(() => reject(new Error('Logout timeout')), 3000)
       )
-      
       await Promise.race([supabase.auth.signOut(), timeoutPromise])
-      setUser(null)
     } catch (error) {
       console.error('[Auth] Logout failed:', error.message)
+    } finally {
       setUser(null)
+      setRecipes([])
+      setUserCategories([])
+      setRecipeCategories({})
+      setSelectedRecipe(null)
+      setEditingRecipe(null)
+      setViewingProfile(null)
+      setShowRecipeForm(false)
+      setViewMode('home')
     }
   }
 
@@ -146,7 +156,7 @@ function App() {
         const { data: { session } } = await supabase.auth.getSession();
         if (!session?.access_token) { setRecipes([]); return; }
         const response = await fetch(
-          `${supabaseUrl}/rest/v1/recipes?user_id=eq.${user.id}&select=*`,
+          `${supabaseUrl}/rest/v1/recipes?user_id=eq.${user.id}&select=*,recipe_likes(recipe_id),recipe_categories(category_id,categories(name))`,
           {
             headers: {
               'apikey': supabaseKey,
@@ -166,14 +176,18 @@ function App() {
         const formattedRecipes = (data || []).map(recipe => ({
           id: recipe.id,
           title: recipe.name,
-          category: recipe.category,
           description: recipe.description,
           ingredients: recipe.ingredients,
           instructions: recipe.instructions,
-          created_at: recipe.created_at
+          created_at: recipe.created_at,
+          category: recipe.recipe_categories?.[0]?.categories?.name || recipe.category || null,
+          likeCount: recipe.recipe_likes?.length || 0,
+          user_id: recipe.user_id,
+          authorId: recipe.user_id,
         }));
 
         setRecipes(formattedRecipes);
+        fetchRecipeCategories(formattedRecipes.map(r => r.id));
       } else {
         setRecipes([]);
       }
@@ -260,6 +274,261 @@ function App() {
     }
   };
 
+  const fetchTopLikedRecipes = async () => {
+    try {
+      const rpcRes = await fetch(`${supabaseUrl}/rest/v1/rpc/get_top_liked_recipes`, {
+        method: 'POST',
+        headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ limit_count: 10 })
+      })
+      if (!rpcRes.ok) return
+      const ranked = await rpcRes.json()
+      if (!ranked || ranked.length === 0) { setTopLikedRecipes([]); return }
+
+      const ids = ranked.map(r => r.recipe_id).join(',')
+      const recipesRes = await fetch(`${supabaseUrl}/rest/v1/recipes?id=in.(${ids})&select=*`, {
+        headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` }
+      })
+      if (!recipesRes.ok) return
+      const recipesData = await recipesRes.json()
+
+      const likeCountMap = {}
+      ranked.forEach(r => { likeCountMap[r.recipe_id] = Number(r.like_count) })
+
+      const userIds = [...new Set(recipesData.map(r => r.user_id).filter(Boolean))]
+      let usernameMap = {}
+      if (userIds.length > 0) {
+        const usersRes = await fetch(
+          `${supabaseUrl}/rest/v1/users?id=in.(${userIds.join(',')})&select=id,username`,
+          { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` } }
+        )
+        if (usersRes.ok) {
+          const usersData = await usersRes.json()
+          usersData.forEach(u => { usernameMap[u.id] = u.username })
+        }
+      }
+
+      const sorted = ranked.map(r => {
+        const recipe = recipesData.find(rd => rd.id === r.recipe_id)
+        if (!recipe) return null
+        return {
+          id: recipe.id,
+          title: recipe.name,
+          category: recipe.category,
+          description: recipe.description,
+          ingredients: recipe.ingredients,
+          instructions: recipe.instructions,
+          created_at: recipe.created_at,
+          likeCount: likeCountMap[r.recipe_id],
+          authorId: recipe.user_id,
+          authorUsername: usernameMap[recipe.user_id] || null
+        }
+      }).filter(Boolean)
+
+      setTopLikedRecipes(sorted)
+    } catch (err) {
+      console.error('[Data] Failed to fetch top liked recipes:', err.message)
+    } finally {
+      setCarouselLoading(false)
+    }
+  }
+
+  const fetchRecipeLikeStatus = async (recipeId) => {
+    try {
+      const res = await fetch(
+        `${supabaseUrl}/rest/v1/recipe_likes?recipe_id=eq.${recipeId}&select=user_id`,
+        { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` } }
+      )
+      if (!res.ok) return
+      const data = await res.json()
+      setRecipeLikeCount(data.length)
+      setRecipeIsLiked(user ? data.some(r => r.user_id === user.id) : false)
+    } catch (err) {
+      console.error('[Data] Failed to fetch like status:', err.message)
+    }
+  }
+
+  const handleToggleLike = async (recipeId) => {
+    if (!user) return
+    const wasLiked = recipeIsLiked
+    setRecipeIsLiked(!wasLiked)
+    setRecipeLikeCount(c => wasLiked ? c - 1 : c + 1)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) throw new Error('Not authenticated')
+      if (wasLiked) {
+        const res = await fetch(
+          `${supabaseUrl}/rest/v1/recipe_likes?recipe_id=eq.${recipeId}&user_id=eq.${user.id}`,
+          { method: 'DELETE', headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${session.access_token}` } }
+        )
+        if (!res.ok) throw new Error(await res.text())
+      } else {
+        const res = await fetch(`${supabaseUrl}/rest/v1/recipe_likes`, {
+          method: 'POST',
+          headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+          body: JSON.stringify({ user_id: user.id, recipe_id: recipeId })
+        })
+        if (!res.ok) throw new Error(await res.text())
+      }
+    } catch (err) {
+      setRecipeIsLiked(wasLiked)
+      setRecipeLikeCount(c => wasLiked ? c + 1 : c - 1)
+      console.error('[Data] Like toggle failed:', err.message)
+    }
+  }
+
+  const handleDuplicateRecipe = async (recipe) => {
+    if (!user) return
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) throw new Error('Not authenticated')
+      const res = await fetch(`${supabaseUrl}/rest/v1/recipes`, {
+        method: 'POST',
+        headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: user.id,
+          name: recipe.title,
+          category: recipe.category,
+          description: recipe.description,
+          ingredients: recipe.ingredients,
+          instructions: recipe.instructions,
+          visibility: localStorage.getItem('defaultRecipeVisibility') || 'public'
+        })
+      })
+      if (!res.ok) throw new Error(await res.text())
+      fetchRecipes()
+      handleNavigate('profile')
+    } catch (err) {
+      console.error('[Data] Dupe failed:', err.message)
+      alert('Failed to duplicate recipe: ' + err.message)
+    }
+  }
+
+  const fetchUserCategories = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) return
+      const res = await fetch(
+        `${supabaseUrl}/rest/v1/categories?user_id=eq.${user.id}&order=created_at.asc`,
+        { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${session.access_token}` } }
+      )
+      if (!res.ok) return
+      setUserCategories(await res.json() || [])
+    } catch (err) {
+      console.error('[Data] Failed to fetch categories:', err.message)
+    }
+  }
+
+  const fetchRecipeCategories = async (recipeIds) => {
+    if (!recipeIds.length) return
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) return
+      const res = await fetch(
+        `${supabaseUrl}/rest/v1/recipe_categories?recipe_id=in.(${recipeIds.join(',')})&select=recipe_id,category_id`,
+        { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${session.access_token}` } }
+      )
+      if (!res.ok) return
+      const data = await res.json()
+      const map = {}
+      for (const row of data) {
+        if (!map[row.recipe_id]) map[row.recipe_id] = []
+        map[row.recipe_id].push(row.category_id)
+      }
+      setRecipeCategories(map)
+    } catch (err) {
+      console.error('[Data] Failed to fetch recipe categories:', err.message)
+    }
+  }
+
+  const handleCreateCategory = async (name) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) throw new Error('Not authenticated')
+      const res = await fetch(`${supabaseUrl}/rest/v1/categories`, {
+        method: 'POST',
+        headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json', 'Prefer': 'return=representation' },
+        body: JSON.stringify({ user_id: user.id, name: name.trim() })
+      })
+      if (!res.ok) throw new Error(await res.text())
+      const [newCat] = await res.json()
+      setUserCategories(prev => [...prev, newCat])
+      return newCat
+    } catch (err) {
+      console.error('[Data] Create category failed:', err.message)
+      return null
+    }
+  }
+
+  const handleDeleteCategory = async (categoryId) => {
+    setUserCategories(prev => prev.filter(c => c.id !== categoryId))
+    setRecipeCategories(prev => {
+      const updated = { ...prev }
+      for (const rid in updated) updated[rid] = updated[rid].filter(id => id !== categoryId)
+      return updated
+    })
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) throw new Error('Not authenticated')
+      const res = await fetch(`${supabaseUrl}/rest/v1/categories?id=eq.${categoryId}`, {
+        method: 'DELETE',
+        headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${session.access_token}` }
+      })
+      if (!res.ok) throw new Error(await res.text())
+    } catch (err) {
+      console.error('[Data] Delete category failed:', err.message)
+      fetchUserCategories()
+      fetchRecipeCategories(recipes.map(r => r.id))
+    }
+  }
+
+  const handleRenameCategory = async (categoryId, newName) => {
+    setUserCategories(prev => prev.map(c => c.id === categoryId ? { ...c, name: newName } : c))
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) throw new Error('Not authenticated')
+      const res = await fetch(`${supabaseUrl}/rest/v1/categories?id=eq.${categoryId}`, {
+        method: 'PATCH',
+        headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+        body: JSON.stringify({ name: newName.trim() })
+      })
+      if (!res.ok) throw new Error(await res.text())
+    } catch (err) {
+      console.error('[Data] Rename category failed:', err.message)
+      fetchUserCategories()
+    }
+  }
+
+  const handleToggleRecipeCategory = async (recipeId, categoryId) => {
+    const current = recipeCategories[recipeId] || []
+    const isAdding = !current.includes(categoryId)
+    setRecipeCategories(prev => ({
+      ...prev,
+      [recipeId]: isAdding ? [...current, categoryId] : current.filter(id => id !== categoryId)
+    }))
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) throw new Error('Not authenticated')
+      if (isAdding) {
+        const res = await fetch(`${supabaseUrl}/rest/v1/recipe_categories`, {
+          method: 'POST',
+          headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+          body: JSON.stringify({ recipe_id: recipeId, category_id: categoryId })
+        })
+        if (!res.ok) throw new Error(await res.text())
+      } else {
+        const res = await fetch(`${supabaseUrl}/rest/v1/recipe_categories?recipe_id=eq.${recipeId}&category_id=eq.${categoryId}`, {
+          method: 'DELETE',
+          headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${session.access_token}` }
+        })
+        if (!res.ok) throw new Error(await res.text())
+      }
+    } catch (err) {
+      setRecipeCategories(prev => ({ ...prev, [recipeId]: current }))
+      console.error('[Data] Toggle recipe category failed:', err.message)
+    }
+  }
+
   const loadRecipeFromSupabase = (filter) => {
     fetch(`${supabaseUrl}/rest/v1/recipes?${filter}&select=*&limit=1`, {
       headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` }
@@ -274,7 +543,8 @@ function App() {
           description: r.description || '',
           category: r.category || 'MAIN',
           ingredients: Array.isArray(r.ingredients) ? r.ingredients : [],
-          instructions: Array.isArray(r.instructions) ? r.instructions : []
+          instructions: Array.isArray(r.instructions) ? r.instructions : [],
+          user_id: r.user_id
         });
         setViewMode('detail');
         window.history.pushState({}, '', `?r=${r.id}`);
@@ -286,9 +556,11 @@ function App() {
     if (user) {
       fetchRecipes();
       fetchCookCounts();
+      fetchUserCategories();
     } else {
       fetchPublicRecipes();
     }
+    fetchTopLikedRecipes()
     
     // Check for shared recipe or profile in URL
     const params = new URLSearchParams(window.location.search)
@@ -344,14 +616,14 @@ function App() {
     // Handle profile viewing (either own or others') - check this FIRST
     if (profileId) {
       // If viewing own profile, just show profile view without viewingProfile set
-      if (user && profileId === user.id) {
+      if (user && (profileId === user.id || profileId === userHandle)) {
         setViewMode('profile')
         setViewingProfile(null)
         return
       }
-      
-      // Otherwise fetch the other user's profile
-      fetch(`${supabaseUrl}/rest/v1/users?id=eq.${profileId}&select=id,username,display_name,bio,avatar_url`, {
+
+      // Otherwise fetch the other user's profile by handle
+      fetch(`${supabaseUrl}/rest/v1/users?username=eq.${profileId}&select=id,username,display_name,bio,avatar_url`, {
         headers: {
           'apikey': supabaseKey,
           'Authorization': `Bearer ${supabaseKey}`,
@@ -391,6 +663,42 @@ function App() {
   useEffect(() => {
     checkCarouselScroll()
   }, [recipes])
+
+  // Fetch like status + author username whenever the viewed recipe changes
+  useEffect(() => {
+    if (selectedRecipe?.id) {
+      setRecipeLikeCount(0)
+      setRecipeIsLiked(false)
+      fetchRecipeLikeStatus(selectedRecipe.id)
+      if (selectedRecipe.user_id && !selectedRecipe.authorUsername && selectedRecipe.user_id !== user?.id) {
+        fetch(`${supabaseUrl}/rest/v1/users?id=eq.${selectedRecipe.user_id}&select=id,username`, {
+          headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` }
+        })
+          .then(r => r.json())
+          .then(data => {
+            if (data?.[0]) setSelectedRecipe(prev => ({ ...prev, authorUsername: data[0].username, authorId: data[0].id }))
+          })
+          .catch(() => {})
+      }
+    }
+  }, [selectedRecipe?.id])
+
+  const navigateToProfile = async (userId) => {
+    try {
+      const res = await fetch(
+        `${supabaseUrl}/rest/v1/users?id=eq.${userId}&select=id,username,display_name,bio,avatar_url`,
+        { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` } }
+      )
+      const data = await res.json()
+      if (!data?.[0]) return
+      setViewingProfile(data[0])
+      setSelectedRecipe(null)
+      setViewMode('profile')
+      window.history.pushState({}, '', `/?user=${data[0].username}`)
+    } catch (err) {
+      console.error('[Nav] Failed to load profile:', err.message)
+    }
+  }
 
   // Wheel → horizontal scroll, active only while hovering the carousel section
   useEffect(() => {
@@ -482,12 +790,30 @@ function App() {
       description: recipeObj.description || '',
       category: recipeObj.category || 'MAIN',
       ingredients: formatArray(recipeObj.ingredients),
-      instructions: formatArray(recipeObj.instructions)
+      instructions: formatArray(recipeObj.instructions),
+      user_id: recipeObj.user_id || recipeObj.authorId,
+      authorId: recipeObj.authorId || recipeObj.user_id,
+      authorUsername: recipeObj.authorUsername || null
     };
 
     setSelectedRecipe(recipeData);
     setViewMode('detail');
     window.history.pushState({}, '', `?r=${recipeObj.id}`);
+  }
+
+  const manageRecipeCategory = async (recipeId, categoryName, token) => {
+    await fetch(`${supabaseUrl}/rest/v1/recipe_categories?recipe_id=eq.${recipeId}`, {
+      method: 'DELETE',
+      headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${token}` }
+    })
+    if (!categoryName) return
+    const cat = userCategories.find(c => c.name === categoryName)
+    if (!cat) return
+    await fetch(`${supabaseUrl}/rest/v1/recipe_categories`, {
+      method: 'POST',
+      headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ recipe_id: recipeId, category_id: cat.id })
+    })
   }
 
   // 3. SAVE A NEW RECIPE
@@ -514,7 +840,7 @@ function App() {
             },
             body: JSON.stringify({
               name: newRecipe.title,
-              category: newRecipe.category,
+              category: newRecipe.category || '',
               description: newRecipe.description,
               ingredients: newRecipe.ingredients,
               instructions: newRecipe.instructions,
@@ -522,6 +848,7 @@ function App() {
           }
         );
         if (!res.ok) throw new Error(`Update failed: ${res.status} ${await res.text()}`);
+        await manageRecipeCategory(editingRecipe.id, newRecipe.category, userToken)
       } else {
         const res = await fetch(
           `${supabaseUrl}/rest/v1/recipes`,
@@ -530,24 +857,27 @@ function App() {
             headers: {
               'apikey': supabaseKey,
               'Authorization': `Bearer ${userToken}`,
-              'Content-Type': 'application/json'
+              'Content-Type': 'application/json',
+              'Prefer': 'return=representation'
             },
             body: JSON.stringify({
               user_id: user.id,
               name: newRecipe.title,
-              category: newRecipe.category,
+              category: newRecipe.category || '',
               description: newRecipe.description,
               ingredients: newRecipe.ingredients,
               instructions: newRecipe.instructions,
-              visibility: 'public'
+              visibility: localStorage.getItem('defaultRecipeVisibility') || 'public'
             })
           }
         );
         if (!res.ok) throw new Error(`Insert failed: ${res.status} ${await res.text()}`);
+        const [saved] = await res.json()
+        if (saved?.id) await manageRecipeCategory(saved.id, newRecipe.category, userToken)
       }
 
       fetchRecipes();
-      setViewMode('profile');
+      setShowRecipeForm(false);
       setEditingRecipe(null);
     } catch (err) {
       console.error('[Data] Error saving recipe:', err);
@@ -558,7 +888,7 @@ function App() {
   // 3b. EDIT RECIPE
   const handleEditRecipe = (recipe) => {
     setEditingRecipe(recipe);
-    setViewMode('add');
+    setShowRecipeForm(true);
   }
 
   const handleNavigate = (mode) => {
@@ -570,16 +900,21 @@ function App() {
     // Set URL based on view mode
     if (mode === 'profile' && user) {
       // Use user ID in URL so it can be shared
-      window.history.pushState({}, '', `/?user=${user.id}`)
+      window.history.pushState({}, '', `/?user=${userHandle || user.id}`)
     } else {
       window.history.replaceState({}, '', window.location.pathname)
     }
   }
 
   const handleBack = () => {
+    if (showRecipeForm) {
+      setShowRecipeForm(false)
+      setEditingRecipe(null)
+      return
+    }
     setSelectedRecipe(null)
     setEditingRecipe(null)
-    setViewMode('profile')
+    setViewMode(user ? 'profile' : 'home')
     window.history.pushState({}, '', window.location.pathname)
   }
 
@@ -604,7 +939,16 @@ function App() {
 
   // 4. DELETE RECIPE
   const handleDeleteRecipe = async (recipe) => {
-    if (!window.confirm(`Delete ${recipe.title}?`)) return;
+    const confirmed = await new Promise(resolve => {
+      setConfirmDialog({
+        title: language === 'en' ? `Delete "${recipe.title}"?` : `למחוק את "${recipe.title}"?`,
+        message: language === 'en' ? 'This cannot be undone.' : 'לא ניתן לבטל פעולה זו.',
+        confirmLabel: language === 'en' ? 'Delete' : 'מחק',
+        onConfirm: () => { setConfirmDialog(null); resolve(true); },
+        onCancel: () => { setConfirmDialog(null); resolve(false); },
+      });
+    });
+    if (!confirmed) return;
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) throw new Error('Not authenticated');
@@ -656,7 +1000,7 @@ function App() {
           ingredients: scrapedRecipe.ingredients || [],
           instructions: scrapedRecipe.instructions || [],
         });
-        setViewMode('add');
+        setShowRecipeForm(true);
         setShowUrlModal(false);
         setUrlInput('');
       } else {
@@ -670,52 +1014,21 @@ function App() {
     }
   }
 
-  // Bridge: Map recipe data to display format
-  const displayRecipes = recipes.map(recipe => {
-    const formatArray = (text) => {
-      if (Array.isArray(text)) return text; // Backend now returns arrays
-      if (typeof text === 'string') return text.split('\n').filter(i => i.trim());
-      return [];
-    };
-    
-    const title = String(recipe.name || recipe.title || 'Unnamed').trim();
-    
-    return {
-      id: recipe.id,
-      title: title,
-      description: recipe.description || '',
-      category: recipe.category || 'MAIN',
-      ingredients: formatArray(recipe.ingredients) || [],
-      instructions: formatArray(recipe.instructions) || []
-    };
-  }).filter(recipe => {
-    // Safely handle recipe.title in case it's not a string
-    const titleStr = String(recipe.title || '').toLowerCase();
-    return titleStr.includes(searchQuery.toLowerCase()) &&
-      (selectedCategory === 'All' || recipe.category === selectedCategory);
-  });
-
   return (
     <>
       {loading ? (
-        <div className="min-h-screen flex items-center justify-center">
-          <p className="text-gray-500">Loading...</p>
-        </div>
-      ) : !user ? (
-        <>
-          <div className="fixed inset-0 bg-black/40 backdrop-blur-md z-40" onClick={() => setShowLoginModal(false)} />
-          <div className="fixed inset-0 flex items-center justify-center z-50 p-4" onClick={() => setShowLoginModal(false)}>
-            <div onClick={(e) => e.stopPropagation()}>
-              <Login onLoginSuccess={() => { setShowLoginModal(false); setViewMode('profile'); }} />
-            </div>
+        <div className="min-h-screen flex items-center justify-center bg-[#f5f3ef]">
+          <div className="flex flex-col items-center gap-3 animate-pulse">
+            <div className="w-10 h-10 rounded-full bg-[#e8e4dc]" />
+            <div className="h-3 w-24 rounded bg-[#e8e4dc]" />
           </div>
-        </>
+        </div>
       ) : (
     <div className="min-h-screen bg-[#f5f3ef]">
       <header className="sticky top-0 z-30 bg-[#faf9f7]/95 backdrop-blur-md border-b border-[#e8e4dc]">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between gap-4">
             <button onClick={() => handleNavigate('home')} className="flex items-center gap-2 group min-w-0">
-              <div className="w-10 h-10 rounded-2xl bg-[#ce743e] flex items-center justify-center flex-shrink-0">
+              <div className="w-10 h-10 rounded-2xl bg-[#e67e22] flex items-center justify-center flex-shrink-0">
                 <BookOpen className="w-5 h-5 text-white" />
               </div>
               <div className="text-left hidden sm:block">
@@ -724,19 +1037,29 @@ function App() {
               </div>
             </button>
             <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0">
-              <button onClick={() => handleNavigate('add')} 
-                className={`flex items-center gap-2 text-[#64748b] hover:text-[#1e293b] transition-colors p-2`}>
-                <Plus className="w-5 h-5"/>
-              </button>
-              <button onClick={() => handleNavigate('profile')}
-                className="flex items-center gap-2 text-[#64748b] hover:text-[#1e293b] transition-colors p-2">
-                <UserIcon className="w-5 h-5"/>
-              </button>
-              <button onClick={handleLogout}
-                className="flex items-center gap-1.5 px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors text-xs sm:text-sm whitespace-nowrap">
-                <LogOut className="w-4 h-4" />
-                <span className="hidden sm:inline">Logout</span>
-              </button>
+              {user ? (
+                <>
+                  <button onClick={() => { setEditingRecipe(null); setShowRecipeForm(true); }}
+                    className="flex items-center gap-2 text-[#64748b] hover:text-[#1e293b] transition-colors p-2">
+                    <Plus className="w-5 h-5"/>
+                  </button>
+                  <button onClick={() => handleNavigate('profile')}
+                    className="flex items-center gap-2 text-[#64748b] hover:text-[#1e293b] transition-colors p-2">
+                    <UserIcon className="w-5 h-5"/>
+                  </button>
+                  <button onClick={handleLogout}
+                    className="flex items-center gap-1.5 px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors text-xs sm:text-sm whitespace-nowrap">
+                    <LogOut className="w-4 h-4" />
+                    <span className="hidden sm:inline">Logout</span>
+                  </button>
+                </>
+              ) : (
+                <button onClick={() => setShowLoginModal(true)}
+                  className="flex items-center gap-1.5 px-4 py-2 bg-[#e8e4dc] text-[#3d3429] rounded-xl hover:bg-[#ddd9d0] transition-colors text-sm font-medium whitespace-nowrap">
+                  <UserIcon className="w-4 h-4" />
+                  <span>{language === 'en' ? 'Sign In' : 'התחברות'}</span>
+                </button>
+              )}
             </div>
         </div>
       </header>
@@ -761,14 +1084,14 @@ function App() {
                     if (firstUser) {
                       setViewingProfile(firstUser); setViewMode('profile')
                       setShowGlobalResults(false); setGlobalQuery('')
-                      window.history.pushState({}, '', `/?user=${firstUser.id}`)
+                      window.history.pushState({}, '', `/?user=${firstUser.username}`)
                     } else if (firstRecipe) {
                       loadRecipeFromSupabase(`id=eq.${firstRecipe.id}`)
                       setShowGlobalResults(false); setGlobalQuery('')
                     }
                   }}
                   placeholder={language === 'en' ? 'Search recipes and people...' : 'חפש מתכונים ואנשים...'}
-                  className={`w-full py-3 bg-white border border-[#e8e4dc] rounded-2xl text-[#3d3429] placeholder:text-[#7a7265] focus:outline-none focus:ring-2 focus:ring-[#b86535]/20 focus:border-[#b86535] transition-all ${isRtl ? `pr-11 ${globalQuery ? 'pl-10' : 'pl-4'} text-right` : `pl-11 ${globalQuery ? 'pr-10' : 'pr-4'}`}`}
+                  className={`w-full py-3 bg-white border border-[#e8e4dc] rounded-2xl text-[#3d3429] placeholder:text-[#7a7265] focus:outline-none focus:ring-2 focus:ring-[#cf711f]/20 focus:border-[#cf711f] transition-all ${isRtl ? `pr-11 ${globalQuery ? 'pl-10' : 'pl-4'} text-right` : `pl-11 ${globalQuery ? 'pr-10' : 'pr-4'}`}`}
                 />
                 {globalQuery && (
                   <button onClick={() => { setGlobalQuery(''); setShowGlobalResults(false) }}
@@ -795,12 +1118,12 @@ function App() {
                           setViewMode('profile')
                           setShowGlobalResults(false)
                           setGlobalQuery('')
-                          window.history.pushState({}, '', `/?user=${u.id}`)
+                          window.history.pushState({}, '', `/?user=${u.username}`)
                         }} className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-[#f5f3ef] transition-colors">
-                          <div className="w-8 h-8 rounded-full bg-[#ce743e]/10 flex-shrink-0 overflow-hidden">
+                          <div className="w-8 h-8 rounded-full bg-[#e67e22]/10 flex-shrink-0 overflow-hidden">
                             {u.avatar_url
                               ? <img src={u.avatar_url} alt="" className="w-full h-full object-cover" />
-                              : <div className="w-full h-full flex items-center justify-center"><UserIcon className="w-4 h-4 text-[#ce743e]" /></div>}
+                              : <div className="w-full h-full flex items-center justify-center"><UserIcon className="w-4 h-4 text-[#e67e22]" /></div>}
                           </div>
                           <div className="text-start">
                             <p className="text-sm text-[#3d3429] font-medium">{u.display_name || u.username}</p>
@@ -819,8 +1142,8 @@ function App() {
                           setShowGlobalResults(false)
                           setGlobalQuery('')
                         }} className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-[#f5f3ef] transition-colors">
-                          <div className="w-8 h-8 rounded-full bg-[#ce743e]/10 flex items-center justify-center flex-shrink-0">
-                            <BookOpen className="w-4 h-4 text-[#ce743e]" />
+                          <div className="w-8 h-8 rounded-full bg-[#e67e22]/10 flex items-center justify-center flex-shrink-0">
+                            <BookOpen className="w-4 h-4 text-[#e67e22]" />
                           </div>
                           <div className="text-start">
                             <p className="text-sm text-[#3d3429] font-medium">{r.name}</p>
@@ -835,57 +1158,64 @@ function App() {
               )}
             </div>
 
-            {/* Liked Recipes Section */}
+            {/* Most Liked Section */}
             <section className="carousel-section" onMouseEnter={() => setHoveringCarousel(true)} onMouseLeave={() => setHoveringCarousel(false)}>
               <div className="mb-1">
                 <div className="flex items-center gap-3 mb-2">
-                  <div className="w-1 h-8 bg-[#ce743e] rounded-full"></div>
+                  <div className="w-1 h-8 bg-[#e67e22] rounded-full"></div>
                   <h2 className="text-3xl font-bold text-[#3d3429]">
-                    {language === 'en' ? 'My Liked Recipes' : 'המתכונים שאהבתי'}
+                    {language === 'en' ? 'Most Liked' : 'האהובים ביותר'}
                   </h2>
                 </div>
                 <p className="text-[#7a7265] text-sm ml-4">
-                  {displayRecipes.length} {language === 'en' ? 'recipes' : 'מתכונים'}
+                  {language === 'en' ? 'Top public recipes' : 'המתכונים הציבוריים המובילים'}
                 </p>
               </div>
-              {displayRecipes.length > 0 ? (
+              {carouselLoading ? (
+                <div className="flex gap-4 sm:gap-6 py-2 pb-3 overflow-hidden">
+                  {[...Array(4)].map((_, i) => (
+                    <div key={i} className="flex-shrink-0 w-80 sm:w-96">
+                      <RecipeCardSkeleton />
+                    </div>
+                  ))}
+                </div>
+              ) : topLikedRecipes.length > 0 ? (
                 <div className="relative w-full">
-                  <div className="pointer-events-none absolute left-0 top-0 bottom-3 w-6 z-10 bg-gradient-to-r from-[#f5f3ef]/80 to-transparent" />
-                  <div className="pointer-events-none absolute right-0 top-0 bottom-3 w-6 z-10 bg-gradient-to-l from-[#f5f3ef]/80 to-transparent" />
-                  {/* Carousel Container */}
                   <div
                     ref={likedRecipesCarouselRef}
                     onScroll={checkCarouselScroll}
                     className="carousel-scroll flex gap-4 sm:gap-6 overflow-x-auto py-2 pb-3"
                     style={{ WebkitOverflowScrolling: 'touch' }}
                   >
-                    {displayRecipes.map((recipe) => (
-                      <div key={recipe.id} className=" flex-shrink-0 w-80 sm:w-96">
-                        <div>
-                          <RecipeCard 
-                            className="h-full"
-                            recipe={recipe} 
-                            language={language}
-                            onSelect={handleSelectRecipe} 
-                          />
-                        </div>
+                    {topLikedRecipes.map((recipe) => (
+                      <div key={recipe.id} className="flex-shrink-0 w-80 sm:w-96">
+                        <RecipeCard
+                          recipe={recipe}
+                          language={language}
+                          onSelect={handleSelectRecipe}
+                          likeCount={recipe.likeCount}
+                          authorUsername={recipe.authorUsername}
+                          authorId={recipe.authorId}
+                          onSelectAuthor={navigateToProfile}
+                        />
                       </div>
                     ))}
                   </div>
                 </div>
               ) : (
                 <div className="text-center py-16 bg-gradient-to-br from-[#faf9f7] to-[#f5f3ef] rounded-3xl border-2 border-dashed border-[#e8e4dc]">
-                  <BookOpen className="w-12 h-12 text-[#ce743e]/30 mx-auto mb-4" />
-                  <p className="text-[#7a7265] font-medium">{language === 'en' ? 'No saved recipes yet' : 'אין מתכונים שמורים עדיין'}</p>
+                  <Heart className="w-12 h-12 text-[#e67e22]/30 mx-auto mb-4" />
+                  <p className="text-[#7a7265] font-medium">{language === 'en' ? 'No liked recipes yet' : 'אין מתכונים עם לייקים עדיין'}</p>
                 </div>
               )}
             </section>
 
-            {/* Most Prepped Section */}
+            {/* Most Prepped / Sign-In CTA */}
+            {user ? (
             <section>
               <div className="mb-4">
                 <div className="flex items-center gap-3 mb-2">
-                  <div className="w-1 h-8 bg-[#ce743e] rounded-full"></div>
+                  <div className="w-1 h-8 bg-[#e67e22] rounded-full"></div>
                   <h2 className="text-3xl font-bold text-[#3d3429]">{language === 'en' ? 'Your Most Prepped' : 'המתכונים המוכנים ביותר'}</h2>
                 </div>
                 <p className="text-[#7a7265] text-sm ml-4">{language === 'en' ? 'Track your cooking habits' : 'עקוב אחרי הרגלי הבישול שלך'}</p>
@@ -898,7 +1228,7 @@ function App() {
 
                 if (mostPrepped.length === 0) return (
                   <div className="text-center py-16 bg-gradient-to-br from-[#faf9f7] to-[#f5f3ef] rounded-3xl border-2 border-dashed border-[#e8e4dc]">
-                    <BookOpen className="w-12 h-12 text-[#ce743e]/30 mx-auto mb-4" />
+                    <BookOpen className="w-12 h-12 text-[#e67e22]/30 mx-auto mb-4" />
                     <p className="text-[#7a7265] font-medium">{language === 'en' ? 'No recipes cooked yet' : 'עדיין לא בישלת מתכונים'}</p>
                   </div>
                 );
@@ -912,7 +1242,7 @@ function App() {
                 const medals = ['🥇', '🥈', '🥉'];
                 const podiumHeights = ['h-24', 'h-36', 'h-16'];
                 const podiumColors = ['bg-[#C0C0C0]', 'bg-[#D4AF37]', 'bg-[#CD7F32]'];
-                const podiumPositions = [1, 0, 2]; // which recipe index each slot holds
+                const podiumPositions = [1, 0, 2];
 
                 return (
                   <div>
@@ -926,7 +1256,7 @@ function App() {
                               <span className="text-2xl mb-1">{medals[rank]}</span>
                               <button
                                 onClick={() => handleSelectRecipe(recipe)}
-                                className="w-full mb-2 px-3 py-2 bg-white rounded-2xl border border-[#e8e4dc] hover:border-[#ce743e]/50 hover:shadow-sm transition-all text-center"
+                                className="w-full mb-2 px-3 py-2 bg-white rounded-2xl border border-[#e8e4dc] hover:border-[#e67e22]/50 hover:shadow-sm transition-all text-center"
                               >
                                 <p className="text-sm font-semibold text-[#3d3429] truncate">{recipe.title}</p>
                                 <p className="text-xs text-[#7a7265] mt-0.5">{language === 'en' ? `made ${cookCounts[recipe.id]} times` : cookCounts[recipe.id] === 1 ? 'הוכן פעם אחת' : cookCounts[recipe.id] === 2 ? 'הוכן פעמיים' : `הוכן ${cookCounts[recipe.id]} פעמים`}</p>
@@ -947,6 +1277,23 @@ function App() {
                 );
               })()}
             </section>
+            ) : (
+            <section>
+              <div className="bg-gradient-to-br from-[#faf9f7] to-[#f5f3ef] rounded-3xl border border-[#e8e4dc] p-8 sm:p-12 text-center">
+                <div className="w-14 h-14 rounded-2xl bg-[#e67e22]/10 flex items-center justify-center mx-auto mb-4">
+                  <BookOpen className="w-7 h-7 text-[#e67e22]" />
+                </div>
+                <h3 className="text-xl font-bold text-[#3d3429] mb-2">
+                  {language === 'en' ? 'Save recipes & track your cooking' : 'שמור מתכונים ועקוב אחרי הבישולים שלך'}
+                </h3>
+                <p className="text-[#7a7265] text-sm max-w-sm mx-auto">
+                  {language === 'en'
+                    ? 'Sign in to add your own recipes, mark what you\'ve cooked, and see your personal stats.'
+                    : 'התחבר כדי להוסיף מתכונים, לסמן מה בישלת ולראות את הסטטיסטיקות שלך.'}
+                </p>
+              </div>
+            </section>
+            )}
           </div>
         )}
 
@@ -959,7 +1306,14 @@ function App() {
             viewingProfile={viewingProfile}
             cookCounts={cookCounts}
             apiBase={API_BASE}
-            onLogout={() => setUser(null)}
+            onLogout={handleLogout}
+            userCategories={userCategories}
+            recipeCategories={recipeCategories}
+            onCreateCategory={handleCreateCategory}
+            onDeleteCategory={handleDeleteCategory}
+            onToggleRecipeCategory={handleToggleRecipeCategory}
+            onRenameCategory={handleRenameCategory}
+            onHandleChange={setUserHandle}
           />
         )}
 
@@ -969,32 +1323,51 @@ function App() {
               recipe={selectedRecipe}
               onBack={handleBack}
               language={language}
-              onEdit={handleEditRecipe}
-              onDelete={handleDeleteRecipe}
-              onMarkMade={handleMarkMade}
-              cookCount={cookCounts[selectedRecipe?.id] || 0} />
+              onEdit={user ? handleEditRecipe : undefined}
+              onDelete={user ? handleDeleteRecipe : undefined}
+              onMarkMade={user ? handleMarkMade : undefined}
+              cookCount={cookCounts[selectedRecipe?.id] || 0}
+              likeCount={recipeLikeCount}
+              isLiked={recipeIsLiked}
+              onToggleLike={user ? handleToggleLike : undefined}
+              onDuplicate={user && selectedRecipe?.authorId !== user.id ? handleDuplicateRecipe : undefined}
+              onSelectAuthor={selectedRecipe?.authorId ? navigateToProfile : undefined}
+              userCategories={userCategories}
+              currentRecipeCategories={recipeCategories[selectedRecipe?.id] || []}
+              onToggleRecipeCategory={user && selectedRecipe?.authorId === user.id ? handleToggleRecipeCategory : undefined}
+              onCreateCategory={user && selectedRecipe?.authorId === user.id ? handleCreateCategory : undefined} />
           </div>
         )}
 
-        {viewMode === 'add' && (
-          <div className="transition-all duration-300 ease-out opacity-100 translate-y-0">
-            <RecipeForm 
-              editingRecipe={editingRecipe} 
-              language={language}
-              onBack={handleBack} 
-              onSave={handleAddRecipe}
-              onOpenUrlModal={() => setShowUrlModal(true)}
-            />
-          </div>
-        )}
 
       </main>
+
+      {/* Recipe Form Overlay */}
+      {showRecipeForm && user && (
+        <>
+          <div className="fixed inset-0 z-40 backdrop-blur-sm bg-black/30" onClick={handleBack} />
+          <div className="fixed inset-0 z-50 flex items-start justify-center p-4 overflow-y-auto" onClick={handleBack}>
+            <div className="w-full max-w-2xl my-8" onClick={e => e.stopPropagation()}>
+              <RecipeForm
+                key={editingRecipe?.id || 'new'}
+                editingRecipe={editingRecipe}
+                language={language}
+                onBack={handleBack}
+                onSave={handleAddRecipe}
+                onOpenUrlModal={() => setShowUrlModal(true)}
+                userCategories={userCategories}
+                onCreateCategory={handleCreateCategory}
+              />
+            </div>
+          </div>
+        </>
+      )}
 
       {/* URL Import Modal - Rendered at App level for full-screen overlay */}
       {showUrlModal && (
         <>
-          <div className="fixed inset-0 bg-black/50 z-40" onClick={() => setShowUrlModal(false)}></div>
-          <div className="fixed inset-0 flex items-center justify-center z-50 p-4" onClick={() => setShowUrlModal(false)}>
+          <div className="fixed inset-0 z-[60] backdrop-blur-sm bg-black/30" onClick={() => setShowUrlModal(false)}></div>
+          <div className="fixed inset-0 flex items-center justify-center z-[70] p-4" onClick={() => setShowUrlModal(false)}>
             <div onClick={(e) => e.stopPropagation()} className="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-lg" style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-xl font-semibold text-[#3d3429]">
@@ -1015,7 +1388,7 @@ function App() {
                     value={urlInput}
                     onChange={(e) => setUrlInput(e.target.value)}
                     placeholder='https://example.com/recipe'
-                    className="w-full px-4 py-3 bg-[#faf9f7] text-left border border-[#e8e4dc] rounded-2xl text-[#3d3429] placeholder:text-[#7a7265] focus:outline-none focus:ring-2 focus:ring-[#b86535]/20 focus:border-[#b86535] transition-all"
+                    className="w-full px-4 py-3 bg-[#faf9f7] text-left border border-[#e8e4dc] rounded-2xl text-[#3d3429] placeholder:text-[#7a7265] focus:outline-none focus:ring-2 focus:ring-[#cf711f]/20 focus:border-[#cf711f] transition-all"
                   />
                   <p className={`text-xs text-[#7a7265] mt-2 ${isRtl ? 'text-right' : 'text-left'}`}>
                     {language === 'en' 
@@ -1034,7 +1407,7 @@ function App() {
                   <button
                     onClick={handleScrapeFromUrl}
                     disabled={isScrapingLoading}
-                    className="flex-1 px-4 py-3 bg-[#b86535] text-white rounded-xl hover:bg-[#a5582d] disabled:bg-[#b86535]/50 transition-colors font-medium flex items-center justify-center gap-2"
+                    className="flex-1 px-4 py-3 bg-[#cf711f] text-white rounded-xl hover:bg-[#b8621a] disabled:bg-[#cf711f]/50 transition-colors font-medium flex items-center justify-center gap-2"
                   >
                     {isScrapingLoading ? (
                       <>
@@ -1057,15 +1430,39 @@ function App() {
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8">
           <div className="flex flex-col items-center justify-center text-center">
             <p className="text-sm text-[#7a7265]">© 2026 Yuval's Recipe Book.</p>
-            <button 
+            <button
               onClick={() => setLanguage(language === 'en' ? 'he' : 'en')}
-              className="text-sm text-[#7a7265] hover:text-[#b86535] transition-colors"
+              className="text-sm text-[#7a7265] hover:text-[#cf711f] transition-colors"
             >
               Language: <span className="cursor-pointer underline text-[#3d3429]">{language === 'en' ? 'en' : 'he'}</span>
             </button>
           </div>
         </div>
       </footer>
+
+      {/* Confirm Dialog */}
+      {confirmDialog && (
+        <ConfirmDialog
+          language={language}
+          title={confirmDialog.title}
+          message={confirmDialog.message}
+          confirmLabel={confirmDialog.confirmLabel}
+          onConfirm={confirmDialog.onConfirm}
+          onCancel={confirmDialog.onCancel}
+        />
+      )}
+
+      {/* Login modal overlay — shown for guests when they click Sign In */}
+      {!user && showLoginModal && (
+        <>
+          <div className="fixed inset-0 z-40 backdrop-blur-sm bg-black/30" onClick={() => setShowLoginModal(false)} />
+          <div className="fixed inset-0 flex items-center justify-center z-50 p-4" onClick={() => setShowLoginModal(false)}>
+            <div onClick={(e) => e.stopPropagation()}>
+              <Login onLoginSuccess={() => { setShowLoginModal(false); setViewMode('profile'); }} />
+            </div>
+          </div>
+        </>
+      )}
     </div>
       )}
     </>

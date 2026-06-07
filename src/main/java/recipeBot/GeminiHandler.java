@@ -21,13 +21,12 @@ public class GeminiHandler {
 
     public Recipe extractRecipeFromText(String rawText) {
         String url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" + apiKey;
-        String allowedCategories = java.util.Arrays.toString(Category.values());
-        String prompt = "Extract the recipe from the provided text. " + 
-            "CRITICAL: All values (name, description, ingredients, instructions) MUST be in the same language as the source text (e.g., if the source is Hebrew, the output values must be Hebrew). " +
+        String prompt = "Extract the recipe from the provided text. " +
+            "CRITICAL: All values (name, description, ingredients, instructions) MUST be in the same language as the source text (e.g., if the source is Hebrew, output Hebrew). " +
             "Return ONLY a valid JSON object without markdown formatting. " +
             "The 'name' and 'description' should be short and concise. " +
-            "The 'category' MUST be exactly one of: " + allowedCategories + ". " +
-            "CRITICAL: Set 'direction' to 'rtl' or 'ltr' according to the recipe's language.\"" +
+            "The 'category' should be a short descriptive label for the dish type in English (e.g., Main, Dessert, Snack, Soup, Salad, Breakfast, Appetizer). " +
+            "CRITICAL: Set 'direction' to 'rtl' or 'ltr' according to the recipe's language. " +
             "Ensure no details are missed in the instructions. " +
             "Use this exact JSON structure with English keys: " +
             "{\"name\": \"...\", \"category\": \"...\", \"description\": \"...\", \"ingredients\": [], \"instructions\": [], \"direction\": \"...\"}. " +

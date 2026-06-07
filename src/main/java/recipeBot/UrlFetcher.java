@@ -8,14 +8,27 @@ public class UrlFetcher {
     public static String fetch(String rawUrl) throws Exception {
         validateUrl(rawUrl);
 
-        return org.jsoup.Jsoup.connect(rawUrl)
-                .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-                .referrer("http://www.google.com")
-                .header("Accept-Language", "he-IL,he;q=0.9,en-US;q=0.8,en;q=0.7")
-                .followRedirects(false)
-                .timeout(10000)
-                .get()
-                .text();
+        org.jsoup.nodes.Document doc = org.jsoup.Jsoup.connect(rawUrl)
+                .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
+                .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8")
+                .header("Accept-Language", "en-US,en;q=0.9")
+                .referrer("https://www.google.com")
+                .followRedirects(true)
+                .ignoreHttpErrors(true)
+                .timeout(15000)
+                .get();
+
+        // Prefer JSON-LD structured data — most recipe sites embed it and it's clean
+        for (org.jsoup.nodes.Element script : doc.select("script[type=application/ld+json]")) {
+            String json = script.html().trim();
+            if (json.contains("\"Recipe\"")) {
+                return "JSON-LD structured recipe data:\n" + json;
+            }
+        }
+
+        // Fall back to page text, capped to avoid token limits
+        String text = doc.text();
+        return text.length() > 20000 ? text.substring(0, 20000) : text;
     }
 
     private static void validateUrl(String rawUrl) throws Exception {

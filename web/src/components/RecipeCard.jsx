@@ -1,7 +1,24 @@
-import { useState } from 'react'
-import { Share2 } from 'lucide-react'
+﻿import { useState } from 'react'
+import { Share2, Heart } from 'lucide-react'
 
-export function RecipeCard({ recipe, language = 'en', apiBase = '/api', onSelect, showCategory = true }) {
+export function RecipeCardSkeleton() {
+  return (
+    <div className="w-full bg-white rounded-2xl overflow-hidden border border-[#e8e4dc]/50 flex flex-col animate-pulse">
+      <div className="px-5 pt-5 pb-3 border-b border-[#e8e4dc]/30">
+        <div className="h-5 bg-[#e8e4dc] rounded-lg w-3/4" />
+      </div>
+      <div className="px-5 py-4 flex flex-col gap-2 flex-grow">
+        <div className="h-3 bg-[#e8e4dc] rounded w-full" />
+        <div className="h-3 bg-[#e8e4dc] rounded w-2/3" />
+        <div className="mt-3 border-t border-[#e8e4dc] pt-3">
+          <div className="h-3 bg-[#e8e4dc] rounded w-1/4" />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export function RecipeCard({ recipe, language = 'en', apiBase = '/api', onSelect, showCategory = true, likeCount, authorUsername, authorId, onSelectAuthor }) {
   const isRtl = language === 'he'
   const [copied, setCopied] = useState(false)
 
@@ -28,7 +45,7 @@ export function RecipeCard({ recipe, language = 'en', apiBase = '/api', onSelect
     <div className="group relative w-full bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-all duration-300 border border-[#e8e4dc]/50 cursor-pointer flex flex-col" onClick={() => onSelect(recipe)}>
       {/* Header area with title and buttons */}
       <div className={`px-5 pt-5 pb-1 border-b border-[#e8e4dc]/30 flex items-center gap-3`} style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
-        <h3 className={`font-semibold text-[#3d3429] text-lg group-hover:text-[#b86535] transition-colors line-clamp-1 ${isRtl ? 'text-right' : 'text-left'} flex-1`}>
+        <h3 className={`font-semibold text-[#3d3429] text-lg group-hover:text-[#cf711f] transition-colors line-clamp-1 ${isRtl ? 'text-right' : 'text-left'} flex-1`}>
           {recipe.title}
         </h3>
         
@@ -36,7 +53,7 @@ export function RecipeCard({ recipe, language = 'en', apiBase = '/api', onSelect
         <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
           <button
             onClick={handleShare}
-            className="w-8 h-8 rounded-lg bg-white/90 backdrop-blur flex items-center justify-center text-[#7a7265] hover:text-[#b86535] hover:bg-white transition-colors shadow-sm border border-[#e8e4dc]/50"
+            className="w-8 h-8 rounded-lg bg-white/90 backdrop-blur flex items-center justify-center text-[#7a7265] hover:text-[#cf711f] hover:bg-white transition-colors shadow-sm border border-[#e8e4dc]/50"
           >
             <Share2 className="w-3.5 h-3.5" />
           </button>
@@ -50,11 +67,26 @@ export function RecipeCard({ recipe, language = 'en', apiBase = '/api', onSelect
         </p>
         
           <div className="border-t border-[#e8e4dc] pt-2 mt-2">
-
-          <div className={`flex justify-between`} style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
-            <span className={ `flex text-xs text-[#7a7265]` }>
-              {recipe.ingredients.length} {language === 'en' ? 'ingredients' : 'מצרכים'}
-            </span>
+            <div className="flex justify-between items-center" style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
+              <span className="flex text-xs text-[#7a7265]">
+                {recipe.ingredients.length} {language === 'en' ? 'ingredients' : 'מצרכים'}
+              </span>
+              <div className="flex items-center gap-2">
+                {authorUsername && (
+                  <button
+                    onClick={e => { e.stopPropagation(); onSelectAuthor && onSelectAuthor(authorId) }}
+                    className="text-xs text-[#7a7265] hover:text-[#e67e22] transition-colors"
+                  >
+                    @{authorUsername}
+                  </button>
+                )}
+                {likeCount > 0 && (
+                  <span className="flex items-center gap-1 text-xs text-[#7a7265]">
+                    <Heart className="w-3 h-3 fill-red-400 text-red-400" />
+                    {likeCount}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
         </div>
