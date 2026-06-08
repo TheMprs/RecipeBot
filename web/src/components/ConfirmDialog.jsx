@@ -5,10 +5,11 @@ export function ConfirmDialog({ title, message, confirmLabel, onConfirm, onCance
       <div className="fixed inset-0 z-[90] flex items-center justify-center p-4" onClick={onCancel}>
         <div
           className="bg-white rounded-3xl shadow-xl w-full max-w-sm p-6 flex flex-col gap-5"
+          dir={language === 'he' ? 'rtl' : 'ltr'}
           onClick={e => e.stopPropagation()}
         >
           <div>
-            <h2 className="text-lg font-bold text-[#3d3429] mb-1">{title}</h2>
+            <h2 className="text-lg font-bold text-[#3d3429] mb-1 truncate">{title}</h2>
             {message && <p className="text-sm text-[#7a7265] leading-relaxed">{message}</p>}
           </div>
           <div className="flex gap-3">

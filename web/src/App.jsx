@@ -23,12 +23,19 @@ function App() {
   const [recipeLikeCount, setRecipeLikeCount] = useState(0)
   const [recipeIsLiked, setRecipeIsLiked] = useState(false)
   const [publicRecipes, setPublicRecipes] = useState([])
-  const [language, setLanguage] = useState('he')
-  const [viewMode, setViewMode] = useState('home')
+  const [language, setLanguage] = useState(() => localStorage.getItem('language') || 'he')
+  const [viewMode, setViewMode] = useState(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('user')) return 'profile'
+    if (params.get('r') || params.get('recipe')) return 'home'
+    return 'home'
+  })
   const [showLoginModal, setShowLoginModal] = useState(false)
   const [selectedRecipe, setSelectedRecipe] = useState(null)
   const [editingRecipe, setEditingRecipe] = useState(null)
   const [userCategories, setUserCategories] = useState([])
+  const [categoriesLoading, setCategoriesLoading] = useState(true)
+  const [ownRecipesLoading, setOwnRecipesLoading] = useState(true)
   const [recipeCategories, setRecipeCategories] = useState({})
   const [showRecipeForm, setShowRecipeForm] = useState(false)
   const [showUrlModal, setShowUrlModal] = useState(false)
@@ -140,6 +147,8 @@ function App() {
       setUser(null)
       setRecipes([])
       setUserCategories([])
+      setCategoriesLoading(true)
+      setOwnRecipesLoading(true)
       setRecipeCategories({})
       setSelectedRecipe(null)
       setEditingRecipe(null)
@@ -151,6 +160,7 @@ function App() {
 
   // 1. FETCH ALL RECIPES WITH FULL DETAILS (no N+1 queries)
   const fetchRecipes = async () => {
+    setOwnRecipesLoading(true)
     try {
       if (user) {
         const { data: { session } } = await supabase.auth.getSession();
@@ -194,6 +204,8 @@ function App() {
     } catch (error) {
       console.error('[Data] Failed to fetch recipes:', error.message);
       setRecipes([]);
+    } finally {
+      setOwnRecipesLoading(false)
     }
   };
 
@@ -405,6 +417,7 @@ function App() {
   }
 
   const fetchUserCategories = async () => {
+    setCategoriesLoading(true)
     try {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session?.access_token) return
@@ -416,6 +429,8 @@ function App() {
       setUserCategories(await res.json() || [])
     } catch (err) {
       console.error('[Data] Failed to fetch categories:', err.message)
+    } finally {
+      setCategoriesLoading(false)
     }
   }
 
@@ -553,6 +568,7 @@ function App() {
   };
 
   useEffect(() => {
+    if (loading) return
     if (user) {
       fetchRecipes();
       fetchCookCounts();
@@ -641,7 +657,11 @@ function App() {
         .then(data => {
           if (!data || data.length === 0) return;
           const profile = data[0];
-          setViewingProfile(profile);
+          if (user && profile.id === user.id) {
+            setViewingProfile(null);
+          } else {
+            setViewingProfile(profile);
+          }
           setViewMode('profile');
         })
         .catch(err => {
@@ -657,7 +677,7 @@ function App() {
     } else if (recipeName) {
       loadRecipeFromSupabase(`name=eq.${encodeURIComponent(recipeName)}`);
     }
-  }, [user])
+  }, [user, loading])
 
   // Check carousel scroll state when recipes load
   useEffect(() => {
@@ -1221,6 +1241,8 @@ function App() {
                 <p className="text-[#7a7265] text-sm ml-4">{language === 'en' ? 'Track your cooking habits' : 'עקוב אחרי הרגלי הבישול שלך'}</p>
               </div>
               {(() => {
+                if (ownRecipesLoading) return <div className="animate-pulse bg-[#e8e4dc]/60 rounded-3xl" style={{ height: '276px' }} />;
+
                 const mostPrepped = [...recipes]
                   .filter(r => cookCounts[r.id] > 0)
                   .sort((a, b) => (cookCounts[b.id] || 0) - (cookCounts[a.id] || 0))
@@ -1308,6 +1330,8 @@ function App() {
             apiBase={API_BASE}
             onLogout={handleLogout}
             userCategories={userCategories}
+            categoriesLoading={categoriesLoading}
+            ownRecipesLoading={ownRecipesLoading}
             recipeCategories={recipeCategories}
             onCreateCategory={handleCreateCategory}
             onDeleteCategory={handleDeleteCategory}
@@ -1431,7 +1455,7 @@ function App() {
           <div className="flex flex-col items-center justify-center text-center">
             <p className="text-sm text-[#7a7265]">© 2026 Yuval's Recipe Book.</p>
             <button
-              onClick={() => setLanguage(language === 'en' ? 'he' : 'en')}
+              onClick={() => { const next = language === 'en' ? 'he' : 'en'; localStorage.setItem('language', next); setLanguage(next); }}
               className="text-sm text-[#7a7265] hover:text-[#cf711f] transition-colors"
             >
               Language: <span className="cursor-pointer underline text-[#3d3429]">{language === 'en' ? 'en' : 'he'}</span>

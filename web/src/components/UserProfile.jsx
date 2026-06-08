@@ -1,4 +1,4 @@
-﻿import { User, BookOpen, Search, Filter, X, Settings, Plus, ChevronLeft } from 'lucide-react';
+﻿import { User, BookOpen, Search, Filter, X, Settings, Plus, ChevronLeft, ChevronRight } from 'lucide-react';
 import { RecipeCard, RecipeCardSkeleton } from './RecipeCard';
 import { ConfirmDialog } from './ConfirmDialog';
 import { useState, useEffect, useRef } from 'react';
@@ -14,6 +14,8 @@ export function UserProfile({
   apiBase = '/api',
   onLogout,
   userCategories = [],
+  categoriesLoading = false,
+  ownRecipesLoading = false,
   recipeCategories = {},
   onCreateCategory,
   onDeleteCategory,
@@ -38,6 +40,7 @@ export function UserProfile({
   const [isSaving, setIsSaving] = useState(false);
 
   // Determine which profile we're viewing
+  const isOwnProfile = !viewingProfile || (user && viewingProfile?.id === user?.id);
   const currentProfile = viewingProfile || user;
   const displayRecipes = viewingProfile ? viewingRecipes : recipes;
   const profileData = viewingProfile || ownProfile;
@@ -67,6 +70,44 @@ export function UserProfile({
   const [confirmDialog, setConfirmDialog] = useState(null);
   const newCategoryInputRef = useRef(null);
   const filterMenuRef = useRef(null);
+  const categoryScrollRef = useRef(null);
+  const [hoveringCategoryPills, setHoveringCategoryPills] = useState(false);
+
+  useEffect(() => {
+    if (!hoveringCategoryPills) return;
+
+    let target = null;
+    let rafId = null;
+
+    const animate = () => {
+      const el = categoryScrollRef.current;
+      if (!el) { rafId = null; return; }
+      const diff = target - el.scrollLeft;
+      if (Math.abs(diff) < 1) { el.scrollLeft = target; rafId = null; return; }
+      el.scrollLeft += diff * 0.15;
+      rafId = requestAnimationFrame(animate);
+    };
+
+    const onWheel = (e) => {
+      const el = categoryScrollRef.current;
+      if (!el) return;
+      e.preventDefault();
+      if (target === null) target = el.scrollLeft;
+      const rtl = getComputedStyle(el).direction === 'rtl';
+      const step = Math.sign(e.deltaY) * 120 * (rtl ? -1 : 1);
+      const maxScroll = el.scrollWidth - el.clientWidth;
+      target = rtl
+        ? Math.min(0, Math.max(-maxScroll, target + step))
+        : Math.max(0, Math.min(maxScroll, target + step));
+      if (!rafId) rafId = requestAnimationFrame(animate);
+    };
+
+    window.addEventListener('wheel', onWheel, { passive: false });
+    return () => {
+      window.removeEventListener('wheel', onWheel);
+      if (rafId) cancelAnimationFrame(rafId);
+    };
+  }, [hoveringCategoryPills]);
 
   useEffect(() => {
     const handler = (e) => { if (filterMenuRef.current && !filterMenuRef.current.contains(e.target)) setIsFilterMenuOpen(false) }
@@ -299,58 +340,76 @@ export function UserProfile({
       </div>
 
       {/* Category pills — own profile only */}
-      {!viewingProfile && (
-        <div className="flex items-center gap-2 mb-4 overflow-x-auto pb-1" style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
-          <button
-            onClick={() => setSelectedCategoryName(null)}
-            className={`flex-shrink-0 px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
-              !selectedCategoryName ? 'bg-[#e67e22] text-white' : 'bg-white border border-[#e8e4dc] text-[#7a7265] hover:border-[#e67e22]/40'
-            }`}
+      {isOwnProfile && (
+        <div
+          className="mb-4"
+          onMouseEnter={() => setHoveringCategoryPills(true)}
+          onMouseLeave={() => setHoveringCategoryPills(false)}
+        >
+          <div
+            ref={categoryScrollRef}
+            className="flex items-center gap-2 overflow-x-auto h-9 carousel-scroll"
+            style={{ WebkitOverflowScrolling: 'touch', direction: isRtl ? 'rtl' : 'ltr' }}
           >
-            {language === 'en' ? 'All' : 'הכל'}
-          </button>
-          {userCategories.map(cat => (
-            <button
-              key={cat.id}
-              onClick={() => setSelectedCategoryName(selectedCategoryName === cat.name ? null : cat.name)}
-              className={`flex-shrink-0 rounded-full text-sm font-medium transition-colors px-3 py-1.5 ${
-                selectedCategoryName === cat.name ? 'bg-[#e67e22] text-white' : 'bg-white border border-[#e8e4dc] text-[#7a7265] hover:border-[#e67e22]/40'
-              }`}
-            >
-              {cat.name}
-            </button>
-          ))}
-          {showNewCategoryInput ? (
-            <form
-              onSubmit={async e => {
-                e.preventDefault();
-                const val = newCategoryInput.trim();
-                if (val) await onCreateCategory(val);
-                setNewCategoryInput('');
-                setShowNewCategoryInput(false);
-              }}
-              className="flex-shrink-0"
-            >
-              <input
-                ref={newCategoryInputRef}
-                autoFocus
-                value={newCategoryInput}
-                onChange={e => setNewCategoryInput(e.target.value)}
-                onBlur={() => { setShowNewCategoryInput(false); setNewCategoryInput(''); }}
-                onKeyDown={e => { if (e.key === 'Escape') { setShowNewCategoryInput(false); setNewCategoryInput(''); } }}
-                placeholder={language === 'en' ? 'Name...' : 'שם...'}
-                className="w-28 px-3 py-1.5 text-sm border border-[#e67e22] rounded-full focus:outline-none bg-white text-[#3d3429]"
-              />
-            </form>
+          {categoriesLoading ? (
+            [56, 80, 64, 96, 56, 72, 88, 60, 76, 52].map((w, i) => (
+              <div key={i} className="flex-shrink-0 h-8 rounded-full bg-[#e8e4dc] animate-pulse" style={{ width: `${w}px` }} />
+            ))
           ) : (
-            <button
-              onClick={() => setShowNewCategoryInput(true)}
-              className="flex-shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-full text-sm text-[#7a7265] border border-dashed border-[#e8e4dc] hover:border-[#e67e22]/40 hover:text-[#e67e22] transition-colors"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              {language === 'en' ? 'New' : 'חדש'}
-            </button>
+            <>
+              <button
+                onClick={() => setSelectedCategoryName(null)}
+                className={`flex-shrink-0 px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                  !selectedCategoryName ? 'bg-[#e67e22] text-white' : 'bg-white border border-[#e8e4dc] text-[#7a7265] hover:border-[#e67e22]/40'
+                }`}
+              >
+                {language === 'en' ? 'All' : 'הכל'}
+              </button>
+              {userCategories.map(cat => (
+                <button
+                  key={cat.id}
+                  onClick={() => setSelectedCategoryName(selectedCategoryName === cat.name ? null : cat.name)}
+                  className={`flex-shrink-0 rounded-full text-sm font-medium transition-colors px-3 py-1.5 ${
+                    selectedCategoryName === cat.name ? 'bg-[#e67e22] text-white' : 'bg-white border border-[#e8e4dc] text-[#7a7265] hover:border-[#e67e22]/40'
+                  }`}
+                >
+                  {cat.name}
+                </button>
+              ))}
+              {showNewCategoryInput ? (
+                <form
+                  onSubmit={async e => {
+                    e.preventDefault();
+                    const val = newCategoryInput.trim();
+                    if (val) await onCreateCategory(val);
+                    setNewCategoryInput('');
+                    setShowNewCategoryInput(false);
+                  }}
+                  className="flex-shrink-0"
+                >
+                  <input
+                    ref={newCategoryInputRef}
+                    autoFocus
+                    value={newCategoryInput}
+                    onChange={e => setNewCategoryInput(e.target.value)}
+                    onBlur={() => { setShowNewCategoryInput(false); setNewCategoryInput(''); }}
+                    onKeyDown={e => { if (e.key === 'Escape') { setShowNewCategoryInput(false); setNewCategoryInput(''); } }}
+                    placeholder={language === 'en' ? 'Name...' : 'שם...'}
+                    className="w-28 px-3 py-1.5 text-sm border border-[#e67e22] rounded-full focus:outline-none bg-white text-[#3d3429]"
+                  />
+                </form>
+              ) : (
+                <button
+                  onClick={() => setShowNewCategoryInput(true)}
+                  className="flex-shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-full text-sm text-[#7a7265] border border-dashed border-[#e8e4dc] hover:border-[#e67e22]/40 hover:text-[#e67e22] transition-colors"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  {language === 'en' ? 'New' : 'חדש'}
+                </button>
+              )}
+            </>
           )}
+          </div>
         </div>
       )}
 
@@ -415,7 +474,7 @@ export function UserProfile({
       </div>
 
       {/* Recipes Grid */}
-      {recipesLoading ? (
+      {(recipesLoading || (!viewingProfile && ownRecipesLoading)) ? (
         <div style={{ direction: isRtl ? 'rtl' : 'ltr' }} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
           {[...Array(6)].map((_, i) => <RecipeCardSkeleton key={i} />)}
         </div>
@@ -458,12 +517,12 @@ export function UserProfile({
                       onClick={() => { setShowEditProfile(false); setShowRecipeSettings(false); setEditingCategoryId(null); }}
                       className="p-1.5 text-[#7a7265] hover:text-[#3d3429] hover:bg-[#f5f3ef] rounded-xl transition-colors"
                     >
-                      <ChevronLeft className="w-4 h-4" />
+                      {isRtl ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
                     </button>
                   )}
                   <h2 className="text-lg font-semibold text-[#3d3429]">
                     {showRecipeSettings
-                      ? (language === 'en' ? 'Recipe Settings' : 'הגדרות מתכון')
+                      ? (language === 'en' ? 'Recipe Settings' : 'הגדרות מתכונים')
                       : (language === 'en' ? 'Settings' : 'הגדרות')}
                   </h2>
                 </div>
@@ -584,6 +643,7 @@ export function UserProfile({
                                   onChange={e => setEditingCategoryName(e.target.value)}
                                   onKeyDown={e => {
                                     if (e.key === 'Enter' && editingCategoryName.trim()) {
+                                      if (selectedCategoryName === cat.name) setSelectedCategoryName(editingCategoryName.trim());
                                       onRenameCategory(cat.id, editingCategoryName.trim());
                                       setEditingCategoryId(null);
                                     }
@@ -593,7 +653,10 @@ export function UserProfile({
                                 />
                                 <button
                                   onClick={() => {
-                                    if (editingCategoryName.trim()) onRenameCategory(cat.id, editingCategoryName.trim());
+                                    if (editingCategoryName.trim()) {
+                                      if (selectedCategoryName === cat.name) setSelectedCategoryName(editingCategoryName.trim());
+                                      onRenameCategory(cat.id, editingCategoryName.trim());
+                                    }
                                     setEditingCategoryId(null);
                                   }}
                                   className="text-xs text-[#e67e22] font-medium hover:text-[#cf711f]"
@@ -603,7 +666,7 @@ export function UserProfile({
                               </>
                             ) : (
                               <>
-                                <span className="flex-1 text-sm text-[#3d3429]">{cat.name}</span>
+                                <span className="flex-1 text-sm text-[#3d3429] truncate min-w-0">{cat.name}</span>
                                 <button
                                   onClick={() => { setEditingCategoryId(cat.id); setEditingCategoryName(cat.name); }}
                                   className="text-xs text-[#7a7265] hover:text-[#3d3429] px-1"
@@ -611,7 +674,22 @@ export function UserProfile({
                                   {language === 'en' ? 'Rename' : 'שנה שם'}
                                 </button>
                                 <button
-                                  onClick={() => { if (selectedCategoryName === cat.name) setSelectedCategoryName(null); onDeleteCategory(cat.id); }}
+                                  onClick={() => {
+                                    const confirmed = new Promise(resolve => {
+                                      setConfirmDialog({
+                                        title: language === 'en' ? `Delete "${cat.name}"?` : `למחוק את "${cat.name}"?`,
+                                        message: language === 'en' ? 'Recipes in this category will not be deleted.' : 'המתכונים בקטגוריה זו לא יימחקו.',
+                                        confirmLabel: language === 'en' ? 'Delete' : 'מחק',
+                                        onConfirm: () => { setConfirmDialog(null); resolve(true); },
+                                        onCancel: () => { setConfirmDialog(null); resolve(false); },
+                                      });
+                                    });
+                                    confirmed.then(ok => {
+                                      if (!ok) return;
+                                      if (selectedCategoryName === cat.name) setSelectedCategoryName(null);
+                                      onDeleteCategory(cat.id);
+                                    });
+                                  }}
                                   className="text-xs text-red-400 hover:text-red-600 px-1"
                                 >
                                   {language === 'en' ? 'Delete' : 'מחק'}
@@ -684,7 +762,7 @@ export function UserProfile({
                       onClick={() => setShowRecipeSettings(true)}
                       className="w-full text-start px-4 py-3 rounded-2xl text-[#3d3429] hover:bg-[#f5f3ef] transition-colors text-sm font-medium"
                     >
-                      {language === 'en' ? 'Recipe settings' : 'הגדרות מתכון'}
+                      {language === 'en' ? 'Recipe settings' : 'הגדרות מתכונים'}
                     </button>
                   </>
                 )}

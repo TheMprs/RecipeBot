@@ -4,14 +4,17 @@ import { Share2, Heart } from 'lucide-react'
 export function RecipeCardSkeleton() {
   return (
     <div className="w-full bg-white rounded-2xl overflow-hidden border border-[#e8e4dc]/50 flex flex-col animate-pulse">
-      <div className="px-5 pt-5 pb-3 border-b border-[#e8e4dc]/30">
-        <div className="h-5 bg-[#e8e4dc] rounded-lg w-3/4" />
+      <div className="px-5 pt-5 pb-1 border-b border-[#e8e4dc]/30 flex items-center gap-3">
+        <div className="h-8 bg-[#e8e4dc] rounded-lg flex-1" />
+        <div className="w-8 h-8 flex-shrink-0" />
       </div>
-      <div className="px-5 py-4 flex flex-col gap-2 flex-grow">
-        <div className="h-3 bg-[#e8e4dc] rounded w-full" />
-        <div className="h-3 bg-[#e8e4dc] rounded w-2/3" />
-        <div className="mt-3 border-t border-[#e8e4dc] pt-3">
-          <div className="h-3 bg-[#e8e4dc] rounded w-1/4" />
+      <div className="px-5 py-4 flex flex-col flex-grow">
+        <div className="h-5 bg-[#e8e4dc] rounded w-3/4 flex-grow" />
+        <div className="border-t border-[#e8e4dc] pt-2 mt-2">
+          <div className="flex justify-between items-center">
+            <div className="h-4 bg-[#e8e4dc] rounded w-1/4" />
+            <div className="h-4 bg-[#e8e4dc] rounded w-1/6" />
+          </div>
         </div>
       </div>
     </div>
