@@ -1,4 +1,4 @@
-﻿import { User, BookOpen, Search, Filter, X, Settings, Plus, ChevronLeft, ChevronRight } from 'lucide-react';
+﻿import { User, BookOpen, Search, Filter, X, Settings, Plus, ChevronLeft, ChevronRight, LogOut } from 'lucide-react';
 import { RecipeCard, RecipeCardSkeleton } from './RecipeCard';
 import { ConfirmDialog } from './ConfirmDialog';
 import { useState, useEffect, useRef } from 'react';
@@ -54,6 +54,16 @@ export function UserProfile({
     : (ownProfile?.avatar_url || user?.user_metadata?.avatar_url);
   // s288 covers retina for our 128px display, -no removes Google's overlay
   const avatarUrl = rawAvatarUrl?.replace(/=s\d+.*$/, '=s288-c-no');
+  const avatarUrlLarge = rawAvatarUrl?.replace(/=s\d+.*$/, '=s800-c-no');
+  const [showAvatarFull, setShowAvatarFull] = useState(false);
+
+  // Lock page scroll while the avatar lightbox is open
+  useEffect(() => {
+    if (!showAvatarFull) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, [showAvatarFull]);
 
   const [likeCounts, setLikeCounts] = useState({});
   const [searchQuery, setSearchQuery] = useState('');
@@ -292,10 +302,14 @@ export function UserProfile({
             <Settings className="w-5 h-5" />
           </button>
         )}
-        <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4 sm:gap-6" style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
+        <div className="flex flex-row items-center sm:items-start gap-4 sm:gap-6" style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
           {/* Avatar */}
           <div className="flex-shrink-0">
-            <div className="w-24 sm:w-32 h-24 sm:h-32 rounded-full border-4 border-[#e67e22]/20 overflow-hidden bg-[#e67e22]/10 flex items-center justify-center">
+            <button
+              type="button"
+              onClick={() => avatarUrl && setShowAvatarFull(true)}
+              className={`block w-28 sm:w-36 h-28 sm:h-36 rounded-full border-4 border-[#e67e22]/20 overflow-hidden bg-[#e67e22]/10 flex items-center justify-center ${avatarUrl ? 'cursor-pointer' : 'cursor-default'}`}
+            >
               {avatarUrl ? (
                 <img
                   src={avatarUrl}
@@ -307,16 +321,18 @@ export function UserProfile({
               <div className={`w-full h-full items-center justify-center ${avatarUrl ? 'hidden' : 'flex'}`}>
                 <User className="w-12 sm:w-16 h-12 sm:h-16 text-[#e67e22]" />
               </div>
-            </div>
+            </button>
           </div>
 
           {/* Profile Info */}
           <div className="flex-1 pt-0 sm:pt-4">
-            <h1 className={`text-2xl sm:text-3xl font-bold text-[#3d3429] mb-1 break-all whitespace-normal text-center ${isRtl ? 'sm:text-right' : 'sm:text-left'}`} style={{ direction: isRtl ? 'rtl' : 'ltr' }}>{displayName}</h1>
-            {handle && <p className={`text-sm text-[#7a7265] mb-4 sm:mb-6 text-center ${isRtl ? 'sm:text-right' : 'sm:text-left'}`}>@{handle}</p>}
+            <div className="flex flex-col items-start sm:flex-row sm:items-baseline sm:gap-2 mb-4 sm:mb-6" style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
+              <h1 className="text-2xl sm:text-3xl font-bold text-[#3d3429] mb-1 sm:mb-0 break-all whitespace-normal text-start">{displayName}</h1>
+              {handle && <p className="text-sm text-[#7a7265]"><span dir="ltr">@{handle}</span></p>}
+            </div>
 
             {/* Stats */}
-            <div className="flex justify-center sm:justify-start gap-4 sm:gap-8 mt-4 sm:mt-6">
+            <div className="flex justify-start gap-4 sm:gap-8 mt-4 sm:mt-6">
               <div className="text-center">
                 <div className="text-lg sm:text-2xl font-bold text-[#e67e22]">{displayRecipes.length}</div>
                 <div className="text-xs text-[#7a7265] uppercase tracking-wide">
@@ -499,6 +515,21 @@ export function UserProfile({
             {language === 'en' ? 'No recipes found' : 'לא נמצאו מתכונים'}
           </p>
         </div>
+      )}
+      {/* Avatar Lightbox */}
+      {showAvatarFull && avatarUrlLarge && (
+        <>
+          <div className="fixed inset-0 z-40 backdrop-blur-sm bg-black/60" onClick={() => setShowAvatarFull(false)} />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={() => setShowAvatarFull(false)}>
+            <img
+              src={avatarUrlLarge}
+              alt={displayName}
+              className="w-[min(80vw,80vh,28rem)] h-[min(80vw,80vh,28rem)] object-cover rounded-full shadow-xl"
+              onClick={e => e.stopPropagation()}
+              onError={e => { if (e.target.src !== avatarUrl) e.target.src = avatarUrl; }}
+            />
+          </div>
+        </>
       )}
       {/* Settings Modal */}
       {showSettings && (
@@ -765,6 +796,15 @@ export function UserProfile({
                     >
                       {language === 'en' ? 'Recipe settings' : 'הגדרות מתכונים'}
                     </button>
+                    <div className="pt-4 mt-3 border-t border-[#e8e4dc]">
+                      <button
+                        onClick={() => { closeSettings(); if (onLogout) onLogout(); }}
+                        className={`w-full flex ${isRtl ? 'flex-row-reverse' : ''} items-center justify-center gap-2 px-4 py-3 bg-red-500 text-white rounded-2xl hover:bg-red-600 transition-colors text-sm font-semibold`}
+                      >
+                        <LogOut className="w-4 h-4" />
+                        {language === 'en' ? 'Logout' : 'התנתקות'}
+                      </button>
+                    </div>
                   </>
                 )}
               </div>

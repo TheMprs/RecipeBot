@@ -221,7 +221,7 @@ export function RecipeDetail({ recipe, language = 'en', apiBase = '/api', onBack
                   onClick={() => onSelectAuthor && onSelectAuthor(recipe.authorId)}
                   className="mt-1.5 text-sm text-[#7a7265] hover:text-[#e67e22] transition-colors"
                 >
-                  @{recipe.authorUsername}
+                  <span dir="ltr">@{recipe.authorUsername}</span>
                 </button>
               )}
             </div>
@@ -244,13 +244,13 @@ export function RecipeDetail({ recipe, language = 'en', apiBase = '/api', onBack
                   onClick={handleMarkMade}
                   className={`flex flex-col items-center gap-1 px-3 py-2 rounded-2xl border transition-all duration-200 ${
                     marked
-                      ? 'bg-[#e67e22] border-[#e67e22] text-white'
+                      ? 'bg-green-50 border-green-200 text-green-500'
                       : 'bg-[#faf9f7] border-[#e8e4dc] text-[#7a7265] hover:border-[#e67e22]/50 hover:text-[#e67e22]'
                   }`}
                 >
                   <ChefHat className="w-5 h-5" />
-                  <span className="text-xs font-medium leading-none">
-                    {marked ? (language === 'en' ? 'Logged!' : 'נרשם!') : cookCount > 0 ? `${cookCount}×` : '—'}
+                  <span className="flex items-center justify-center h-3 text-xs font-medium leading-none">
+                    {marked ? <Check className="w-3 h-3" strokeWidth={3} /> : cookCount > 0 ? `${cookCount}×` : '—'}
                   </span>
                 </button>
               )}

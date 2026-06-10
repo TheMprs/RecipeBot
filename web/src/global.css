@@ -35,3 +35,39 @@
 .carousel-section:hover .carousel-scroll {
   scrollbar-color: rgba(0, 0, 0, 0.1) transparent;
 }
+
+/* Number inputs without spin arrows */
+.no-spinner::-webkit-outer-spin-button,
+.no-spinner::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.no-spinner {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+/* Offline pill stir-fry animation */
+@keyframes pan-stir {
+  0%, 100% { transform: rotate(0); }
+  20% { transform: rotate(-12deg); }
+  45% { transform: rotate(9deg); }
+  70% { transform: rotate(-6deg); }
+}
+.animate-pan-stir {
+  animation: pan-stir 0.9s ease-in-out;
+  transform-origin: 50% 85%;
+}
+/* SVG user units: veggies rise out of the pan opening and sink back inside */
+.veg {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+@keyframes veg-jump {
+  0% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-68px) rotate(180deg); }
+  100% { transform: translateY(0) rotate(360deg); }
+}
+.animate-veg-jump {
+  animation: veg-jump 0.9s ease-in-out both;
+}

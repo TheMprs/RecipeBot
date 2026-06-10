@@ -1,5 +1,5 @@
 ﻿import { useState, useEffect, useRef } from 'react'
-import { BookOpen, Plus, Search, Filter, X, Link as LinkIcon, User as UserIcon, ChevronLeft, ChevronRight, LogOut, Heart, RotateCcw, Pencil } from 'lucide-react'
+import { BookOpen, Plus, Search, Filter, X, Link as LinkIcon, User as UserIcon, ChevronLeft, ChevronRight, Heart, RotateCcw, Pencil } from 'lucide-react'
 import { RecipeCard, RecipeCardSkeleton } from './components/RecipeCard'
 import { RecipeDetail } from './components/RecipeDetail'
 import { RecipeForm } from './components/RecipeForm'
@@ -58,6 +58,8 @@ function App() {
   const [saveError, setSaveError] = useState(null) // failed background save, offered for retry
   const [showLinkSuccess, setShowLinkSuccess] = useState(false) // Telegram linking celebration
   const [isOffline, setIsOffline] = useState(typeof navigator !== 'undefined' && !navigator.onLine)
+  const [isStirring, setIsStirring] = useState(false) // offline-pan click animation
+  const [offlineDismissed, setOfflineDismissed] = useState(false)
   const profileCheckedFor = useRef(null) // user id whose profile row was already verified this session
 
   const isRtl = language === 'he'
@@ -69,7 +71,7 @@ function App() {
       if (user) { fetchRecipes(); fetchCookCounts(); fetchUserCategories(); } else { fetchPublicRecipes(); }
       fetchTopLikedRecipes()
     }
-    const goOffline = () => setIsOffline(true)
+    const goOffline = () => { setIsOffline(true); setOfflineDismissed(false) }
     window.addEventListener('online', goOnline)
     window.addEventListener('offline', goOffline)
     return () => {
@@ -1139,7 +1141,7 @@ function App() {
       ) : (
     <div className="min-h-screen bg-[#f5f3ef]">
       <header className="sticky top-0 z-30 bg-[#faf9f7]/95 backdrop-blur-md border-b border-[#e8e4dc]">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between gap-4">
+        <div className="relative max-w-6xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between gap-4">
             <button onClick={() => handleNavigate('home')} className="flex items-center gap-2 group min-w-0">
               <div className="w-10 h-10 rounded-2xl bg-[#e67e22] flex items-center justify-center flex-shrink-0">
                 <BookOpen className="w-5 h-5 text-white" />
@@ -1149,6 +1151,7 @@ function App() {
                 <p className="text-xs text-[#7a7265]">זה בתהליך לא לשפוט</p>
               </div>
             </button>
+
             <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0">
               {user ? (
                 <>
@@ -1159,11 +1162,6 @@ function App() {
                   <button onClick={() => handleNavigate('profile')}
                     className="flex items-center gap-2 text-[#64748b] hover:text-[#1e293b] transition-colors p-2">
                     <UserIcon className="w-5 h-5"/>
-                  </button>
-                  <button onClick={handleLogout}
-                    className="flex items-center gap-1.5 px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors text-xs sm:text-sm whitespace-nowrap">
-                    <LogOut className="w-4 h-4" />
-                    <span className="hidden sm:inline">Logout</span>
                   </button>
                 </>
               ) : (
@@ -1178,22 +1176,6 @@ function App() {
       </header>
 
       <main className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
-        {/* Offline notice — shown above whatever content we have cached */}
-        {isOffline && (
-          <div className="mb-8 text-center py-10 bg-gradient-to-br from-[#faf9f7] to-[#f5f3ef] rounded-3xl border-2 border-dashed border-[#e8e4dc]">
-            <svg viewBox="0 0 200 140" className="w-44 h-auto mx-auto mb-3" fill="none" aria-hidden="true">
-              <path d="M60 50 a55 55 0 0 1 80 0" stroke="#e8e4dc" strokeWidth="8" strokeLinecap="round" />
-              <path d="M75 65 a35 35 0 0 1 50 0" stroke="#e8e4dc" strokeWidth="8" strokeLinecap="round" />
-              <circle cx="100" cy="82" r="6" fill="#e67e22" />
-              <line x1="55" y1="30" x2="145" y2="95" stroke="#e67e22" strokeWidth="8" strokeLinecap="round" />
-              <ellipse cx="100" cy="115" rx="45" ry="12" fill="#3d3429" />
-              <rect x="143" y="111" width="36" height="8" rx="4" fill="#3d3429" />
-            </svg>
-            <p className="text-[#3d3429] font-semibold">{language === 'en' ? "No internet — the kitchen's offline" : 'אין אינטרנט — המטבח לא מחובר'}</p>
-            <p className="text-[#7a7265] text-sm mt-1">{language === 'en' ? "We'll reload everything when you're back" : 'הכל ייטען מחדש כשהחיבור יחזור'}</p>
-          </div>
-        )}
-
         {viewMode === 'home' && (
           <div style={{ direction: language === 'he' ? 'rtl' : 'ltr' }} >
 
@@ -1256,7 +1238,7 @@ function App() {
                           </div>
                           <div className="text-start">
                             <p className="text-sm text-[#3d3429] font-medium">{u.display_name || u.username}</p>
-                            <p className="text-xs text-[#7a7265]">@{u.username}</p>
+                            <p className="text-xs text-[#7a7265]"><span dir="ltr">@{u.username}</span></p>
                           </div>
                         </button>
                       ))}
@@ -1629,9 +1611,46 @@ function App() {
         />
       )}
 
-      {/* Error banner — failed saves get retry/edit buttons, plain errors just the message */}
-      {saveError && (
-        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[80] flex items-center gap-3 bg-white border border-red-200 shadow-lg rounded-2xl px-4 py-3 max-w-[calc(100vw-2rem)]">
+      {/* Bottom banners — offline (persistent until dismissed) stacked with errors */}
+      {(saveError || (isOffline && !offlineDismissed)) && (
+      <div
+        className="fixed left-1/2 -translate-x-1/2 z-[80] flex flex-col-reverse items-center gap-2 max-w-[calc(100vw-2rem)]"
+        style={{ bottom: 'calc(1rem + env(safe-area-inset-bottom))' }}
+      >
+        {isOffline && !offlineDismissed && (
+          <div className="flex items-center gap-3 bg-white border border-[#e8e4dc] shadow-lg rounded-2xl px-4 py-2">
+            <button
+              type="button"
+              onClick={() => { if (!isStirring) { setIsStirring(true); setTimeout(() => setIsStirring(false), 1300); } }}
+              className="relative w-10 flex-shrink-0 cursor-pointer select-none"
+            >
+              <svg viewBox="0 0 200 140" className="w-10 h-auto" fill="none" aria-hidden="true">
+                {/* crossed-out wifi */}
+                <path d="M60 42 a55 55 0 0 1 80 0" stroke="#cbc5ba" strokeWidth="10" strokeLinecap="round" />
+                <path d="M75 57 a35 35 0 0 1 50 0" stroke="#cbc5ba" strokeWidth="10" strokeLinecap="round" />
+                <line x1="58" y1="22" x2="142" y2="66" stroke="#e67e22" strokeWidth="10" strokeLinecap="round" />
+                {/* veggies — drawn before the pan so they rest hidden inside it */}
+                <text x="64" y="114" fontSize="24" fill="#000" className={isStirring ? 'veg animate-veg-jump' : 'veg'}>🥕</text>
+                <text x="88" y="116" fontSize="24" fill="#000" className={isStirring ? 'veg animate-veg-jump' : 'veg'} style={{ animationDelay: '130ms' }}>🥦</text>
+                <text x="112" y="114" fontSize="24" fill="#000" className={isStirring ? 'veg animate-veg-jump' : 'veg'} style={{ animationDelay: '260ms' }}>🍅</text>
+                {/* saucepan: straight-sided pot + rim + side handle */}
+                <g className={isStirring ? 'animate-pan-stir' : ''} style={{ transformBox: 'fill-box', transformOrigin: '50% 90%' }}>
+                  <rect x="58" y="80" width="84" height="42" rx="10" fill="#3d3429" />
+                  <ellipse cx="100" cy="80" rx="42" ry="7" fill="#3d3429" />
+                  <rect x="140" y="74" width="44" height="9" rx="4.5" fill="#3d3429" />
+                </g>
+              </svg>
+            </button>
+            <span className="text-sm font-semibold text-red-500 whitespace-nowrap">
+              {language === 'en' ? 'No internet' : 'אין אינטרנט'}
+            </span>
+            <button onClick={() => setOfflineDismissed(true)} className="shrink-0 text-[#7a7265] hover:text-[#3d3429] text-sm">✕</button>
+          </div>
+        )}
+
+        {/* Error banner — failed saves get retry/edit buttons, plain errors just the message */}
+        {saveError && (
+        <div className="flex items-center gap-3 bg-white border border-red-200 shadow-lg rounded-2xl px-4 py-3 max-w-full">
           <p className="text-sm text-[#3d3429] truncate">
             {saveError.message
               ? saveError.message
@@ -1657,6 +1676,8 @@ function App() {
           )}
           <button onClick={() => setSaveError(null)} className="shrink-0 text-[#7a7265] hover:text-[#3d3429] text-sm">✕</button>
         </div>
+        )}
+      </div>
       )}
 
       {/* Telegram linked — celebration modal */}

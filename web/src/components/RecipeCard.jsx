@@ -77,7 +77,7 @@ export function RecipeCard({ recipe, language = 'en', apiBase = '/api', onSelect
                     onClick={e => { e.stopPropagation(); onSelectAuthor && onSelectAuthor(authorId) }}
                     className="text-xs text-[#7a7265] hover:text-[#e67e22] transition-colors"
                   >
-                    @{authorUsername}
+                    <span dir="ltr">@{authorUsername}</span>
                   </button>
                 )}
                 {likeCount > 0 && (

@@ -15,6 +15,14 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
   // carries its unsaved delta back in via editingRecipe.cookCountDelta.
   const [localCookCount, setLocalCookCount] = useState(cookCount + (editingRecipe?.cookCountDelta || 0))
   useEffect(() => { setLocalCookCount(cookCount + (editingRecipe?.cookCountDelta || 0)) }, [cookCount])
+  const [countEditing, setCountEditing] = useState(false)
+  const [countDraft, setCountDraft] = useState('')
+
+  const commitCountDraft = () => {
+    const n = parseInt(countDraft, 10)
+    if (!isNaN(n) && n >= 0) setLocalCookCount(n)
+    setCountEditing(false)
+  }
 
   useEffect(() => {
     if (editingRecipe) {
@@ -178,7 +186,30 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
                 >
                   −
                 </button>
-                <span className="min-w-[2.5rem] text-center font-semibold text-[#3d3429]">{localCookCount}</span>
+                {countEditing ? (
+                  <input
+                    autoFocus
+                    type="number"
+                    min="0"
+                    inputMode="numeric"
+                    value={countDraft}
+                    onChange={e => setCountDraft(e.target.value)}
+                    onBlur={commitCountDraft}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') { e.preventDefault(); commitCountDraft() }
+                      if (e.key === 'Escape') setCountEditing(false)
+                    }}
+                    className="no-spinner w-[2.5rem] text-center font-semibold text-[#3d3429] bg-transparent focus:outline-none"
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => { setCountDraft(String(localCookCount)); setCountEditing(true) }}
+                    className="min-w-[2.5rem] text-center font-semibold text-[#3d3429] hover:text-[#cf711f] transition-colors"
+                  >
+                    {localCookCount}
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => setLocalCookCount(c => c + 1)}
