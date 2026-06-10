@@ -22,7 +22,6 @@ public class webManager {
 
     public void registerRoutes(Javalin app) {
         app.post("/api/recipes/scrape", this::scrapeRecipeFromUrl);
-        app.get("/api/recipes/{name}/share", this::getShareableRecipe);
         app.post("/api/link", this::linkTelegramAccount);
         app.delete("/api/account", this::deleteAccount);
     }
@@ -40,16 +39,6 @@ public class webManager {
             ctx.status(401).result("Invalid or expired session");
         }
         return userId;
-    }
-
-    public void getShareableRecipe(Context ctx) {
-        String name = ctx.pathParam("name");
-        Recipe recipe = db.getPublicRecipeByName(name);
-        if (recipe != null) {
-            ctx.contentType("text/plain").result(recipe.toString());
-        } else {
-            ctx.status(404).result("Recipe not found");
-        }
     }
 
     public void linkTelegramAccount(Context ctx) {

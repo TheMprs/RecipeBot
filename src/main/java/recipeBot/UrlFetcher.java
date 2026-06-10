@@ -5,7 +5,7 @@ import java.net.URI;
 
 public class UrlFetcher {
 
-    private static final int MAX_REDIRECTS = 5;
+    private static final int MAX_REDIRECTS = 3;
 
     public static String fetch(String rawUrl) throws Exception {
         // Follow redirects manually so every hop goes through validateUrl —
@@ -22,7 +22,7 @@ public class UrlFetcher {
                     .referrer("https://www.google.com")
                     .followRedirects(false)
                     .ignoreHttpErrors(true)
-                    .timeout(15000)
+                    .timeout(5000)
                     .execute();
 
             int status = res.statusCode();

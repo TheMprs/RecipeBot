@@ -1,5 +1,6 @@
 ﻿import { useState, useEffect, useRef } from 'react'
 import { ArrowLeft, ArrowRight, Users, ChefHat, Check, Pencil, Trash2, RotateCcw, UtensilsCrossed, Share2, Heart, Copy, Bookmark, Plus } from 'lucide-react'
+import { buildShareText } from '../utils/shareRecipe'
 
 const COOKIE_NAME_PREFIX = 'recipe_ingredients_'
 
@@ -78,11 +79,7 @@ export function RecipeDetail({ recipe, language = 'en', apiBase = '/api', onBack
 
   const handleShare = async () => {
     try {
-      const res = await fetch(`${apiBase}/recipes/${encodeURIComponent(recipe.title)}/share`)
-      let text = await res.text()
-      text = text.replace(/\*/g, '')
-      const url = `${window.location.origin}/?r=${recipe.id}`
-      const fullText = `${text}\n🔗 ${url}`
+      const fullText = buildShareText(recipe)
 
       if (navigator.share) {
         await navigator.share({ title: recipe.title, text: fullText })

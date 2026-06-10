@@ -55,6 +55,7 @@ function App() {
   const [showGlobalResults, setShowGlobalResults] = useState(false)
   const globalSearchRef = useRef(null)
   const [confirmDialog, setConfirmDialog] = useState(null)
+  const profileCheckedFor = useRef(null) // user id whose profile row was already verified this session
 
   const isRtl = language === 'he'
 
@@ -69,12 +70,16 @@ function App() {
     try {
       const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
         console.log('[Auth]', event, '-', session?.user?.email || 'anonymous')
-        setUser(session?.user || null)
+        // Keep the same object reference while the identity is unchanged — supabase
+        // re-emits SIGNED_IN on every tab refocus, and a fresh user object would
+        // re-trigger every effect that depends on it (full visual "reload")
+        setUser(prev => (prev?.id === session?.user?.id ? prev : session?.user || null))
         setLoading(false)
         clearTimeout(timeoutId)
-        
-        // Create profile for new users (OAuth sign-in)
-        if (event === 'SIGNED_IN' && session?.user) {
+
+        // Create profile for new users (OAuth sign-in) — once per user, not on every refocus
+        if (event === 'SIGNED_IN' && session?.user && profileCheckedFor.current !== session.user.id) {
+          profileCheckedFor.current = session.user.id
           const user = session.user
           try {
             // Check if profile already exists using REST API
@@ -848,7 +853,7 @@ function App() {
       if (!session?.access_token) throw new Error('Not authenticated');
       const userToken = session.access_token;
 
-      if (editingRecipe) {
+      if (editingRecipe?.id) {
         const res = await fetch(
           `${supabaseUrl}/rest/v1/recipes?id=eq.${editingRecipe.id}`,
           {

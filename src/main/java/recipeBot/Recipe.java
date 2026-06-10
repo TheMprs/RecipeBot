@@ -2,6 +2,8 @@ package recipeBot;
 
 public class Recipe {
     private String id = null;
+    private String userId = null;
+    private String visibility = null;
     private String name;
     private String category;
     private String description;
@@ -38,6 +40,14 @@ public class Recipe {
     public void setInstructions(String[] instructions) { this.instructions = instructions; }
     public String getId() { return this.id; }
     public void setId(String id) { this.id = id; }
+    public String getUserId() { return this.userId; }
+    public void setUserId(String userId) { this.userId = userId; }
+    public String getVisibility() { return this.visibility; }
+    public void setVisibility(String visibility) { this.visibility = visibility; }
+
+    public boolean isOwnedBy(String userId) {
+        return this.userId != null && this.userId.equals(userId);
+    }
 
     @Override
     public String toString() {

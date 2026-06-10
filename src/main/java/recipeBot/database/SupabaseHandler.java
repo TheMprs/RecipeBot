@@ -13,7 +13,6 @@ public class SupabaseHandler {
     private final String supabaseUrl;
     private final String baseUrl;
     private final String serviceKey;
-    private String defaultUserId;
     private final HttpClient client;
     private final Gson gson;
 
@@ -25,14 +24,11 @@ public class SupabaseHandler {
         this.gson = new Gson();
     }
 
-    public void setDefaultUserId(String userId) {
-        this.defaultUserId = userId;
-    }
-
     // *** PUBLIC METHODS ***
 
-    public void addRecipe(Recipe recipe) {
-        JsonObject body = buildBody(recipe);
+    // Inserts the recipe attributed to the given user; sets the recipe's id on success
+    public void addRecipe(Recipe recipe, String userId) {
+        JsonObject body = buildBody(recipe, userId);
 
         HttpRequest req = base("/recipes")
                 .header("Prefer", "return=representation")
@@ -54,41 +50,92 @@ public class SupabaseHandler {
         }
     }
 
-    public Recipe getRecipeByName(String name) {
-        HttpRequest req = base("/recipes?name=eq." + encode(name) + "&select=*").GET().build();
-        return fetchSingle(req);
-    }
-
-    // For unauthenticated endpoints — never returns private recipes
-    public Recipe getPublicRecipeByName(String name) {
-        HttpRequest req = base("/recipes?name=eq." + encode(name) + "&visibility=eq.public&select=*").GET().build();
-        return fetchSingle(req);
-    }
-
     public Recipe getRecipeById(String id) {
         HttpRequest req = base("/recipes?id=eq." + encode(id) + "&select=*").GET().build();
         return fetchSingle(req);
     }
 
-    public String getIdOf(String name) {
-        Recipe recipe = getRecipeByName(name);
-        return recipe != null ? recipe.getId() : null;
-    }
-
-
-    public List<Recipe> getAllRecipes() {
-        HttpRequest req = base("/recipes?select=*").GET().build();
+    public List<Recipe> getAllRecipes(String userId) {
+        HttpRequest req = base("/recipes?user_id=eq." + encode(userId) + "&select=*").GET().build();
         return fetchList(req);
     }
 
-    public List<Recipe> getRecipesByCategory(String category) {
-        // ilike: stored values are mixed-case ("MAIN" from old enum writes, "Main" from edits)
-        HttpRequest req = base("/recipes?category=ilike." + encode(category) + "&select=*").GET().build();
-        return fetchList(req);
+    // *** CATEGORIES (user-defined, recipe_categories junction) ***
+
+    // Returns the user's categories as id -> name, in creation order
+    public Map<String, String> getUserCategories(String userId) {
+        Map<String, String> categories = new LinkedHashMap<>();
+        HttpRequest req = base("/categories?user_id=eq." + encode(userId) + "&select=id,name&order=created_at").GET().build();
+        try {
+            HttpResponse<String> res = client.send(req, HttpResponse.BodyHandlers.ofString());
+            JsonArray arr = gson.fromJson(res.body(), JsonArray.class);
+            for (JsonElement el : arr) {
+                JsonObject obj = el.getAsJsonObject();
+                categories.put(obj.get("id").getAsString(), obj.get("name").getAsString());
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return categories;
     }
 
-    public boolean deleteRecipe(String name) {
-        HttpRequest req = base("/recipes?name=eq." + encode(name))
+    public String getCategoryName(String categoryId) {
+        HttpRequest req = base("/categories?id=eq." + encode(categoryId) + "&select=name").GET().build();
+        try {
+            HttpResponse<String> res = client.send(req, HttpResponse.BodyHandlers.ofString());
+            JsonArray arr = gson.fromJson(res.body(), JsonArray.class);
+            if (arr.size() > 0) return arr.get(0).getAsJsonObject().get("name").getAsString();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return null;
+    }
+
+    public List<Recipe> getRecipesByCategoryId(String categoryId) {
+        List<String> recipeIds = new ArrayList<>();
+        HttpRequest req = base("/recipe_categories?category_id=eq." + encode(categoryId) + "&select=recipe_id").GET().build();
+        try {
+            HttpResponse<String> res = client.send(req, HttpResponse.BodyHandlers.ofString());
+            JsonArray arr = gson.fromJson(res.body(), JsonArray.class);
+            for (JsonElement el : arr) recipeIds.add(el.getAsJsonObject().get("recipe_id").getAsString());
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        if (recipeIds.isEmpty()) return new ArrayList<>();
+        return fetchList(base("/recipes?id=in.(" + String.join(",", recipeIds) + ")&select=*").GET().build());
+    }
+
+    public void linkRecipeCategory(String recipeId, String categoryId) {
+        JsonObject body = new JsonObject();
+        body.addProperty("recipe_id", recipeId);
+        body.addProperty("category_id", categoryId);
+        HttpRequest req = base("/recipe_categories")
+                .header("Prefer", "resolution=merge-duplicates")
+                .POST(HttpRequest.BodyPublishers.ofString(gson.toJson(body)))
+                .build();
+        try {
+            HttpResponse<String> res = client.send(req, HttpResponse.BodyHandlers.ofString());
+            if (res.statusCode() >= 400) {
+                System.err.println("[Supabase] linkRecipeCategory failed: " + res.statusCode() + " " + res.body());
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    // Replaces a recipe's category links; null categoryId clears them
+    public void setRecipeCategory(String recipeId, String categoryId) {
+        HttpRequest req = base("/recipe_categories?recipe_id=eq." + encode(recipeId)).DELETE().build();
+        try {
+            client.send(req, HttpResponse.BodyHandlers.ofString());
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        if (categoryId != null) linkRecipeCategory(recipeId, categoryId);
+    }
+
+    public boolean deleteRecipeById(String id) {
+        HttpRequest req = base("/recipes?id=eq." + encode(id))
                 .DELETE()
                 .build();
         try {
@@ -213,14 +260,6 @@ public class SupabaseHandler {
         }
     }
 
-    // addRecipe overload that attributes the recipe to a specific user
-    public void addRecipe(Recipe recipe, String userId) {
-        String previous = defaultUserId;
-        defaultUserId = userId;
-        addRecipe(recipe);
-        defaultUserId = previous;
-    }
-
     // *** PRIVATE HELPERS ***
 
     private HttpRequest.Builder base(String path) {
@@ -235,7 +274,7 @@ public class SupabaseHandler {
         return URLEncoder.encode(s, StandardCharsets.UTF_8).replace("+", "%20");
     }
 
-    private JsonObject buildBody(Recipe recipe) {
+    private JsonObject buildBody(Recipe recipe, String userId) {
         JsonObject body = new JsonObject();
         body.addProperty("name", recipe.getName());
         body.addProperty("category", recipe.getCategory());
@@ -243,9 +282,7 @@ public class SupabaseHandler {
         body.add("ingredients", toJsonArray(recipe.getIngredients()));
         body.add("instructions", toJsonArray(recipe.getInstructions()));
         body.addProperty("visibility", "public");
-        if (defaultUserId != null) {
-            body.addProperty("user_id", defaultUserId);
-        }
+        body.addProperty("user_id", userId);
         return body;
     }
 
@@ -267,6 +304,12 @@ public class SupabaseHandler {
 
         Recipe recipe = new Recipe(name, cat, desc, ingredients, instructions);
         recipe.setId(id);
+        if (obj.has("user_id") && !obj.get("user_id").isJsonNull()) {
+            recipe.setUserId(obj.get("user_id").getAsString());
+        }
+        if (obj.has("visibility") && !obj.get("visibility").isJsonNull()) {
+            recipe.setVisibility(obj.get("visibility").getAsString());
+        }
         return recipe;
     }
 

@@ -1,6 +1,8 @@
 package recipeBot;
 
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
+import org.telegram.telegrambots.meta.api.methods.commands.SetMyCommands;
+import org.telegram.telegrambots.meta.api.objects.commands.BotCommand;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.methods.updatingmessages.EditMessageReplyMarkup;
 import org.telegram.telegrambots.meta.api.methods.updatingmessages.EditMessageText;
@@ -33,11 +35,27 @@ public class Bot extends TelegramLongPollingBot {
     private Map<Long, State> userState = new HashMap<>();
     private Map<Long, Recipe> tempRecipes = new HashMap<>();
     private Map<Long, Integer> lastSentMsg = new HashMap<>();
+    private Map<Long, String> pendingCategoryId = new HashMap<>(); // category picked during manual add, linked after insert
 
     public Bot(SupabaseHandler dbHandler, boolean debug, LinkTokenStore tokenStore) {
         this.db = dbHandler;
         this.debug = debug;
         this.tokenStore = tokenStore;
+    }
+
+    // Registers the native Telegram command menu (the "Menu" button next to the text box)
+    public void registerCommandMenu() {
+        List<BotCommand> commands = List.of(
+                new BotCommand("recipe", "Add a recipe — manually or from a link"),
+                new BotCommand("list", "All your recipes"),
+                new BotCommand("listcategories", "Browse recipes by category"),
+                new BotCommand("help", "What this bot can do")
+        );
+        try {
+            execute(new SetMyCommands(commands, null, null));
+        } catch (TelegramApiException e) {
+            System.err.println("[Bot] Failed to register command menu: " + e.getMessage());
+        }
     }
 
     @Override
@@ -56,7 +74,8 @@ public class Bot extends TelegramLongPollingBot {
         if (chatId == null) return;
 
         // Block unlinked users — send them the linking flow
-        if (db.getLinkedUserId(chatId) == null) {
+        String userId = db.getLinkedUserId(chatId);
+        if (userId == null) {
             String token = tokenStore.generate(chatId);
             String link = "https://babrecipebook.vercel.app/?link_token=" + token;
             sendText(chatId, "Please link your RecipeBook account to use this bot:\n" + link);
@@ -65,14 +84,14 @@ public class Bot extends TelegramLongPollingBot {
 
         if (update.hasCallbackQuery()) {
             removePreviousKeyboard(chatId);
-            handleCallback(update.getCallbackQuery());
+            handleCallback(update.getCallbackQuery(), userId);
         } else if (update.hasMessage() && update.getMessage().hasText()) {
             removePreviousKeyboard(chatId);
             Message message = update.getMessage();
             if (message.isCommand()) {
-                handleCommand(chatId, message);
+                handleCommand(chatId, message, userId);
             } else if (userState.containsKey(chatId)) {
-                handleInput(chatId, message);
+                handleInput(chatId, message, userId);
             }
         }
     }
@@ -83,7 +102,7 @@ public class Bot extends TelegramLongPollingBot {
         return null;
     }
 
-    public void handleCallback(CallbackQuery callbackQuery) {
+    public void handleCallback(CallbackQuery callbackQuery, String userId) {
         Long id = callbackQuery.getMessage().getChatId();
         String data = callbackQuery.getData();
 
@@ -91,8 +110,13 @@ public class Bot extends TelegramLongPollingBot {
         if (data.startsWith("DELETE_")) {
             removePreviousKeyboard(id);
             String recipeId = data.substring(7);
-            String recipeName = db.getRecipeById(recipeId).getName();
-            if (db.deleteRecipe(recipeName)) {
+            Recipe recipe = db.getRecipeById(recipeId);
+            if (recipe == null || !recipe.isOwnedBy(userId)) {
+                replaceMessageWithText(id, callbackQuery.getMessage().getMessageId(), "Recipe not found.");
+                return;
+            }
+            String recipeName = recipe.getName();
+            if (db.deleteRecipeById(recipeId)) {
                 replaceMessageWithText(id, callbackQuery.getMessage().getMessageId(), recipeName + " Recipe Deleted!");
             } else {
                 replaceMessageWithText(id, callbackQuery.getMessage().getMessageId(),
@@ -105,8 +129,8 @@ public class Bot extends TelegramLongPollingBot {
         // handle edit button press
         if (data.startsWith("EDIT_")) {
             removePreviousKeyboard(id);
-            String recipeName = data.substring(5);
-            sendEditMenu(id, recipeName);
+            String recipeId = data.substring(5);
+            sendEditMenu(id, recipeId, userId);
             return;
         }
 
@@ -115,7 +139,7 @@ public class Bot extends TelegramLongPollingBot {
             String field = parts[1];
             String recipeid = parts[2];
             Recipe recipe = db.getRecipeById(recipeid);
-            if (recipe == null) {
+            if (recipe == null || !recipe.isOwnedBy(userId)) {
                 replaceMessageWithText(id, callbackQuery.getMessage().getMessageId(), "Recipe not found.");
                 return;
             }
@@ -128,8 +152,12 @@ public class Bot extends TelegramLongPollingBot {
                             "Enter new name for " + recipeName + ":");
                     break;
                 case "CATEGORY":
-                    sendCategoryMenu(id, "the new category for " + recipeName);
-                    userState.put(id, State.EDITING_CATEGORY);
+                    if (sendCategoryMenu(id, "the new category for " + recipeName, userId)) {
+                        userState.put(id, State.EDITING_CATEGORY);
+                    } else {
+                        replaceMessageWithText(id, callbackQuery.getMessage().getMessageId(),
+                                "You have no categories yet — create them on the website first.");
+                    }
                     break;
                 case "DESCRIPTION":
                     userState.put(id, State.EDITING_DESCRIPTION);
@@ -154,6 +182,7 @@ public class Bot extends TelegramLongPollingBot {
         if (data.equals("CANCEL")) {
             userState.remove(id);
             tempRecipes.remove(id);
+            pendingCategoryId.remove(id);
             replaceMessageWithText(id, callbackQuery.getMessage().getMessageId(), "Recipe addition cancelled.");
             return;
         }
@@ -172,35 +201,40 @@ public class Bot extends TelegramLongPollingBot {
             return;
         }
 
-        // handles category selection during recipe addition process
-        if (userState.get(id) == State.WAITING_FOR_CATEGORY) {
+        // handles category selection during recipe addition/editing (user-defined categories)
+        if (data.startsWith("PICKCAT_")) {
+            String categoryId = data.substring(8);
+            boolean none = categoryId.equals("NONE");
+            String categoryName = none ? null : db.getCategoryName(categoryId);
             Recipe recipe = tempRecipes.get(id);
-            recipe.setCategory(data);
 
-            replaceMessageWithTextAndAddCancel(id, callbackQuery.getMessage().getMessageId(),
-                    " Insert recipe description:");
-            userState.put(id, State.WAITING_FOR_DESCRIPTION); // move to next step in recipe addition process
-        }
-
-        // handles category selection during recipe editing process
-        if (userState.get(id) == State.EDITING_CATEGORY) {
-            Recipe recipe = tempRecipes.get(id);
-            recipe.setCategory(data);
-
-            db.updateRecipe(recipe.getId(), "category", data);
-            sendText(id, "Recipe category updated successfully!");
-
+            if (userState.get(id) == State.WAITING_FOR_CATEGORY) {
+                recipe.setCategory(categoryName);
+                if (!none) pendingCategoryId.put(id, categoryId);
+                replaceMessageWithTextAndAddCancel(id, callbackQuery.getMessage().getMessageId(),
+                        "Insert recipe description:");
+                userState.put(id, State.WAITING_FOR_DESCRIPTION); // move to next step in recipe addition process
+            } else if (userState.get(id) == State.EDITING_CATEGORY) {
+                db.updateRecipe(recipe.getId(), "category", categoryName != null ? categoryName : "");
+                db.setRecipeCategory(recipe.getId(), none ? null : categoryId);
+                userState.remove(id);
+                tempRecipes.remove(id);
+                replaceMessageWithText(id, callbackQuery.getMessage().getMessageId(),
+                        "Recipe category updated successfully!");
+            }
             return;
         }
 
-        // handles choosing all recipes from specific category
-        if (userState.get(id) == State.SHOW_CATEGORIES) {
-            String category = data;
-            List<Recipe> recipes = db.getRecipesByCategory(category);
+        // handles browsing all recipes in a category
+        if (data.startsWith("SHOWCAT_")) {
+            String categoryId = data.substring(8);
+            String categoryName = db.getCategoryName(categoryId);
+            List<Recipe> recipes = db.getRecipesByCategoryId(categoryId);
             if (recipes.isEmpty()) {
-                sendText(id, "No recipes found in " + category + ".");
+                replaceMessageWithText(id, callbackQuery.getMessage().getMessageId(),
+                        "No recipes in " + categoryName + " yet.");
             } else {
-                StringBuilder sb = new StringBuilder("<b><u>Recipes in " + category + "s:</u></b>\n");
+                StringBuilder sb = new StringBuilder("<b><u>" + categoryName + ":</u></b>\n");
                 String botName = getBotUsername().replace("@", ""); // remove @ from bot username for link formatting
 
                 for (Recipe recipe : recipes) {
@@ -208,9 +242,8 @@ public class Bot extends TelegramLongPollingBot {
 
                     sb.append("<a href=\"" + recipeLink + "\">" + recipe.getName() + "</a>\n");
                 }
-                sendText(id, sb.toString());
+                replaceMessageWithText(id, callbackQuery.getMessage().getMessageId(), sb.toString());
             }
-            userState.remove(id); // reset progress after showing category recipes
             return;
         }
 
@@ -225,12 +258,16 @@ public class Bot extends TelegramLongPollingBot {
         return;
     }
 
-    public void handleCommand(Long chatId, Message message) {
+    public void handleCommand(Long chatId, Message message, String userId) {
         userState.remove(chatId); // reset progress on new command
         String text = message.getText();
         if (text.equals("/help")) {
-
-            // sendText(chatId, message);
+            sendText(chatId, "🍽️ <b>Recipe Book Bot</b>\n\n" +
+                    "/recipe — add a recipe (manually or from a link)\n" +
+                    "/list — all your recipes\n" +
+                    "/listCategories — browse by category\n\n" +
+                    "Recipes you add here also show up at babrecipebook.vercel.app");
+            return;
         }
 
         if (text.startsWith("/start")) {
@@ -238,11 +275,15 @@ public class Bot extends TelegramLongPollingBot {
                 String recipeId = text.substring(12).trim();
 
                 Recipe recipe = db.getRecipeById(recipeId);
-                if (recipe == null) {
+                // own recipes always; other users' only if public
+                if (recipe == null || !(recipe.isOwnedBy(userId) || "public".equals(recipe.getVisibility()))) {
                     sendText(chatId, "Recipe not found.");
                     return;
                 }
-                sendRecipePreview(chatId, recipe.getName());
+                sendRecipePreview(chatId, recipe, recipe.isOwnedBy(userId));
+                // deep-link taps reset the reply keyboard client-side — this message restores it
+                sendText(chatId, "🔗 <a href=\"https://babrecipebook.vercel.app/?r=" + recipe.getId()
+                        + "\">View on the website</a>");
             } else {
                 // welcome message
                 sendText(chatId, "Hello I am Recipe Book Bot! 🍽️");
@@ -250,9 +291,9 @@ public class Bot extends TelegramLongPollingBot {
             return;
         }
 
-        if (text.equals("/listCategories")) {
-            userState.put(chatId, State.SHOW_CATEGORIES);
-            sendCategoryMenu(chatId, text);
+        if (text.equalsIgnoreCase("/listCategories")) {
+            sendBrowseCategoriesMenu(chatId, userId);
+            return;
         }
 
         // code to add new recipe
@@ -262,32 +303,13 @@ public class Bot extends TelegramLongPollingBot {
         }
 
         if (text.equals("/list")) {
-            List<Recipe> recipes = db.getAllRecipes();
-
-            if (recipes.isEmpty()) {
-                sendText(chatId, "No recipes found. Add some with /recipe!");
-            } else {
-                StringBuilder sb = new StringBuilder("<b><u>Recipes:</u></b>\n");
-                String botName = getBotUsername().replace("@", "");
-
-                for (Recipe recipe : recipes) {
-                    String recipeLink = "https://t.me/" + botName + "?start=show_" + recipe.getId();
-                    sb.append("<a href=\"" + recipeLink + "\">" + recipe.getName() + "</a>\n");
-                }
-                sendText(chatId, sb.toString());
-            }
-            return;
-        }
-
-        if (text.startsWith("/show_")) {
-            String recipeName = text.substring(6).replace("_", " ");
-            sendRecipePreview(chatId, recipeName);
+            sendText(chatId, buildRecipeList(userId));
             return;
         }
 
     }
 
-    public void handleInput(Long id, Message message) {
+    public void handleInput(Long id, Message message, String userId) {
         State state = userState.get(id);
         Recipe recipe = tempRecipes.get(id);
         // insert recipe name
@@ -302,8 +324,13 @@ public class Bot extends TelegramLongPollingBot {
             }
 
             recipe.setName(sb.toString().trim());
-            userState.put(id, State.WAITING_FOR_CATEGORY);
-            sendCategoryMenu(id, recipe.getName());
+            if (sendCategoryMenu(id, recipe.getName(), userId)) {
+                userState.put(id, State.WAITING_FOR_CATEGORY);
+            } else {
+                // no categories defined — skip straight to description
+                userState.put(id, State.WAITING_FOR_DESCRIPTION);
+                sendTextWithCancel(id, "Insert recipe description:");
+            }
             return;
         }
         // insert recipe description
@@ -336,33 +363,51 @@ public class Bot extends TelegramLongPollingBot {
             recipe.setInstructions(instructions);
             
             // save recipe attributed to the linked user
-            String linkedUserId = db.getLinkedUserId(id);
-            db.addRecipe(recipe, linkedUserId);
+            db.addRecipe(recipe, userId);
+
+            // link the picked category (junction table, same as the web app)
+            String categoryId = pendingCategoryId.remove(id);
+            if (categoryId != null && recipe.getId() != null) {
+                db.linkRecipeCategory(recipe.getId(), categoryId);
+            }
 
             // clean up addition process
             userState.remove(id);
             tempRecipes.remove(id);
 
             sendText(id, "Recipe added successfully!");
-            sendRecipePreview(id, recipe.getName());
+            sendRecipePreview(id, recipe, true);
             return;
         }
 
         if (state == State.WAITING_FOR_URL) {
             String url = message.getText();
-            sendText(id, "Processing URL");
+            // sent without the reply keyboard — Telegram can't edit messages that have one
+            Integer processingMsgId = sendPlainText(id, "⏳ Processing URL...");
 
+            String result;
+            Recipe importedRecipe = null;
             try {
+                System.out.println("[Import] fetching " + url);
                 String rawText = UrlFetcher.fetch(url);
+                System.out.println("[Import] fetched " + rawText.length() + " chars, extracting");
                 Recipe extractedRecipe = gemini.extractRecipeFromText(rawText);
+                System.out.println("[Import] extracted: " + (extractedRecipe != null ? extractedRecipe.getName() : "null"));
                 if (extractedRecipe != null && extractedRecipe.getName() != null) {
-                    db.addRecipe(extractedRecipe, db.getLinkedUserId(id));
-                    sendText(id, "Recipe imported successfully!");
+                    db.addRecipe(extractedRecipe, userId);
+                    importedRecipe = extractedRecipe;
+                    result = "Recipe imported successfully!";
                 } else {
-                    sendText(id, "Failed to extract recipe from the provided URL. Please make sure it's a valid recipe page and try again.");
+                    result = "Failed to extract recipe from the provided URL. Please make sure it's a valid recipe page and try again.";
                 }
             } catch (Exception e) {
-                sendText(id, "Invalid URL: " + e.getMessage());
+                System.err.println("[Import] failed: " + e);
+                result = "Invalid URL: " + e.getMessage();
+            }
+            replaceMessageWithText(id, processingMsgId, result);
+            System.out.println("[Import] result message updated");
+            if (importedRecipe != null) {
+                sendRecipePreview(id, importedRecipe, true);
             }
 
             userState.remove(id);
@@ -412,8 +457,23 @@ public class Bot extends TelegramLongPollingBot {
                 .replyMarkup(getMainMenuKeyboard())
                 .build();
         try {
-            Message sentMessage = execute(sendMessage);
-            lastSentMsg.put(Who, sentMessage.getMessageId()); // track msg id
+            // not tracked in lastSentMsg: no inline keyboard to clean up, and editing
+            // this message would strip the reply keyboard it carries
+            execute(sendMessage);
+        } catch (TelegramApiException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    // Like sendText but without the main-menu reply keyboard, so the message stays editable
+    public Integer sendPlainText(Long Who, String message) {
+        SendMessage sendMessage = SendMessage.builder()
+                .chatId(Who.toString())
+                .text(message)
+                .parseMode("HTML")
+                .build();
+        try {
+            return execute(sendMessage).getMessageId();
         } catch (TelegramApiException e) {
             throw new RuntimeException(e);
         }
@@ -449,9 +509,9 @@ public class Bot extends TelegramLongPollingBot {
 
     private ReplyKeyboardMarkup getMainMenuKeyboard() {
         ReplyKeyboardMarkup keyboardMarkup = new ReplyKeyboardMarkup();
-        keyboardMarkup.setSelective(true);
         keyboardMarkup.setResizeKeyboard(true);
         keyboardMarkup.setOneTimeKeyboard(false);
+        keyboardMarkup.setIsPersistent(true); // always shown, never collapses behind the keyboard toggle
 
         List<KeyboardRow> keyboard = new ArrayList<>();
 
@@ -471,13 +531,21 @@ public class Bot extends TelegramLongPollingBot {
         return keyboardMarkup;
     }
 
-    private void sendRecipePreview(Long id, String recipeName) {
-        Recipe recipe = db.getRecipeByName(recipeName);
-        if (recipe == null) {
-            sendText(id, "Recipe not found.");
-            return;
-        }
+    // ownerButtons: only the recipe's owner gets Delete/Edit
+    private String buildRecipeList(String userId) {
+        List<Recipe> recipes = db.getAllRecipes(userId);
+        if (recipes.isEmpty()) return "No recipes found. Add some with /recipe!";
 
+        StringBuilder sb = new StringBuilder("<b><u>Recipes:</u></b>\n");
+        String botName = getBotUsername().replace("@", "");
+        for (Recipe recipe : recipes) {
+            String recipeLink = "https://t.me/" + botName + "?start=show_" + recipe.getId();
+            sb.append("<a href=\"" + recipeLink + "\">" + recipe.getName() + "</a>\n");
+        }
+        return sb.toString();
+    }
+
+    private void sendRecipePreview(Long id, Recipe recipe, boolean ownerButtons) {
         StringBuilder sb = new StringBuilder();
         sb.append("<b><u>" + recipe.getName() + "</u></b>\n");
         if (recipe.getCategory() != null) sb.append(recipe.getCategory() + "\n");
@@ -499,15 +567,17 @@ public class Bot extends TelegramLongPollingBot {
 
         String recipeId = recipe.getId();
 
-        InlineKeyboardButton delBtn = new InlineKeyboardButton();
-        delBtn.setText("🗑 Delete");
-        delBtn.setCallbackData("DELETE_" + recipeId);
-        row1.add(delBtn);
+        if (ownerButtons) {
+            InlineKeyboardButton delBtn = new InlineKeyboardButton();
+            delBtn.setText("🗑 Delete");
+            delBtn.setCallbackData("DELETE_" + recipeId);
+            row1.add(delBtn);
 
-        InlineKeyboardButton editBtn = new InlineKeyboardButton();
-        editBtn.setText("✏️ Edit");
-        editBtn.setCallbackData("EDIT_" + recipeId);
-        row1.add(editBtn);
+            InlineKeyboardButton editBtn = new InlineKeyboardButton();
+            editBtn.setText("✏️ Edit");
+            editBtn.setCallbackData("EDIT_" + recipeId);
+            row1.add(editBtn);
+        }
 
         InlineKeyboardButton shareBtn = new InlineKeyboardButton();
         shareBtn.setText("📤 Share");
@@ -565,8 +635,12 @@ public class Bot extends TelegramLongPollingBot {
         }
     }
 
-    private void sendEditMenu(Long id, String recipeId) {
+    private void sendEditMenu(Long id, String recipeId, String userId) {
         Recipe recipe = db.getRecipeById(recipeId);
+        if (recipe == null || !recipe.isOwnedBy(userId)) {
+            sendText(id, "Recipe not found.");
+            return;
+        }
         String recipeName = recipe.getName();
 
         SendMessage message = new SendMessage();
@@ -603,24 +677,18 @@ public class Bot extends TelegramLongPollingBot {
         }
     }
 
-    private void sendCategoryMenu(Long id, String recipeName) {
+    // Shows the user's own categories as buttons. Returns false (and sends nothing)
+    // if the user has no categories yet.
+    private boolean sendCategoryMenu(Long id, String recipeName, String userId) {
+        Map<String, String> categories = db.getUserCategories(userId);
+        if (categories.isEmpty()) return false;
+
         SendMessage message = new SendMessage();
         message.setChatId(id.toString());
         message.setText("Select a category for " + recipeName + ":");
 
-        // create categories keyboard
         InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
-        List<List<InlineKeyboardButton>> rows = new LinkedList<>();
-
-        // create a row of buttons
-        List<InlineKeyboardButton> row = new LinkedList<>();
-        row.add(createButton("Dessert", "Dessert"));
-        row.add(createButton("Main", "Main"));
-        row.add(createButton("Snack", "Snack"));
-        row.add(createButton("Special", "Special"));
-
-        rows.add(row);
-        markup.setKeyboard(rows);
+        markup.setKeyboard(buildCategoryRows(categories, "PICKCAT_", createButton("✖️ None", "PICKCAT_NONE")));
         message.setReplyMarkup(markup);
 
         try {
@@ -629,6 +697,48 @@ public class Bot extends TelegramLongPollingBot {
         } catch (TelegramApiException e) {
             throw new RuntimeException(e);
         }
+        return true;
+    }
+
+    private void sendBrowseCategoriesMenu(Long id, String userId) {
+        Map<String, String> categories = db.getUserCategories(userId);
+        if (categories.isEmpty()) {
+            sendText(id, "You have no categories yet — create them on the website first.");
+            return;
+        }
+
+        SendMessage message = new SendMessage();
+        message.setChatId(id.toString());
+        message.setText("Pick a category:");
+
+        InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
+        markup.setKeyboard(buildCategoryRows(categories, "SHOWCAT_", null));
+        message.setReplyMarkup(markup);
+
+        try {
+            Message sentMessage = execute(message);
+            lastSentMsg.put(id, sentMessage.getMessageId()); // track msg id
+        } catch (TelegramApiException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    // Lays out category buttons two per row, with an optional extra button on its own row
+    private List<List<InlineKeyboardButton>> buildCategoryRows(Map<String, String> categories,
+                                                               String callbackPrefix,
+                                                               InlineKeyboardButton extraButton) {
+        List<List<InlineKeyboardButton>> rows = new LinkedList<>();
+        List<InlineKeyboardButton> row = new LinkedList<>();
+        for (Map.Entry<String, String> cat : categories.entrySet()) {
+            row.add(createButton(cat.getValue(), callbackPrefix + cat.getKey()));
+            if (row.size() == 2) {
+                rows.add(row);
+                row = new LinkedList<>();
+            }
+        }
+        if (!row.isEmpty()) rows.add(row);
+        if (extraButton != null) rows.add(List.of(extraButton));
+        return rows;
     }
 
     private InlineKeyboardButton createButton(String text, String callbackData) {
@@ -663,11 +773,12 @@ public class Bot extends TelegramLongPollingBot {
         EditMessageText edit = new EditMessageText();
         edit.setChatId(chatId.toString());
         edit.setText(newText);
+        edit.setParseMode("HTML");
         edit.setMessageId(messageId);
 
         try {
             execute(edit);
-            lastSentMsg.put(chatId, messageId); // track msg id
+            lastSentMsg.remove(chatId); // edited message no longer has an inline keyboard
         } catch (TelegramApiException e) {
             throw new RuntimeException(e);
         }

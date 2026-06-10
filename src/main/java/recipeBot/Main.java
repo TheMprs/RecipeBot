@@ -16,10 +16,6 @@ public class Main {
                 dotenv.get("SUPABASE_SERVICE_KEY")
         );
 
-        // Optional: attribute bot-added recipes to the owner's Supabase user
-        String botUserId = dotenv.get("BOT_USER_ID", null);
-        if (botUserId != null) db.setDefaultUserId(botUserId);
-
         boolean debug = args.length > 0 && args[0].equals("-debug");
         if (debug) System.out.println("[Mode] DEBUG — using test bot");
 
@@ -28,6 +24,7 @@ public class Main {
         TelegramBotsApi telegramBotsApi = new TelegramBotsApi(DefaultBotSession.class);
         Bot bot = new Bot(db, debug, tokenStore);
         telegramBotsApi.registerBot(bot);
+        bot.registerCommandMenu();
 
         Javalin app = Javalin.create(config -> {
             config.bundledPlugins.enableCors(cors -> cors.addRule(it -> {
