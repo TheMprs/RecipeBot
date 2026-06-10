@@ -172,18 +172,10 @@ public class Bot extends TelegramLongPollingBot {
             return;
         }
 
-        if (data.equals("IMPORT_IMAGE")) {
-            replaceMessageWithTextAndAddCancel(id, callbackQuery.getMessage().getMessageId(),
-                    "Please send the image of the recipe you want to import:");
-            userState.put(id, State.WAITING_FOR_IMAGE);
-            return;
-        }
-
         // handles category selection during recipe addition process
         if (userState.get(id) == State.WAITING_FOR_CATEGORY) {
             Recipe recipe = tempRecipes.get(id);
-            Category category = Category.parse(data.toString());
-            recipe.setCategory(category);
+            recipe.setCategory(data);
 
             replaceMessageWithTextAndAddCancel(id, callbackQuery.getMessage().getMessageId(),
                     " Insert recipe description:");
@@ -193,11 +185,9 @@ public class Bot extends TelegramLongPollingBot {
         // handles category selection during recipe editing process
         if (userState.get(id) == State.EDITING_CATEGORY) {
             Recipe recipe = tempRecipes.get(id);
-            Category category = Category.parse(data.toString());
+            recipe.setCategory(data);
 
-            recipe.setCategory(category);
-
-            db.updateRecipe(recipe.getId(), "category", category.toString());
+            db.updateRecipe(recipe.getId(), "category", data);
             sendText(id, "Recipe category updated successfully!");
 
             return;
@@ -205,7 +195,7 @@ public class Bot extends TelegramLongPollingBot {
 
         // handles choosing all recipes from specific category
         if (userState.get(id) == State.SHOW_CATEGORIES) {
-            Category category = Category.parse(data.toString());
+            String category = data;
             List<Recipe> recipes = db.getRecipesByCategory(category);
             if (recipes.isEmpty()) {
                 sendText(id, "No recipes found in " + category + ".");
@@ -490,7 +480,8 @@ public class Bot extends TelegramLongPollingBot {
 
         StringBuilder sb = new StringBuilder();
         sb.append("<b><u>" + recipe.getName() + "</u></b>\n");
-        sb.append(recipe.getCategory() + "\n\n");
+        if (recipe.getCategory() != null) sb.append(recipe.getCategory() + "\n");
+        sb.append("\n");
         sb.append("<u>Description: </u>\n" + recipe.getDescription() + "\n");
         sb.append("🛒 <u>Ingredients: </u>\n");
         for (String ingredient : recipe.getIngredients()) {
@@ -561,7 +552,6 @@ public class Bot extends TelegramLongPollingBot {
         List<InlineKeyboardButton> row = new LinkedList<>();
         row.add(createButton("Manually", "MANUAL"));
         row.add(createButton("🔗", "IMPORT_URL"));
-        row.add(createButton("🖼️", "IMPORT_IMAGE"));
 
         rows.add(row);
         markup.setKeyboard(rows);
@@ -624,10 +614,10 @@ public class Bot extends TelegramLongPollingBot {
 
         // create a row of buttons
         List<InlineKeyboardButton> row = new LinkedList<>();
-        row.add(createButton("Dessert", "DESSERT"));
-        row.add(createButton("Main", "MAIN"));
-        row.add(createButton("Snack", "SNACK"));
-        row.add(createButton("Special", "SPECIAL"));
+        row.add(createButton("Dessert", "Dessert"));
+        row.add(createButton("Main", "Main"));
+        row.add(createButton("Snack", "Snack"));
+        row.add(createButton("Special", "Special"));
 
         rows.add(row);
         markup.setKeyboard(rows);

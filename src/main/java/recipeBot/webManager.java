@@ -27,9 +27,24 @@ public class webManager {
         app.delete("/api/account", this::deleteAccount);
     }
 
+    // Validates the Authorization header and returns the user's UUID,
+    // or null after setting a 401 response.
+    private String requireUser(Context ctx) {
+        String authHeader = ctx.header("Authorization");
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            ctx.status(401).result("Missing Authorization header");
+            return null;
+        }
+        String userId = db.getUserIdFromJwt(authHeader.substring(7));
+        if (userId == null) {
+            ctx.status(401).result("Invalid or expired session");
+        }
+        return userId;
+    }
+
     public void getShareableRecipe(Context ctx) {
         String name = ctx.pathParam("name");
-        Recipe recipe = db.getRecipeByName(name);
+        Recipe recipe = db.getPublicRecipeByName(name);
         if (recipe != null) {
             ctx.contentType("text/plain").result(recipe.toString());
         } else {
@@ -38,18 +53,8 @@ public class webManager {
     }
 
     public void linkTelegramAccount(Context ctx) {
-        String authHeader = ctx.header("Authorization");
-        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-            ctx.status(401).result("Missing Authorization header");
-            return;
-        }
-        String jwt = authHeader.substring(7);
-
-        String userId = db.getUserIdFromJwt(jwt);
-        if (userId == null) {
-            ctx.status(401).result("Invalid or expired session");
-            return;
-        }
+        String userId = requireUser(ctx);
+        if (userId == null) return;
 
         JsonObject body = gson.fromJson(ctx.body(), JsonObject.class);
         if (body == null || !body.has("token")) {
@@ -68,17 +73,8 @@ public class webManager {
     }
 
     public void deleteAccount(Context ctx) {
-        String authHeader = ctx.header("Authorization");
-        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-            ctx.status(401).result("Missing Authorization header");
-            return;
-        }
-        String jwt = authHeader.substring(7);
-        String userId = db.getUserIdFromJwt(jwt);
-        if (userId == null) {
-            ctx.status(401).result("Invalid or expired session");
-            return;
-        }
+        String userId = requireUser(ctx);
+        if (userId == null) return;
         boolean ok = db.deleteAccount(userId);
         if (ok) {
             ctx.status(204);
@@ -89,6 +85,8 @@ public class webManager {
 
     public void scrapeRecipeFromUrl(Context ctx) {
         try {
+            if (requireUser(ctx) == null) return;
+
             String url = ctx.body();
             if (url == null || url.trim().isEmpty()) {
                 ctx.status(400).result("URL is required");

@@ -4,160 +4,225 @@
 ![React](https://img.shields.io/badge/React_19-Vite-61DAFB?style=for-the-badge&logo=react)
 ![Tailwind](https://img.shields.io/badge/Tailwind_CSS-3-38B2AC?style=for-the-badge&logo=tailwind-css)
 ![Telegram](https://img.shields.io/badge/Telegram-Bot-26A5E4?style=for-the-badge&logo=telegram)
-![SQLite](https://img.shields.io/badge/SQLite-Database-003B57?style=for-the-badge&logo=sqlite)
+![Supabase](https://img.shields.io/badge/Supabase-Postgres-3ECF8E?style=for-the-badge&logo=supabase)
 ![GCP](https://img.shields.io/badge/Google_Cloud-VM-4285F4?style=for-the-badge&logo=google-cloud)
 ![Vercel](https://img.shields.io/badge/Vercel-Deployed-black?style=for-the-badge&logo=vercel)
 
-> A full-stack personal cookbook — React web app, Telegram bot, and AI scraper, all sharing one backend on Google Cloud.
+> A full-stack personal cookbook — a React web app and a Telegram bot, both backed by Supabase, with an AI scraper that turns any recipe URL into a structured recipe.
 
 **[→ Open the Web App](https://babrecipebook.vercel.app)**
 
 ---
 
+## Table of Contents
+
+1. [What it does](#what-it-does)
+2. [Architecture](#architecture)
+3. [Tech stack](#tech-stack)
+4. [Data model](#data-model)
+5. [Backend API surface](#backend-api-surface)
+6. [Authentication](#authentication)
+7. [Environment variables](#environment-variables)
+8. [Local development](#local-development)
+9. [CI/CD pipeline](#cicd-pipeline)
+10. [Project structure](#project-structure)
+11. [Roadmap](#roadmap)
+
+---
+
 ## What it does
 
-You can add, browse, and cook recipes from two completely different surfaces — a polished web dashboard or a Telegram bot — and they stay perfectly in sync. Both interfaces talk to the same Java REST API, which persists everything to a single SQLite database on a GCP VM.
+You add, browse, and cook recipes from two surfaces — a React web dashboard or a Telegram bot — and they stay in sync because both read and write the **same Supabase Postgres database**.
 
-There's also an AI pipeline: paste any recipe URL (or a photo in Telegram), and Gemini extracts the structured recipe automatically — title, category, description, ingredients, instructions — even when the source is in Hebrew.
+- **Web app** (Vercel): Google sign-in, your own recipe library, public recipe discovery, likes, "I made this" cook logging, a "Most Liked" carousel, a most-prepped podium, user profiles with handles, per-user categories, bilingual Hebrew (RTL) / English UI.
+- **Telegram bot** (Java, on a GCP VM): a button-driven wizard to add/edit/delete recipes, list and deep-link recipes, and import a recipe from a URL. Requires linking your web account first.
+- **AI import**: paste a recipe URL → a Java service fetches the page and Gemini 2.5 Flash extracts a structured recipe (name, category, description, ingredients, instructions, text direction), preserving the source language.
 
 ---
 
 ## Architecture
 
 ```
-┌─────────────────────┐     ┌─────────────────────┐
-│   React + Vite      │     │   Telegram Bot       │
-│   (Vercel)          │     │   (Java)             │
-└────────┬────────────┘     └──────────┬───────────┘
-         │  REST /api/*                │
-         └──────────────┬──────────────┘
-                        ▼
-            ┌───────────────────────┐
-            │  Javalin HTTP Server  │  ← GCP VM (port 8080)
-            │  + TelegramBots API   │
-            ├───────────────────────┤
-            │  GeminiHandler (AI)   │
-            ├───────────────────────┤
-            │  SQLite Database      │
-            └───────────────────────┘
+┌─────────────────────┐         ┌─────────────────────┐
+│   React + Vite      │         │   Telegram Bot      │
+│   (Vercel)          │         │   (Java, GCP VM)    │
+└─────────┬───────────┘         └──────────┬──────────┘
+          │                                │
+          │  CRUD goes direct              │  DB access via
+          │  to Supabase REST              │  backend
+          │                                │
+          │   ┌────────────────────────────┘
+          ▼   ▼
+   ┌──────────────────┐        ┌───────────────────────────┐
+   │  Supabase        │        │  Java backend (GCP VM)     │
+   │  Postgres + RLS  │◄───────│  Javalin                   │
+   │  + Auth (Google) │        │   • /api/recipes/scrape    │
+   └──────────────────┘        │   • /api/recipes/{name}/share│
+          ▲                    │   • /api/link              │
+          │                    │   • /api/account (DELETE)  │
+          │                    │  GeminiHandler + UrlFetcher│
+   browser also calls          │  TelegramLongPollingBot    │
+   Supabase directly           └───────────────────────────┘
 ```
 
-The frontend proxies `/api/*` to the GCP VM — in production via Vercel rewrites, in development via Vite's proxy config.
+The web app talks **directly to the Supabase REST API** for most data, with Row-Level Security enforcing access in Postgres. The Java backend handles four things: AI scraping, share-text formatting, Telegram account linking, and account deletion.
 
 ---
 
-## Features
-
-**Web App**
-- Clean card-based recipe browser with live search and category filtering
-- Recipe detail view with step-by-step instructions and a **checkable ingredient list** (state persisted in cookies, survives page refreshes)
-- Add / edit / delete recipes through a fully guided form
-- **AI import:** paste any recipe URL → Gemini parses the page and pre-fills the form
-- **Share:** generates a shareable link or copies a formatted text card to clipboard
-- Full bilingual support — Hebrew (RTL) and English, toggle at any time
-
-**Telegram Bot**
-- Step-by-step recipe creation wizard via inline keyboard buttons
-- Browse all recipes as deep-linked messages — tap a name, get the full card
-- Filter by category, delete or edit any field with button menus
-- **URL import:** send a recipe URL, get a structured recipe back in seconds
-- **Image import:** send a photo of a recipe and Gemini OCRs + extracts it
-- Share button generates a Telegram-native share link to the web app
-
-**Backend**
-- REST API built with [Javalin](https://javalin.io/) — lightweight, no Spring bloat
-- AI extraction via Gemini 2.5 Flash with structured JSON output (`response_mime_type: application/json`)
-- Web scraping via Jsoup with realistic browser headers to handle most recipe sites
-- Automated CI/CD via GitHub Actions: build → SSH database backup → deploy JAR → restart systemd service
-
----
-
-## Tech Stack
+## Tech stack
 
 | Layer | Tech |
 |---|---|
-| Frontend | React 19, Vite 7, Tailwind CSS 3, Lucide React |
-| Backend | Java 23, Javalin 6, TelegramBots 6 |
-| AI | Google Gemini 2.5 Flash API |
-| Scraping | Jsoup |
-| Database | SQLite (via JDBC) |
-| Hosting | GCP VM (backend) + Vercel (frontend) |
-| CI/CD | GitHub Actions |
+| Frontend | React 19, Vite 7, Tailwind CSS 3, lucide-react, `@supabase/supabase-js` |
+| Backend | Java 23, Javalin 6, TelegramBots 6.0.1, Gson, Jsoup, dotenv-java |
+| AI | Google Gemini 2.5 Flash (`generateContent`, `response_mime_type: application/json`) |
+| Database / Auth | Supabase (Postgres + Auth, Google OAuth) |
+| Hosting | GCP VM (backend, systemd service `recipebot`) + Vercel (frontend) |
+| CI/CD | GitHub Actions → SCP + SSH to the VM |
 
 ---
 
-## CI/CD Pipeline
+## Data model
 
-Every push to `main` triggers a GitHub Actions workflow that:
+All tables live in Supabase Postgres with RLS enabled.
 
-1. Builds the fat JAR with Maven
-2. **SSHs into the GCP VM and backs up the database** before touching anything
-3. SCPs the new JAR to the server
-4. Restores the database backup (guards against accidental schema wipes)
-5. Rewrites the systemd service file and restarts the server
-6. Tails the journal logs as a final health check
+| Table | Columns (key ones) | Notes |
+|---|---|---|
+| `recipes` | `id` (uuid), `name`, `category` (text), `description`, `ingredients[]`, `instructions[]`, `user_id`, `visibility`, `created_at` | `category` is a single legacy text column; multi-category lives in `recipe_categories`. |
+| `users` | `id` (uuid), `username` (unique handle), `display_name`, `bio`, `avatar_url` | New users get `username = id` until they pick a handle. |
+| `categories` | `id` (uuid), `user_id`, `name`, `created_at` | User-defined categories, `unique(user_id, name)`. |
+| `recipe_categories` | `recipe_id`, `category_id` | Many-to-many "save to" junction. |
+| `recipe_likes` | `user_id`, `recipe_id` | `unique(user_id, recipe_id)`. |
+| `cook_logs` | `user_id`, `recipe_id`, `created_at` | One row per "I made this" tap. |
+| `telegram_auth` | `telegram_chat_id` → `user_id` | Links a Telegram chat to a user. |
+| RPC `get_top_liked_recipes(limit_count)` | returns `recipe_id`, `like_count` | Powers the "Most Liked" carousel. |
 
-Zero downtime on the database, automatic rollback safety on every deploy.
+### Identity model
+- `id` (UUID) — permanent, from Supabase Auth.
+- `username` — unique, changeable handle (`a-z0-9_`), used in profile URLs (`/?user=<handle>`).
+- `display_name` — non-unique display name, seeded from Google full name.
+- `avatar_url` — Google CDN URL, refreshed on every login (not stored as a file).
 
 ---
 
-## Local Development
+## Backend API surface
 
-**Prerequisites:** Java 23, Maven, Node 20+, a Telegram bot token, a Gemini API key.
+The Java backend exposes four routes (`webManager.java`). Recipe create/update/delete happen client-side against Supabase.
+
+| Method | Route | Purpose |
+|---|---|---|
+| `POST` | `/api/recipes/scrape` | Body = recipe URL. Fetches page, runs Gemini, returns a `Recipe` JSON. |
+| `GET` | `/api/recipes/{name}/share` | Returns a formatted plain-text recipe card for a public recipe. |
+| `POST` | `/api/link` | Links a Telegram chat to a Supabase user via a one-time token. |
+| `DELETE` | `/api/account` | Deletes all of a user's data and the auth account. |
+
+---
+
+## Authentication
+
+- **Web auth:** Supabase Google OAuth. The browser holds a JWT; writes to Supabase are gated by RLS.
+- **Public reads:** done with the Supabase anon key (public recipes, profiles, likes).
+- **Telegram auth:** the bot only serves linked chats. An unlinked user receives a link to sign in on the web; the frontend then calls `POST /api/link`, which stores the `telegram_chat_id → user_id` mapping. Link tokens are one-time and short-lived (`LinkTokenStore`).
+
+---
+
+## Environment variables
+
+**Backend `.env`** (never commit):
+
+```env
+BOT_TOKEN=               # prod Telegram bot token
+TEST_BOT_TOKEN=          # test bot token (used with -debug)
+GEMINI_API_KEY=          # Google Gemini API key
+SUPABASE_URL=            # https://<project>.supabase.co
+SUPABASE_SERVICE_KEY=    # Supabase service key
+```
+
+**Frontend** (`web/.env.local` for dev, Vercel project env for prod):
+
+```env
+VITE_SUPABASE_URL=
+VITE_SUPABASE_ANON_KEY=
+VITE_API_URL=            # optional; overrides the /api proxy with an absolute URL
+```
+
+---
+
+## Local development
+
+**Prerequisites:** Java 23, Maven, Node 20+, a Supabase project, a Telegram bot token, a Gemini API key.
 
 ```bash
 git clone https://github.com/TheMprs/RecipeBot.git
 cd RecipeBot
 ```
 
-Create a `.env` file in the project root:
+Create `.env` in the project root (see above), then:
 
-```env
-BOT_TOKEN=your_telegram_bot_token
-GEMINI_API_KEY=your_gemini_api_key
-```
-
-**Run the backend:**
+**Backend:**
 ```bash
 mvn clean package -DskipTests
-java -jar target/RecipeBot-1.0-SNAPSHOT-jar-with-dependencies.jar
+java -jar target/RecipeBot-1.0-SNAPSHOT-jar-with-dependencies.jar          # prod bot
+java -jar target/RecipeBot-1.0-SNAPSHOT-jar-with-dependencies.jar -debug    # test bot
 ```
 
-**Run the frontend:**
+**Frontend:**
 ```bash
 cd web
 npm install
+cp .env.local.example .env.local   # then fill in Supabase values
 npm run dev
 ```
 
-The Vite dev server proxies `/api/*` to `localhost:8080` automatically.
+The Vite dev server proxies `/api/*` to the backend (see `vite.config.js`). To test the backend locally, point that proxy at `http://localhost:8080`.
 
 ---
 
-## Project Structure
+## CI/CD pipeline
+
+`.github/workflows/deploy.yml` runs on every push to `main`:
+
+1. Build the fat JAR with Maven.
+2. SCP the JAR to the VM.
+3. SSH in and restart the `recipebot` systemd service.
+4. Tail logs as a health check.
+
+---
+
+## Project structure
 
 ```
 RecipeBot/
 ├── src/main/java/recipeBot/
-│   ├── Main.java            # Boots Javalin + Telegram bot
-│   ├── Bot.java             # Telegram long-polling handler
-│   ├── webManager.java      # REST route handlers
-│   ├── GeminiHandler.java   # AI extraction pipeline
-│   ├── Recipe.java          # Domain model
-│   ├── Category.java        # Enum: MAIN / DESSERT / SNACK / SPECIAL
+│   ├── Main.java              # boots SupabaseHandler + Bot + Javalin
+│   ├── Bot.java               # Telegram long-polling bot (wizard, edit/delete, URL import)
+│   ├── webManager.java        # the 4 Javalin routes
+│   ├── GeminiHandler.java     # Gemini extraction
+│   ├── UrlFetcher.java        # URL fetch
+│   ├── LinkTokenStore.java    # one-time Telegram link tokens (in-memory)
+│   ├── Recipe.java            # domain model
+│   ├── State.java             # bot conversation states
 │   └── database/
-│       └── DatabaseHandler.java
-├── web/                     # React frontend
-│   └── src/
-│       ├── App.jsx
-│       └── components/
-│           ├── RecipeCard.jsx
-│           ├── RecipeDetail.jsx
-│           └── RecipeForm.jsx
-├── .github/workflows/
-│   └── deploy.yml           # CI/CD pipeline
+│       └── SupabaseHandler.java  # all Supabase REST calls
+├── web/
+│   ├── src/
+│   │   ├── App.jsx            # root: state, data fetching, routing, home page
+│   │   ├── supabaseClient.js
+│   │   └── components/        # RecipeCard, RecipeDetail, RecipeForm, UserProfile, Login, ConfirmDialog
+│   ├── vercel.json            # /api/* rewrite → backend
+│   └── vite.config.js         # dev /api proxy → backend
+├── .github/workflows/deploy.yml
 └── pom.xml
 ```
+
+---
+
+## Roadmap
+
+- **Followers / following** — social graph (planned).
+- **Recipe sharing to Instagram Stories** — generate a shareable card with a QR code (planned).
+- **App.jsx refactor** — split the root component and extract a shared API helper.
+- **Automated tests** — backend and frontend.
 
 ---
 

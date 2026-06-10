@@ -30,7 +30,9 @@ public class Main {
         telegramBotsApi.registerBot(bot);
 
         Javalin app = Javalin.create(config -> {
-            config.bundledPlugins.enableCors(cors -> cors.addRule(it -> it.anyHost()));
+            config.bundledPlugins.enableCors(cors -> cors.addRule(it -> {
+                it.allowHost("https://babrecipebook.vercel.app");
+            }));
         }).start(8080);
 
         webManager webManager = new webManager(db, tokenStore);

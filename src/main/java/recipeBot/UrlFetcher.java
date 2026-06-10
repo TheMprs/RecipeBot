@@ -5,18 +5,38 @@ import java.net.URI;
 
 public class UrlFetcher {
 
-    public static String fetch(String rawUrl) throws Exception {
-        validateUrl(rawUrl);
+    private static final int MAX_REDIRECTS = 5;
 
-        org.jsoup.nodes.Document doc = org.jsoup.Jsoup.connect(rawUrl)
-                .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
-                .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8")
-                .header("Accept-Language", "en-US,en;q=0.9")
-                .referrer("https://www.google.com")
-                .followRedirects(true)
-                .ignoreHttpErrors(true)
-                .timeout(15000)
-                .get();
+    public static String fetch(String rawUrl) throws Exception {
+        // Follow redirects manually so every hop goes through validateUrl —
+        // jsoup's built-in redirect handling would only validate the first URL
+        String url = rawUrl.trim();
+        org.jsoup.Connection.Response res;
+        int hops = 0;
+        while (true) {
+            validateUrl(url);
+            res = org.jsoup.Jsoup.connect(url)
+                    .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
+                    .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8")
+                    .header("Accept-Language", "en-US,en;q=0.9")
+                    .referrer("https://www.google.com")
+                    .followRedirects(false)
+                    .ignoreHttpErrors(true)
+                    .timeout(15000)
+                    .execute();
+
+            int status = res.statusCode();
+            if (status < 300 || status >= 400) break;
+
+            String location = res.header("Location");
+            if (location == null || location.isEmpty()) break;
+            if (++hops > MAX_REDIRECTS) {
+                throw new Exception("Too many redirects");
+            }
+            url = res.url().toURI().resolve(location.trim()).toString();
+        }
+
+        org.jsoup.nodes.Document doc = res.parse();
 
         // Prefer JSON-LD structured data — most recipe sites embed it and it's clean
         for (org.jsoup.nodes.Element script : doc.select("script[type=application/ld+json]")) {

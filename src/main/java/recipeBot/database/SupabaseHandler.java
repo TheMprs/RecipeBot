@@ -59,6 +59,12 @@ public class SupabaseHandler {
         return fetchSingle(req);
     }
 
+    // For unauthenticated endpoints — never returns private recipes
+    public Recipe getPublicRecipeByName(String name) {
+        HttpRequest req = base("/recipes?name=eq." + encode(name) + "&visibility=eq.public&select=*").GET().build();
+        return fetchSingle(req);
+    }
+
     public Recipe getRecipeById(String id) {
         HttpRequest req = base("/recipes?id=eq." + encode(id) + "&select=*").GET().build();
         return fetchSingle(req);
@@ -75,8 +81,9 @@ public class SupabaseHandler {
         return fetchList(req);
     }
 
-    public List<Recipe> getRecipesByCategory(Category category) {
-        HttpRequest req = base("/recipes?category=eq." + encode(category.name()) + "&select=*").GET().build();
+    public List<Recipe> getRecipesByCategory(String category) {
+        // ilike: stored values are mixed-case ("MAIN" from old enum writes, "Main" from edits)
+        HttpRequest req = base("/recipes?category=ilike." + encode(category) + "&select=*").GET().build();
         return fetchList(req);
     }
 
@@ -231,7 +238,7 @@ public class SupabaseHandler {
     private JsonObject buildBody(Recipe recipe) {
         JsonObject body = new JsonObject();
         body.addProperty("name", recipe.getName());
-        body.addProperty("category", recipe.getCategory().name());
+        body.addProperty("category", recipe.getCategory());
         body.addProperty("description", recipe.getDescription() != null ? recipe.getDescription() : "");
         body.add("ingredients", toJsonArray(recipe.getIngredients()));
         body.add("instructions", toJsonArray(recipe.getInstructions()));
@@ -251,13 +258,14 @@ public class SupabaseHandler {
     private Recipe parseRecipe(JsonObject obj) {
         String id = obj.get("id").getAsString();
         String name = obj.get("name").getAsString();
-        String cat = obj.get("category").getAsString();
+        String cat = obj.has("category") && !obj.get("category").isJsonNull()
+                ? obj.get("category").getAsString() : null;
         String desc = obj.has("description") && !obj.get("description").isJsonNull()
                 ? obj.get("description").getAsString() : "";
         String[] ingredients = parseArray(obj.get("ingredients"));
         String[] instructions = parseArray(obj.get("instructions"));
 
-        Recipe recipe = new Recipe(name, Category.parse(cat), desc, ingredients, instructions);
+        Recipe recipe = new Recipe(name, cat, desc, ingredients, instructions);
         recipe.setId(id);
         return recipe;
     }

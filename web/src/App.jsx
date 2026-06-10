@@ -97,7 +97,7 @@ function App() {
                 method: 'POST',
                 headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                  id: user.id, email: user.email, username: user.id,
+                  id: user.id, username: user.id,
                   display_name: user.user_metadata?.full_name || '',
                   bio: null, avatar_url: user.user_metadata?.avatar_url || null,
                 })
@@ -1004,9 +1004,12 @@ function App() {
 
     setIsScrapingLoading(true);
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) throw new Error('Not authenticated');
+
       const res = await fetch(`${API_BASE}/recipes/scrape`, {
         method: 'POST',
-        headers: { 'Content-Type': 'text/plain' },
+        headers: { 'Content-Type': 'text/plain', 'Authorization': `Bearer ${session.access_token}` },
         body: urlInput
       });
 
