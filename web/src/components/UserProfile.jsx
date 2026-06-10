@@ -22,6 +22,7 @@ export function UserProfile({
   onToggleRecipeCategory,
   onRenameCategory,
   onHandleChange,
+  onError,
 }) {
   const isRtl = language === 'he';
   const [viewingRecipes, setViewingRecipes] = useState([]);
@@ -226,7 +227,7 @@ export function UserProfile({
       if (onHandleChange) onHandleChange(editHandle.trim());
       setShowEditProfile(false);
     } catch (err) {
-      alert('Failed to save: ' + err.message);
+      if (onError) onError(language === 'en' ? 'Failed to save profile' : 'שמירת הפרופיל נכשלה');
     } finally {
       setIsSaving(false);
     }
@@ -256,7 +257,7 @@ export function UserProfile({
       await supabase.auth.signOut();
       if (onLogout) onLogout();
     } catch (err) {
-      alert('Failed to delete account: ' + err.message);
+      if (onError) onError(language === 'en' ? 'Failed to delete account' : 'מחיקת החשבון נכשלה');
     }
   };
 

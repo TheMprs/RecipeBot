@@ -1,7 +1,7 @@
 ﻿import { useState, useEffect } from 'react'
 import { ArrowLeft, LinkIcon, ChevronDown } from 'lucide-react'
 
-export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, language = 'en', userCategories = [], onCreateCategory }) {
+export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, language = 'en', userCategories = [], onCreateCategory, cookCount = 0 }) {
   const isRtl = language === 'he'
 
   const [title, setTitle] = useState('')
@@ -11,6 +11,10 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
   const [category, setCategory] = useState('')
   const [showNewCatInput, setShowNewCatInput] = useState(false)
   const [newCatName, setNewCatName] = useState('')
+  // changes locally only; the net delta is applied on save. A retried save
+  // carries its unsaved delta back in via editingRecipe.cookCountDelta.
+  const [localCookCount, setLocalCookCount] = useState(cookCount + (editingRecipe?.cookCountDelta || 0))
+  useEffect(() => { setLocalCookCount(cookCount + (editingRecipe?.cookCountDelta || 0)) }, [cookCount])
 
   useEffect(() => {
     if (editingRecipe) {
@@ -26,7 +30,7 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
     e.preventDefault()
     const ingredients = ingredientsText.split('\n').map(i => i.trim()).filter(i => i.length > 0)
     const instructions = instructionsText.split('\n').map(i => i.trim()).filter(i => i.length > 0)
-    onSave({ title, description, ingredients, instructions, category: category || null })
+    onSave({ title, description, ingredients, instructions, category: category || null, cookCountDelta: localCookCount - cookCount })
   }
 
   return (
@@ -51,7 +55,10 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
           </button>
         </div>
 
-        <h1 className="text-center text-3xl font-bold text-[#3d3429]">{language === 'en' ? 'Add New Recipe' : 'הוסף מתכון חדש'}</h1>
+        <h1 className="text-center text-3xl font-bold text-[#3d3429]">
+          {editingRecipe?.id ? (language === 'en' ? 'Edit Recipe' : 'עריכת מתכון')
+                             : (language === 'en' ? 'Add New Recipe' : 'הוסף מתכון חדש')}
+        </h1>
 
         <div style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
         <div className="border-t border-[#e8e4dc] pt-2 mt-2"/>
@@ -82,8 +89,9 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
             />
           </div>
 
-          {/* Category */}
-          <div>
+          {/* Category + prepped count share one row */}
+          <div className="flex gap-4 items-start">
+          <div className="flex-1 min-w-0">
             <label className="block text-sm font-medium text-[#3d3429] mb-2">{language === 'en' ? 'Category' : 'קטגוריה'}</label>
             <div className="relative">
             <select
@@ -157,6 +165,32 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
             )}
           </div>
 
+          {/* Prepped count (existing recipes only) */}
+          {editingRecipe?.id && (
+            <div className="shrink-0">
+              <label className="block text-sm font-medium text-[#3d3429] mb-2">{language === 'en' ? 'Times prepped' : 'מספר הכנות'}</label>
+              <div className="inline-flex items-center gap-1 bg-[#faf9f7] border border-[#e8e4dc] rounded-2xl px-2 py-1.5">
+                <button
+                  type="button"
+                  onClick={() => setLocalCookCount(c => Math.max(0, c - 1))}
+                  disabled={localCookCount === 0}
+                  className="w-9 h-9 rounded-xl text-lg font-semibold text-[#7a7265] hover:text-[#cf711f] hover:bg-white disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
+                >
+                  −
+                </button>
+                <span className="min-w-[2.5rem] text-center font-semibold text-[#3d3429]">{localCookCount}</span>
+                <button
+                  type="button"
+                  onClick={() => setLocalCookCount(c => c + 1)}
+                  className="w-9 h-9 rounded-xl text-lg font-semibold text-[#7a7265] hover:text-[#cf711f] hover:bg-white transition-colors"
+                >
+                  +
+                </button>
+              </div>
+            </div>
+          )}
+          </div>
+
           {/* Ingredients */}
           <div>
             <label className="block text-sm font-medium text-[#3d3429]">{language === 'en' ? 'Ingredients' : 'רכיבים'}</label>
@@ -200,8 +234,8 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
             type="submit"
             className="flex-1 py-3 px-4 bg-[#e67e22] text-white rounded-2xl font-medium hover:bg-[#cf711f] transition-colors shadow-sm"
           >
-            {editingRecipe ? (language === 'en' ? 'Save Changes' : 'שמור שינויים')
-                          : (language === 'en' ? 'Add Recipe' : 'הוסף מתכון')}
+            {editingRecipe?.id ? (language === 'en' ? 'Save Changes' : 'שמור שינויים')
+                               : (language === 'en' ? 'Add Recipe' : 'הוסף מתכון')}
           </button>
         </div>
         </div>

@@ -1,6 +1,7 @@
 ﻿import { useState, useEffect, useRef } from 'react'
 import { ArrowLeft, ArrowRight, Users, ChefHat, Check, Pencil, Trash2, RotateCcw, UtensilsCrossed, Share2, Heart, Copy, Bookmark, Plus } from 'lucide-react'
 import { buildShareText } from '../utils/shareRecipe'
+import { playSizzle } from '../utils/sizzle'
 
 const COOKIE_NAME_PREFIX = 'recipe_ingredients_'
 
@@ -72,6 +73,7 @@ export function RecipeDetail({ recipe, language = 'en', apiBase = '/api', onBack
 
   const handleMarkMade = () => {
     if (!onMarkMade) return
+    playSizzle()
     onMarkMade(recipe)
     setMarked(true)
     setTimeout(() => setMarked(false), 1500)
@@ -108,6 +110,7 @@ export function RecipeDetail({ recipe, language = 'en', apiBase = '/api', onBack
         <div className="flex items-center gap-2">
           <button
             onClick={handleShare}
+            dir="ltr"
             className="flex items-center gap-2 px-3 py-2 text-sm text-[#64748b] hover:text-[#ce743e] hover:bg-[#f8fafc] rounded-xl transition-colors"
           >
             <Share2 className="w-4 h-4" />
@@ -172,15 +175,17 @@ export function RecipeDetail({ recipe, language = 'en', apiBase = '/api', onBack
           {onDuplicate && (
             <button
               onClick={() => onDuplicate(recipe)}
+              dir="ltr"
               className="flex items-center gap-2 px-3 py-2 text-sm text-[#64748b] hover:text-[#e67e22] hover:bg-[#f8fafc] rounded-xl transition-colors"
             >
               <Copy className="w-4 h-4" />
-              <span className="hidden sm:inline">{language === 'en' ? 'Dupe' : 'שכפל'}</span>
+              <span className="hidden sm:inline">Dupe</span>
             </button>
           )}
           {onEdit && (
             <button
               onClick={() => onEdit(recipe)}
+              dir="ltr"
               className="flex items-center gap-2 px-3 py-2 text-sm text-[#64748b] hover:text-[#e67e22] hover:bg-[#f8fafc] rounded-xl transition-colors"
             >
               <Pencil className="w-4 h-4" />
@@ -190,6 +195,7 @@ export function RecipeDetail({ recipe, language = 'en', apiBase = '/api', onBack
           {onDelete && (
             <button
               onClick={() => onDelete(recipe)}
+              dir="ltr"
               className="flex items-center gap-2 px-3 py-2 text-sm text-[#64748b] hover:text-red-500 hover:bg-red-50 rounded-xl transition-colors"
             >
               <Trash2 className="w-4 h-4" />
@@ -244,7 +250,7 @@ export function RecipeDetail({ recipe, language = 'en', apiBase = '/api', onBack
                 >
                   <ChefHat className="w-5 h-5" />
                   <span className="text-xs font-medium leading-none">
-                    {marked ? (language === 'en' ? 'Logged!' : 'נרשם!') : cookCount > 0 ? `${cookCount}×` : (language === 'en' ? 'Made it' : 'הכנתי')}
+                    {marked ? (language === 'en' ? 'Logged!' : 'נרשם!') : cookCount > 0 ? `${cookCount}×` : '—'}
                   </span>
                 </button>
               )}

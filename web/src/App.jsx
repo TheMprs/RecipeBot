@@ -1,5 +1,5 @@
 ﻿import { useState, useEffect, useRef } from 'react'
-import { BookOpen, Plus, Search, Filter, X, Link as LinkIcon, User as UserIcon, ChevronLeft, ChevronRight, LogOut, Heart } from 'lucide-react'
+import { BookOpen, Plus, Search, Filter, X, Link as LinkIcon, User as UserIcon, ChevronLeft, ChevronRight, LogOut, Heart, RotateCcw, Pencil } from 'lucide-react'
 import { RecipeCard, RecipeCardSkeleton } from './components/RecipeCard'
 import { RecipeDetail } from './components/RecipeDetail'
 import { RecipeForm } from './components/RecipeForm'
@@ -27,7 +27,7 @@ function App() {
   const [viewMode, setViewMode] = useState(() => {
     const params = new URLSearchParams(window.location.search)
     if (params.get('user')) return 'profile'
-    if (params.get('r') || params.get('recipe')) return 'home'
+    if (params.get('r') || params.get('recipe')) return 'detail'
     return 'home'
   })
   const [showLoginModal, setShowLoginModal] = useState(false)
@@ -55,9 +55,35 @@ function App() {
   const [showGlobalResults, setShowGlobalResults] = useState(false)
   const globalSearchRef = useRef(null)
   const [confirmDialog, setConfirmDialog] = useState(null)
+  const [saveError, setSaveError] = useState(null) // failed background save, offered for retry
+  const [showLinkSuccess, setShowLinkSuccess] = useState(false) // Telegram linking celebration
+  const [isOffline, setIsOffline] = useState(typeof navigator !== 'undefined' && !navigator.onLine)
   const profileCheckedFor = useRef(null) // user id whose profile row was already verified this session
 
   const isRtl = language === 'he'
+
+  // Online/offline tracking — refetch everything when the connection returns
+  useEffect(() => {
+    const goOnline = () => {
+      setIsOffline(false)
+      if (user) { fetchRecipes(); fetchCookCounts(); fetchUserCategories(); } else { fetchPublicRecipes(); }
+      fetchTopLikedRecipes()
+    }
+    const goOffline = () => setIsOffline(true)
+    window.addEventListener('online', goOnline)
+    window.addEventListener('offline', goOffline)
+    return () => {
+      window.removeEventListener('online', goOnline)
+      window.removeEventListener('offline', goOffline)
+    }
+  }, [user])
+
+  // Failed-save banner auto-dismisses after 8s
+  useEffect(() => {
+    if (!saveError) return
+    const t = setTimeout(() => setSaveError(null), 8000)
+    return () => clearTimeout(t)
+  }, [saveError])
 
   // Check auth status on mount
   useEffect(() => {
@@ -287,8 +313,37 @@ function App() {
       fetchCookCounts();
     } catch (err) {
       console.error('[Data] Failed to log cook:', err.message);
-      alert('Failed to log cook: ' + err.message);
+      setSaveError({ message: language === 'en' ? 'Failed to log cook' : 'רישום ההכנה נכשל' });
     }
+  };
+
+  // Applies the stepper's net change on save: +N inserts N cook logs in one
+  // request, -N deletes the N most recent ones
+  const applyCookCountDelta = async (recipeId, delta) => {
+    if (!delta) return
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) throw new Error('Not authenticated');
+    const headers = { 'apikey': supabaseKey, 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json' };
+
+    if (delta > 0) {
+      const rows = Array.from({ length: delta }, () => ({ user_id: user.id, recipe_id: recipeId }));
+      const res = await fetch(`${supabaseUrl}/rest/v1/cook_logs`, {
+        method: 'POST',
+        headers: { ...headers, 'Prefer': 'return=minimal' },
+        body: JSON.stringify(rows)
+      });
+      if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
+    } else {
+      const res = await fetch(
+        `${supabaseUrl}/rest/v1/cook_logs?user_id=eq.${user.id}&recipe_id=eq.${recipeId}&select=id&order=cooked_at.desc&limit=${-delta}`,
+        { headers }
+      );
+      const ids = ((await res.json()) || []).map(r => r.id);
+      if (ids.length === 0) return;
+      const delRes = await fetch(`${supabaseUrl}/rest/v1/cook_logs?id=in.(${ids.join(',')})`, { method: 'DELETE', headers });
+      if (!delRes.ok) throw new Error(`${delRes.status} ${await delRes.text()}`);
+    }
+    fetchCookCounts();
   };
 
   const fetchTopLikedRecipes = async () => {
@@ -391,6 +446,7 @@ function App() {
       setRecipeIsLiked(wasLiked)
       setRecipeLikeCount(c => wasLiked ? c + 1 : c - 1)
       console.error('[Data] Like toggle failed:', err.message)
+      setSaveError({ message: language === 'en' ? 'Failed to update like' : 'עדכון הלייק נכשל' })
     }
   }
 
@@ -417,7 +473,7 @@ function App() {
       handleNavigate('profile')
     } catch (err) {
       console.error('[Data] Dupe failed:', err.message)
-      alert('Failed to duplicate recipe: ' + err.message)
+      setSaveError({ message: language === 'en' ? 'Failed to duplicate recipe' : 'שכפול המתכון נכשל' })
     }
   }
 
@@ -476,6 +532,7 @@ function App() {
       return newCat
     } catch (err) {
       console.error('[Data] Create category failed:', err.message)
+      setSaveError({ message: language === 'en' ? 'Failed to create category' : 'יצירת הקטגוריה נכשלה' })
       return null
     }
   }
@@ -497,6 +554,7 @@ function App() {
       if (!res.ok) throw new Error(await res.text())
     } catch (err) {
       console.error('[Data] Delete category failed:', err.message)
+      setSaveError({ message: language === 'en' ? 'Failed to delete category' : 'מחיקת הקטגוריה נכשלה' })
       fetchUserCategories()
       fetchRecipeCategories(recipes.map(r => r.id))
     }
@@ -515,6 +573,7 @@ function App() {
       if (!res.ok) throw new Error(await res.text())
     } catch (err) {
       console.error('[Data] Rename category failed:', err.message)
+      setSaveError({ message: language === 'en' ? 'Failed to rename category' : 'שינוי שם הקטגוריה נכשל' })
       fetchUserCategories()
     }
   }
@@ -546,6 +605,7 @@ function App() {
     } catch (err) {
       setRecipeCategories(prev => ({ ...prev, [recipeId]: current }))
       console.error('[Data] Toggle recipe category failed:', err.message)
+      setSaveError({ message: language === 'en' ? 'Failed to update saved categories' : 'עדכון הקטגוריות השמורות נכשל' })
     }
   }
 
@@ -555,7 +615,7 @@ function App() {
     })
       .then(res => res.json())
       .then(data => {
-        if (!data || data.length === 0) { window.history.replaceState({}, '', window.location.pathname); return; }
+        if (!data || data.length === 0) { window.history.replaceState({}, '', window.location.pathname); setViewMode('home'); return; }
         const r = data[0];
         setSelectedRecipe({
           id: r.id,
@@ -567,9 +627,9 @@ function App() {
           user_id: r.user_id
         });
         setViewMode('detail');
-        window.history.pushState({}, '', `?r=${r.id}`);
+        window.history.replaceState({}, '', `?r=${r.id}`);
       })
-      .catch(() => window.history.replaceState({}, '', window.location.pathname));
+      .catch(() => { window.history.replaceState({}, '', window.location.pathname); setViewMode('home'); });
   };
 
   useEffect(() => {
@@ -605,8 +665,8 @@ function App() {
             },
             body: JSON.stringify({ token: linkToken })
           }).then(res => {
-            if (res.ok) alert('Telegram account linked successfully!')
-            else res.text().then(t => alert('Linking failed: ' + t))
+            if (res.ok) setShowLinkSuccess(true)
+            else setSaveError({ message: language === 'en' ? 'Telegram linking failed' : 'קישור הטלגרם נכשל' })
           })
         })
       }
@@ -627,8 +687,8 @@ function App() {
             },
             body: JSON.stringify({ token: pendingToken })
           }).then(res => {
-            if (res.ok) alert('Telegram account linked successfully!')
-            else res.text().then(t => alert('Linking failed: ' + t))
+            if (res.ok) setShowLinkSuccess(true)
+            else setSaveError({ message: language === 'en' ? 'Telegram linking failed' : 'קישור הטלגרם נכשל' })
           })
         })
       }
@@ -722,6 +782,7 @@ function App() {
       window.history.pushState({}, '', `/?user=${data[0].username}`)
     } catch (err) {
       console.error('[Nav] Failed to load profile:', err.message)
+      setSaveError({ message: language === 'en' ? 'Failed to load profile' : 'טעינת הפרופיל נכשלה' })
     }
   }
 
@@ -848,14 +909,25 @@ function App() {
       return;
     }
 
+    // close the form right away — the save runs in the background and
+    // failures surface in the retry banner
+    const editing = editingRecipe;
+    setShowRecipeForm(false);
+    setEditingRecipe(null);
+    performSave(newRecipe, editing);
+  }
+
+  const performSave = async (newRecipe, editing) => {
+    setSaveError(null);
+
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) throw new Error('Not authenticated');
       const userToken = session.access_token;
 
-      if (editingRecipe?.id) {
+      if (editing?.id) {
         const res = await fetch(
-          `${supabaseUrl}/rest/v1/recipes?id=eq.${editingRecipe.id}`,
+          `${supabaseUrl}/rest/v1/recipes?id=eq.${editing.id}`,
           {
             method: 'PATCH',
             headers: {
@@ -873,7 +945,8 @@ function App() {
           }
         );
         if (!res.ok) throw new Error(`Update failed: ${res.status} ${await res.text()}`);
-        await manageRecipeCategory(editingRecipe.id, newRecipe.category, userToken)
+        await manageRecipeCategory(editing.id, newRecipe.category, userToken)
+        await applyCookCountDelta(editing.id, newRecipe.cookCountDelta)
       } else {
         const res = await fetch(
           `${supabaseUrl}/rest/v1/recipes`,
@@ -902,12 +975,24 @@ function App() {
       }
 
       fetchRecipes();
-      setShowRecipeForm(false);
-      setEditingRecipe(null);
     } catch (err) {
       console.error('[Data] Error saving recipe:', err);
-      alert('Error: ' + err.message);
+      setSaveError({ recipe: newRecipe, editingId: editing?.id || null });
     }
+  }
+
+  // re-open the form pre-filled with the changes from the failed save
+  const handleRetryWithEdit = () => {
+    const { recipe, editingId } = saveError;
+    setEditingRecipe({ ...(editingId ? { id: editingId } : {}), ...recipe });
+    setShowRecipeForm(true);
+    setSaveError(null);
+  }
+
+  // resend the failed save unchanged
+  const handleResend = () => {
+    const { recipe, editingId } = saveError;
+    performSave(recipe, editingId ? { id: editingId } : null);
   }
 
   // 3b. EDIT RECIPE
@@ -996,7 +1081,7 @@ function App() {
       setViewMode('profile');
     } catch (error) {
       console.error('[Data] Error deleting recipe:', error);
-      alert('Failed to delete recipe');
+      setSaveError({ message: language === 'en' ? 'Failed to delete recipe' : 'מחיקת המתכון נכשלה' });
     }
   }
 
@@ -1032,11 +1117,11 @@ function App() {
         setShowUrlModal(false);
         setUrlInput('');
       } else {
-        alert('Failed to scrape recipe. Please make sure the URL points to a valid recipe page.');
+        setSaveError({ message: language === 'en' ? 'Failed to import recipe from that URL' : 'יבוא המתכון מהקישור נכשל' });
       }
     } catch (error) {
       console.error('Error scraping URL:', error);
-      alert('Error: ' + error.message);
+      setSaveError({ message: language === 'en' ? 'Failed to import recipe from that URL' : 'יבוא המתכון מהקישור נכשל' });
     } finally {
       setIsScrapingLoading(false);
     }
@@ -1093,6 +1178,22 @@ function App() {
       </header>
 
       <main className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+        {/* Offline notice — shown above whatever content we have cached */}
+        {isOffline && (
+          <div className="mb-8 text-center py-10 bg-gradient-to-br from-[#faf9f7] to-[#f5f3ef] rounded-3xl border-2 border-dashed border-[#e8e4dc]">
+            <svg viewBox="0 0 200 140" className="w-44 h-auto mx-auto mb-3" fill="none" aria-hidden="true">
+              <path d="M60 50 a55 55 0 0 1 80 0" stroke="#e8e4dc" strokeWidth="8" strokeLinecap="round" />
+              <path d="M75 65 a35 35 0 0 1 50 0" stroke="#e8e4dc" strokeWidth="8" strokeLinecap="round" />
+              <circle cx="100" cy="82" r="6" fill="#e67e22" />
+              <line x1="55" y1="30" x2="145" y2="95" stroke="#e67e22" strokeWidth="8" strokeLinecap="round" />
+              <ellipse cx="100" cy="115" rx="45" ry="12" fill="#3d3429" />
+              <rect x="143" y="111" width="36" height="8" rx="4" fill="#3d3429" />
+            </svg>
+            <p className="text-[#3d3429] font-semibold">{language === 'en' ? "No internet — the kitchen's offline" : 'אין אינטרנט — המטבח לא מחובר'}</p>
+            <p className="text-[#7a7265] text-sm mt-1">{language === 'en' ? "We'll reload everything when you're back" : 'הכל ייטען מחדש כשהחיבור יחזור'}</p>
+          </div>
+        )}
+
         {viewMode === 'home' && (
           <div style={{ direction: language === 'he' ? 'rtl' : 'ltr' }} >
 
@@ -1347,7 +1448,49 @@ function App() {
             onToggleRecipeCategory={handleToggleRecipeCategory}
             onRenameCategory={handleRenameCategory}
             onHandleChange={setUserHandle}
+            onError={(message) => setSaveError({ message })}
           />
+        )}
+
+        {viewMode === 'detail' && !selectedRecipe && (
+          <div className="max-w-3xl mx-auto animate-pulse" style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
+            {/* Header row: back button + action buttons (matches h of py-2 buttons) */}
+            <div className="flex items-center justify-between mb-6 gap-2">
+              <div className="h-9 w-20 rounded-xl bg-[#e8e4dc]/60" />
+              <div className="flex items-center gap-2">
+                <div className="h-9 w-9 sm:w-20 rounded-xl bg-[#e8e4dc]/60" />
+                <div className="h-9 w-9 sm:w-20 rounded-xl bg-[#e8e4dc]/60" />
+              </div>
+            </div>
+            {/* Recipe header card */}
+            <div className="bg-white rounded-3xl border border-[#e2e8f0]/50 shadow-sm overflow-hidden mb-3">
+              <div className="p-6 sm:p-8">
+                <div className="h-6 w-16 rounded-full bg-[#e8e4dc]/60 mb-3" />
+                <div className="h-8 sm:h-9 w-2/3 rounded-lg bg-[#e8e4dc]/60 mb-4" />
+                <div className="h-4 w-full rounded bg-[#e8e4dc]/60 mb-2" />
+                <div className="h-4 w-4/5 rounded bg-[#e8e4dc]/60 mb-6" />
+                <div className="flex items-center gap-4 sm:gap-6">
+                  <div className="h-8 w-28 rounded-full bg-[#e8e4dc]/60" />
+                  <div className="h-8 w-28 rounded-full bg-[#e8e4dc]/60" />
+                </div>
+              </div>
+            </div>
+            {/* Ingredients / instructions cards */}
+            <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+              <div className="lg:col-span-2 bg-white rounded-3xl border border-[#e2e8f0]/50 shadow-sm p-6">
+                <div className="h-7 w-32 rounded-lg bg-[#e8e4dc]/60 mb-4" />
+                <div className="space-y-3">
+                  {[...Array(6)].map((_, i) => <div key={i} className="h-5 w-full rounded bg-[#e8e4dc]/60" />)}
+                </div>
+              </div>
+              <div className="lg:col-span-3 bg-white rounded-3xl border border-[#e2e8f0]/50 shadow-sm p-6">
+                <div className="h-7 w-32 rounded-lg bg-[#e8e4dc]/60 mb-4" />
+                <div className="space-y-3">
+                  {[...Array(5)].map((_, i) => <div key={i} className="h-5 w-full rounded bg-[#e8e4dc]/60" />)}
+                </div>
+              </div>
+            </div>
+          </div>
         )}
 
         {viewMode === 'detail' && selectedRecipe && (
@@ -1390,6 +1533,7 @@ function App() {
                 onOpenUrlModal={() => setShowUrlModal(true)}
                 userCategories={userCategories}
                 onCreateCategory={handleCreateCategory}
+                cookCount={cookCounts[editingRecipe?.id] || 0}
               />
             </div>
           </div>
@@ -1483,6 +1627,60 @@ function App() {
           onConfirm={confirmDialog.onConfirm}
           onCancel={confirmDialog.onCancel}
         />
+      )}
+
+      {/* Error banner — failed saves get retry/edit buttons, plain errors just the message */}
+      {saveError && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[80] flex items-center gap-3 bg-white border border-red-200 shadow-lg rounded-2xl px-4 py-3 max-w-[calc(100vw-2rem)]">
+          <p className="text-sm text-[#3d3429] truncate">
+            {saveError.message
+              ? saveError.message
+              : (language === 'en' ? `Failed to save "${saveError.recipe.title}"` : `השמירה של "${saveError.recipe.title}" נכשלה`)}
+          </p>
+          {saveError.recipe && (
+            <>
+              <button
+                onClick={handleResend}
+                title={language === 'en' ? 'Retry as is' : 'שלח שוב כפי שהוא'}
+                className="shrink-0 w-9 h-9 flex items-center justify-center bg-[#e67e22] text-white rounded-xl hover:bg-[#cf711f] transition-colors"
+              >
+                <RotateCcw className="w-4 h-4" />
+              </button>
+              <button
+                onClick={handleRetryWithEdit}
+                title={language === 'en' ? 'Edit and retry' : 'ערוך ונסה שוב'}
+                className="shrink-0 w-9 h-9 flex items-center justify-center border border-[#e8e4dc] text-[#7a7265] rounded-xl hover:text-[#cf711f] hover:border-[#cf711f]/50 transition-colors"
+              >
+                <Pencil className="w-4 h-4" />
+              </button>
+            </>
+          )}
+          <button onClick={() => setSaveError(null)} className="shrink-0 text-[#7a7265] hover:text-[#3d3429] text-sm">✕</button>
+        </div>
+      )}
+
+      {/* Telegram linked — celebration modal */}
+      {showLinkSuccess && (
+        <>
+          <div className="fixed inset-0 z-[90] backdrop-blur-sm bg-black/30" onClick={() => setShowLinkSuccess(false)} />
+          <div className="fixed inset-0 z-[95] flex items-center justify-center p-4" onClick={() => setShowLinkSuccess(false)}>
+            <div className="bg-white rounded-3xl shadow-xl p-8 max-w-sm w-full text-center" onClick={e => e.stopPropagation()}>
+              <div className="text-5xl mb-4">🎉</div>
+              <h2 className="text-2xl font-bold text-[#3d3429] mb-2">{language === 'en' ? 'Connected!' : 'מחוברים!'}</h2>
+              <p className="text-[#7a7265] mb-6">
+                {language === 'en'
+                  ? 'Your Telegram is linked — recipes you add with the bot will show up here.'
+                  : 'הטלגרם שלך מקושר — מתכונים שתוסיף דרך הבוט יופיעו כאן.'}
+              </p>
+              <button
+                onClick={() => setShowLinkSuccess(false)}
+                className="px-8 py-3 bg-[#e67e22] text-white rounded-2xl font-medium hover:bg-[#cf711f] transition-colors"
+              >
+                {language === 'en' ? 'Awesome' : 'מעולה'}
+              </button>
+            </div>
+          </div>
+        </>
       )}
 
       {/* Login modal overlay — shown for guests when they click Sign In */}
