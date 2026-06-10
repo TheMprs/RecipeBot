@@ -1249,7 +1249,8 @@ function App() {
                 <p className="text-[#7a7265] text-sm ml-4">{language === 'en' ? 'Track your cooking habits' : 'עקוב אחרי הרגלי הבישול שלך'}</p>
               </div>
               {(() => {
-                if (ownRecipesLoading) return <div className="animate-pulse bg-[#e8e4dc]/60 rounded-3xl" style={{ height: '276px' }} />;
+                // skeleton only before first load — background refetches keep showing current data
+                if (ownRecipesLoading && recipes.length === 0) return <div className="animate-pulse bg-[#e8e4dc]/60 rounded-3xl" style={{ height: '276px' }} />;
 
                 const mostPrepped = [...recipes]
                   .filter(r => cookCounts[r.id] > 0)
@@ -1280,7 +1281,7 @@ function App() {
                     {podiumOrder.map((recipe, slot) => {
                       const rank = podiumPositions[slot];
                       return (
-                        <div key={slot} className="flex flex-col items-center flex-1 max-w-[200px]">
+                        <div key={slot} className="flex flex-col items-center flex-1 min-w-0 max-w-[200px]">
                           {recipe ? (
                             <>
                               <span className="text-2xl mb-1">{medals[rank]}</span>
