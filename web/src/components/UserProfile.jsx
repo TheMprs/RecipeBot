@@ -307,13 +307,13 @@ export function UserProfile({
             <Settings className="w-5 h-5" />
           </button>
         )}
-        <div className="flex flex-row items-center sm:items-start gap-4 sm:gap-6" style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
+        <div className="flex flex-row items-center sm:items-stretch gap-4 sm:gap-6" style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
           {/* Avatar */}
           <div className="flex-shrink-0">
             <button
               type="button"
               onClick={() => avatarUrl && setShowAvatarFull(true)}
-              className={`block w-28 sm:w-36 h-28 sm:h-36 rounded-full border-4 border-[#e67e22]/20 overflow-hidden bg-[#e67e22]/10 flex items-center justify-center ${avatarUrl ? 'cursor-pointer' : 'cursor-default'}`}
+              className={`block w-28 sm:w-36 h-28 sm:h-36 rounded-full overflow-hidden bg-[#e67e22]/10 flex items-center justify-center ${avatarUrl ? 'cursor-pointer' : 'cursor-default'}`}
             >
               {avatarUrl ? (
                 <img
@@ -331,29 +331,37 @@ export function UserProfile({
           </div>
 
           {/* Profile Info */}
-          <div className="flex-1 pt-0 sm:pt-4">
-            <div className="flex flex-col items-start sm:flex-row sm:items-baseline sm:gap-2 mb-4 sm:mb-6" style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
-              <h1 className="text-2xl sm:text-3xl font-bold text-[#3d3429] mb-1 sm:mb-0 break-all whitespace-normal text-start">{displayName}</h1>
-              {handle && <p className="text-sm text-[#7a7265]"><span dir="ltr">@{handle}</span></p>}
+          <div className="flex-1 flex flex-col justify-center sm:justify-between">
+            <div className="flex flex-col items-start sm:flex-row sm:items-baseline sm:gap-2 mb-4 sm:mb-0" style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
+              <h1 className="text-3xl sm:text-4xl font-bold text-[#3d3429] mb-1 sm:mb-0 break-all whitespace-normal text-start">{displayName}</h1>
+              {handle && <p className="text-base sm:text-lg text-[#7a7265]"><span dir="ltr">@{handle}</span></p>}
             </div>
 
+            {profileData?.bio ? (
+              <p className="text-sm text-[#3d3429] whitespace-pre-line mb-4 sm:mb-0 text-start">{profileData.bio}</p>
+            ) : isOwnProfile ? (
+              <p className="text-sm italic text-[#a8a29a] mb-4 sm:mb-0 text-start">
+                {language === 'en' ? 'add bio in settings' : 'הוסף תיאור בהגדרות'}
+              </p>
+            ) : null}
+
             {/* Stats */}
-            <div className="flex justify-start gap-4 sm:gap-8 mt-4 sm:mt-6">
+            <div className="flex justify-start gap-5 sm:gap-7 mt-4 sm:mt-0">
               <div className="text-center">
                 <div className="text-lg sm:text-2xl font-bold text-[#e67e22]">{displayRecipes.length}</div>
-                <div className="text-xs text-[#7a7265] uppercase tracking-wide">
+                <div className={`${isRtl ? 'text-xs' : 'text-[10px]'} text-[#7a7265] uppercase tracking-wide`}>
                   {language === 'en' ? 'Recipes' : 'מתכונים'}
                 </div>
               </div>
               <div className="text-center">
                 <div className="text-lg sm:text-2xl font-bold text-[#e67e22]">0</div>
-                <div className="text-xs text-[#7a7265] uppercase tracking-wide">
+                <div className={`${isRtl ? 'text-xs' : 'text-[10px]'} text-[#7a7265] uppercase tracking-wide`}>
                   {language === 'en' ? 'Followers' : 'עוקבים'}
                 </div>
               </div>
               <div className="text-center">
                 <div className="text-lg sm:text-2xl font-bold text-[#e67e22]">0</div>
-                <div className="text-xs text-[#7a7265] uppercase tracking-wide">
+                <div className={`${isRtl ? 'text-xs' : 'text-[10px]'} text-[#7a7265] uppercase tracking-wide`}>
                   {language === 'en' ? 'Following' : 'נעקבים'}
                 </div>
               </div>
@@ -581,11 +589,12 @@ export function UserProfile({
                       <input
                         type="text"
                         value={editDisplayName}
-                        onChange={e => setEditDisplayName(e.target.value)}
+                        onChange={e => setEditDisplayName(e.target.value.replace(/[^A-Za-z0-9 '.\-]/g, ''))}
                         maxLength={64}
                         placeholder={language === 'en' ? 'Your name' : 'השם שלך'}
                         className="w-full px-4 py-2.5 bg-[#faf9f7] border border-[#e8e4dc] rounded-2xl text-[#3d3429] focus:outline-none focus:ring-2 focus:ring-[#cf711f]/20 focus:border-[#cf711f] text-sm transition-all"
                       />
+                      <p className="text-xs text-[#7a7265] mt-1">{language === 'en' ? 'English letters only' : 'אותיות באנגלית בלבד'}</p>
                     </div>
                     <div>
                       <label className="block text-xs font-semibold text-[#7a7265] uppercase tracking-wide mb-1.5">
@@ -610,8 +619,8 @@ export function UserProfile({
                       </label>
                       <textarea
                         value={editBio}
-                        onChange={e => setEditBio(e.target.value)}
-                        maxLength={160}
+                        onChange={e => { if (e.target.value.split('\n').length <= 3) setEditBio(e.target.value); }}
+                        maxLength={100}
                         rows={3}
                         className="w-full px-4 py-2.5 bg-[#faf9f7] border border-[#e8e4dc] rounded-2xl text-[#3d3429] focus:outline-none focus:ring-2 focus:ring-[#cf711f]/20 focus:border-[#cf711f] text-sm transition-all resize-none"
                       />
