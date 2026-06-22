@@ -1189,6 +1189,8 @@ function App() {
         setShowRecipeForm(true);
         setShowUrlModal(false);
         setUrlInput('');
+      } else if (res.status === 429) {
+        setSaveError({ message: language === 'en' ? "You've hit your import limit, try again later" : 'הגעת למגבלת השימוש, נסה שוב מאוחר יותר' });
       } else {
         setSaveError({ message: language === 'en' ? 'Failed to import recipe from that URL' : 'יבוא המתכון מהקישור נכשל' });
       }

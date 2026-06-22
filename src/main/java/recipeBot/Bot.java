@@ -389,9 +389,7 @@ public class Bot extends TelegramLongPollingBot {
             Recipe importedRecipe = null;
             try {
                 System.out.println("[Import] fetching " + url);
-                String rawText = UrlFetcher.fetch(url);
-                System.out.println("[Import] fetched " + rawText.length() + " chars, extracting");
-                Recipe extractedRecipe = gemini.extractRecipeFromText(rawText);
+                Recipe extractedRecipe = UrlFetcher.fetchRecipe(url, gemini);
                 System.out.println("[Import] extracted: " + (extractedRecipe != null ? extractedRecipe.getName() : "null"));
                 if (extractedRecipe != null && extractedRecipe.getName() != null) {
                     db.addRecipe(extractedRecipe, userId);
