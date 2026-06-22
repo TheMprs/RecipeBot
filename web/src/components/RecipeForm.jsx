@@ -50,7 +50,7 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
           <button onClick={onBack}
             className="flex items-center gap-2 text-[#7a7265] hover:text-[#3d3429] transition-colors">
             <ArrowLeft className="w-5 h-5" />
-            <span className="font-medium">{language === 'en' ? 'Back' : 'חזור'}</span>
+            <span className="font-medium">Back</span>
           </button>
           <button
             type="button"

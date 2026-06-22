@@ -12,6 +12,7 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.105.3",
     "lucide-react": "^1.11.0",
+    "qrcode.react": "^4.2.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },

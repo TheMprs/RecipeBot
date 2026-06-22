@@ -50,6 +50,7 @@ function App() {
     return 'home'
   })
   const [showLoginModal, setShowLoginModal] = useState(false)
+  const [detailOrigin, setDetailOrigin] = useState('home') // where Back returns to
   const [selectedRecipe, setSelectedRecipe] = useState(null)
   const [editingRecipe, setEditingRecipe] = useState(null)
   const [userCategories, setUserCategories] = useState(seedUserCategories)
@@ -946,6 +947,7 @@ function App() {
       authorUsername: recipeObj.authorUsername || null
     };
 
+    setDetailOrigin(viewMode === 'profile' ? 'profile' : 'home');
     setSelectedRecipe(recipeData);
     setViewMode('detail');
     window.history.pushState({}, '', `?r=${recipeObj.id}`);
@@ -1088,8 +1090,15 @@ function App() {
     }
     setSelectedRecipe(null)
     setEditingRecipe(null)
-    setViewMode(user ? 'profile' : 'home')
-    window.history.pushState({}, '', window.location.pathname)
+    if (detailOrigin === 'profile') {
+      setViewMode('profile')
+      // Restore the profile URL we came from — viewed profile (incl. guests) or own
+      const handle = viewingProfile?.username || userHandle || user?.id
+      window.history.pushState({}, '', `/?user=${handle}`)
+    } else {
+      setViewMode('home')
+      window.history.pushState({}, '', window.location.pathname)
+    }
   }
 
   const scrollCarousel = (direction) => {

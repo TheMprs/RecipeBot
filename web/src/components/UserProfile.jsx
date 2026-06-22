@@ -3,6 +3,7 @@ import { RecipeCard, RecipeCardSkeleton } from './RecipeCard';
 import { ConfirmDialog } from './ConfirmDialog';
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../supabaseClient';
+import { swr } from '../utils/cache';
 
 export function UserProfile({
   user,
@@ -150,30 +151,34 @@ export function UserProfile({
       const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
       setRecipesLoading(true);
-      fetch(`${supabaseUrl}/rest/v1/recipes?user_id=eq.${viewingProfile.id}&visibility=eq.public&select=*,recipe_likes(recipe_id)`, {
-        headers: {
-          'apikey': supabaseKey,
-          'Authorization': `Bearer ${supabaseKey}`,
-          'Content-Type': 'application/json'
-        }
-      })
-        .then(res => res.json())
-        .then(data => {
-          const formatted = (data || []).map(recipe => ({
-            id: recipe.id,
-            title: recipe.name,
-            category: recipe.category,
-            description: recipe.description,
-            ingredients: recipe.ingredients,
-            instructions: recipe.instructions,
-            created_at: recipe.created_at,
-            likeCount: recipe.recipe_likes?.length || 0
-          }));
-          setViewingRecipes(formatted);
-          const counts = {};
-          formatted.forEach(r => { counts[r.id] = r.likeCount; });
-          setLikeCounts(counts);
-        })
+      // ttl 10min: revisiting a profile reuses the cached list (and its count)
+      // instantly, no refetch.
+      swr(`profile-recipes:${viewingProfile.id}`, async () => {
+        const res = await fetch(`${supabaseUrl}/rest/v1/recipes?user_id=eq.${viewingProfile.id}&visibility=eq.public&select=*,recipe_likes(recipe_id)`, {
+          headers: {
+            'apikey': supabaseKey,
+            'Authorization': `Bearer ${supabaseKey}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        const data = await res.json();
+        return (data || []).map(recipe => ({
+          id: recipe.id,
+          title: recipe.name,
+          category: recipe.category,
+          description: recipe.description,
+          ingredients: recipe.ingredients,
+          instructions: recipe.instructions,
+          created_at: recipe.created_at,
+          likeCount: recipe.recipe_likes?.length || 0
+        }));
+      }, (formatted) => {
+        setViewingRecipes(formatted);
+        setRecipesLoading(false);
+        const counts = {};
+        formatted.forEach(r => { counts[r.id] = r.likeCount; });
+        setLikeCounts(counts);
+      }, 10 * 60 * 1000)
         .catch(err => console.error('[Data] Failed to fetch viewing profile recipes:', err.message))
         .finally(() => setRecipesLoading(false));
     }
@@ -314,6 +319,7 @@ export function UserProfile({
                 <img
                   src={avatarUrl}
                   alt={displayName}
+                  referrerPolicy="no-referrer"
                   className="w-full h-full object-cover"
                   onError={e => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
                 />
@@ -524,6 +530,7 @@ export function UserProfile({
             <img
               src={avatarUrlLarge}
               alt={displayName}
+              referrerPolicy="no-referrer"
               className="w-[min(80vw,80vh,28rem)] h-[min(80vw,80vh,28rem)] object-cover rounded-full shadow-xl"
               onClick={e => e.stopPropagation()}
               onError={e => { if (e.target.src !== avatarUrl) e.target.src = avatarUrl; }}

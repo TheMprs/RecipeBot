@@ -1,6 +1,7 @@
 ﻿import { useState } from 'react'
 import { Share2, Heart } from 'lucide-react'
 import { buildShareText } from '../utils/shareRecipe'
+import { ShareQR } from './ShareQR'
 
 export function RecipeCardSkeleton() {
   return (
@@ -25,9 +26,10 @@ export function RecipeCardSkeleton() {
 export function RecipeCard({ recipe, language = 'en', apiBase = '/api', onSelect, showCategory = true, likeCount, authorUsername, authorId, onSelectAuthor }) {
   const isRtl = language === 'he'
   const [copied, setCopied] = useState(false)
+  const [showQR, setShowQR] = useState(false)
 
   const handleShare = async (e) => {
-    e.stopPropagation()
+    e?.stopPropagation()
     try {
       const fullText = buildShareText(recipe)
 
@@ -43,6 +45,7 @@ export function RecipeCard({ recipe, language = 'en', apiBase = '/api', onSelect
 
   return (
     <div className="group relative w-full bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-all duration-300 border border-[#e8e4dc]/50 cursor-pointer flex flex-col" onClick={() => onSelect(recipe)}>
+      {showQR && <ShareQR recipe={recipe} language={language} copied={copied} onShare={handleShare} onClose={() => setShowQR(false)} />}
       {/* Header area with title and buttons */}
       <div className={`px-5 pt-5 pb-1 border-b border-[#e8e4dc]/30 flex items-center gap-3`} style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
         <h3 className={`font-semibold text-[#3d3429] text-lg group-hover:text-[#cf711f] transition-colors line-clamp-1 ${isRtl ? 'text-right' : 'text-left'} flex-1`}>
@@ -52,7 +55,7 @@ export function RecipeCard({ recipe, language = 'en', apiBase = '/api', onSelect
         {/* Action button */}
         <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
           <button
-            onClick={handleShare}
+            onClick={e => { e.stopPropagation(); setShowQR(true) }}
             className="w-8 h-8 rounded-lg bg-white/90 backdrop-blur flex items-center justify-center text-[#7a7265] hover:text-[#cf711f] hover:bg-white transition-colors shadow-sm border border-[#e8e4dc]/50"
           >
             <Share2 className="w-3.5 h-3.5" />
