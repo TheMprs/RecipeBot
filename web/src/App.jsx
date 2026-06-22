@@ -7,6 +7,24 @@ import { UserProfile } from './components/UserProfile'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import Login from './components/Login'
 import { supabase } from './supabaseClient'
+import { swr, invalidate, clearCache, peekCache, currentUserIdSync } from './utils/cache'
+
+// Cached own-recipes for the stored session, read synchronously so they paint
+// on the first render (no skeleton flash on reload).
+function seedOwnRecipes() {
+  const uid = currentUserIdSync()
+  return uid ? (peekCache(`recipes:${uid}`) || []) : []
+}
+
+function seedUserCategories() {
+  const uid = currentUserIdSync()
+  return uid ? (peekCache(`categories:${uid}`) || []) : []
+}
+
+function seedCookCounts() {
+  const uid = currentUserIdSync()
+  return uid ? (peekCache(`cookcounts:${uid}`) || {}) : {}
+}
 import './global.css'
 
 // API configuration: uses environment variable in production, /api proxy in dev
@@ -17,8 +35,9 @@ const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 function App() {
   const [user, setUser] = useState(null)
   const [userHandle, setUserHandle] = useState(null)
+  const [canScrape, setCanScrape] = useState(false)
   const [loading, setLoading] = useState(true)
-  const [recipes, setRecipes] = useState([])
+  const [recipes, setRecipes] = useState(seedOwnRecipes)
   const [topLikedRecipes, setTopLikedRecipes] = useState([])
   const [recipeLikeCount, setRecipeLikeCount] = useState(0)
   const [recipeIsLiked, setRecipeIsLiked] = useState(false)
@@ -33,9 +52,9 @@ function App() {
   const [showLoginModal, setShowLoginModal] = useState(false)
   const [selectedRecipe, setSelectedRecipe] = useState(null)
   const [editingRecipe, setEditingRecipe] = useState(null)
-  const [userCategories, setUserCategories] = useState([])
-  const [categoriesLoading, setCategoriesLoading] = useState(true)
-  const [ownRecipesLoading, setOwnRecipesLoading] = useState(true)
+  const [userCategories, setUserCategories] = useState(seedUserCategories)
+  const [categoriesLoading, setCategoriesLoading] = useState(() => seedUserCategories().length === 0)
+  const [ownRecipesLoading, setOwnRecipesLoading] = useState(() => seedOwnRecipes().length === 0)
   const [recipeCategories, setRecipeCategories] = useState({})
   const [showRecipeForm, setShowRecipeForm] = useState(false)
   const [showUrlModal, setShowUrlModal] = useState(false)
@@ -48,7 +67,7 @@ function App() {
   const [canScrollLeft, setCanScrollLeft] = useState(false)
   const [canScrollRight, setCanScrollRight] = useState(true)
   const [hoveringCarousel, setHoveringCarousel] = useState(false)
-  const [cookCounts, setCookCounts] = useState({})
+  const [cookCounts, setCookCounts] = useState(seedCookCounts)
   const [carouselLoading, setCarouselLoading] = useState(true)
   const [globalQuery, setGlobalQuery] = useState('')
   const [globalResults, setGlobalResults] = useState({ users: [], recipes: [] })
@@ -162,10 +181,13 @@ function App() {
   }, [])
 
   useEffect(() => {
-    if (!user) { setUserHandle(null); return }
-    fetch(`${supabaseUrl}/rest/v1/users?id=eq.${user.id}&select=username`, {
+    if (!user) { setUserHandle(null); setCanScrape(false); return }
+    fetch(`${supabaseUrl}/rest/v1/users?id=eq.${user.id}&select=username,can_scrape`, {
       headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` }
-    }).then(r => r.json()).then(d => { if (d?.[0]?.username) setUserHandle(d[0].username) }).catch(() => {})
+    }).then(r => r.json()).then(d => {
+      if (d?.[0]?.username) setUserHandle(d[0].username)
+      setCanScrape(!!d?.[0]?.can_scrape)
+    }).catch(() => {})
   }, [user])
 
   const handleLogout = async () => {
@@ -177,6 +199,7 @@ function App() {
     } catch (error) {
       console.error('[Auth] Logout failed:', error.message)
     } finally {
+      clearCache() // don't leak the previous user's cached data
       setUser(null)
       setRecipes([])
       setUserCategories([])
@@ -192,12 +215,20 @@ function App() {
   }
 
   // 1. FETCH ALL RECIPES WITH FULL DETAILS (no N+1 queries)
-  const fetchRecipes = async () => {
+  const fetchRecipes = async (force = false) => {
+    if (!user) { setRecipes([]); return; }
+    const cacheKey = `recipes:${user.id}`;
+    if (force) invalidate(cacheKey); // after a mutation: drop stale copy, no flash
     setOwnRecipesLoading(true)
     try {
-      if (user) {
+      // ttl 10min: render cached instantly; skip the network call if fresh.
+      // Local edits force-invalidate, so the only staleness is out-of-band
+      // changes (Telegram bot, another device) — capped at 10 min.
+      // getSession lives inside the fetcher so the cached paint happens before
+      // any await — no skeleton flash on reload.
+      await swr(cacheKey, async () => {
         const { data: { session } } = await supabase.auth.getSession();
-        if (!session?.access_token) { setRecipes([]); return; }
+        if (!session?.access_token) throw new Error('Not authenticated');
         const response = await fetch(
           `${supabaseUrl}/rest/v1/recipes?user_id=eq.${user.id}&select=*,recipe_likes(recipe_id),recipe_categories(category_id,categories(name))`,
           {
@@ -208,15 +239,11 @@ function App() {
             }
           }
         )
-        
         const data = await response.json()
-
         if (!response.ok) {
           throw new Error(`API error: ${response.status} ${JSON.stringify(data)}`);
         }
-
-        // Format recipes for display
-        const formattedRecipes = (data || []).map(recipe => ({
+        return (data || []).map(recipe => ({
           id: recipe.id,
           title: recipe.name,
           description: recipe.description,
@@ -228,15 +255,15 @@ function App() {
           user_id: recipe.user_id,
           authorId: recipe.user_id,
         }));
-
+      }, (formattedRecipes) => {
         setRecipes(formattedRecipes);
+        setOwnRecipesLoading(false); // got data (cached or fresh) — drop skeleton
         fetchRecipeCategories(formattedRecipes.map(r => r.id));
-      } else {
-        setRecipes([]);
-      }
+      }, 10 * 60 * 1000)
     } catch (error) {
+      // Keep any cached recipes already painted — don't wipe on a transient
+      // revalidation failure. Logout clears state via the !user guard.
       console.error('[Data] Failed to fetch recipes:', error.message);
-      setRecipes([]);
     } finally {
       setOwnRecipesLoading(false)
     }
@@ -279,19 +306,26 @@ function App() {
     }
   };
 
-  const fetchCookCounts = async () => {
+  const fetchCookCounts = async (force = false) => {
+    if (!user) return
+    const cacheKey = `cookcounts:${user.id}`
+    if (force) invalidate(cacheKey)
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.access_token) return;
-      const res = await fetch(
-        `${supabaseUrl}/rest/v1/cook_logs?user_id=eq.${user.id}&select=recipe_id`,
-        { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${session.access_token}` } }
-      );
-      if (!res.ok) return;
-      const data = await res.json();
-      const counts = {};
-      for (const row of data) counts[row.recipe_id] = (counts[row.recipe_id] || 0) + 1;
-      setCookCounts(counts);
+      // ttl 10min — feeds the "Most Prepped" podium. Invalidated on mark-made
+      // and cook-count edits.
+      await swr(cacheKey, async () => {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.access_token) throw new Error('Not authenticated');
+        const res = await fetch(
+          `${supabaseUrl}/rest/v1/cook_logs?user_id=eq.${user.id}&select=recipe_id`,
+          { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${session.access_token}` } }
+        );
+        if (!res.ok) throw new Error(`API error: ${res.status}`);
+        const data = await res.json();
+        const counts = {};
+        for (const row of data) counts[row.recipe_id] = (counts[row.recipe_id] || 0) + 1;
+        return counts;
+      }, setCookCounts, 10 * 60 * 1000)
     } catch (err) {
       console.error('[Data] Failed to fetch cook counts:', err.message);
     }
@@ -312,7 +346,7 @@ function App() {
         body: JSON.stringify({ user_id: user.id, recipe_id: recipe.id })
       });
       if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
-      fetchCookCounts();
+      fetchCookCounts(true);
     } catch (err) {
       console.error('[Data] Failed to log cook:', err.message);
       setSaveError({ message: language === 'en' ? 'Failed to log cook' : 'רישום ההכנה נכשל' });
@@ -345,25 +379,29 @@ function App() {
       const delRes = await fetch(`${supabaseUrl}/rest/v1/cook_logs?id=in.(${ids.join(',')})`, { method: 'DELETE', headers });
       if (!delRes.ok) throw new Error(`${delRes.status} ${await delRes.text()}`);
     }
-    fetchCookCounts();
+    fetchCookCounts(true);
   };
 
-  const fetchTopLikedRecipes = async () => {
+  const fetchTopLikedRecipes = async (force = false) => {
+    if (force) invalidate('feed:top')
     try {
+      // ttl 10min: re-opening the home feed within 10 min reuses the cached
+      // list with no network call. Invalidated on like/create/delete.
+      await swr('feed:top', async () => {
       const rpcRes = await fetch(`${supabaseUrl}/rest/v1/rpc/get_top_liked_recipes`, {
         method: 'POST',
         headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ limit_count: 10 })
       })
-      if (!rpcRes.ok) return
+      if (!rpcRes.ok) throw new Error('rpc failed')
       const ranked = await rpcRes.json()
-      if (!ranked || ranked.length === 0) { setTopLikedRecipes([]); return }
+      if (!ranked || ranked.length === 0) { return [] }
 
       const ids = ranked.map(r => r.recipe_id).join(',')
       const recipesRes = await fetch(`${supabaseUrl}/rest/v1/recipes?id=in.(${ids})&select=*`, {
         headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` }
       })
-      if (!recipesRes.ok) return
+      if (!recipesRes.ok) throw new Error('recipes fetch failed')
       const recipesData = await recipesRes.json()
 
       const likeCountMap = {}
@@ -399,7 +437,11 @@ function App() {
         }
       }).filter(Boolean)
 
-      setTopLikedRecipes(sorted)
+      return sorted
+      }, (sorted) => {
+        setTopLikedRecipes(sorted)
+        setCarouselLoading(false)
+      }, 10 * 60 * 1000)
     } catch (err) {
       console.error('[Data] Failed to fetch top liked recipes:', err.message)
     } finally {
@@ -444,6 +486,7 @@ function App() {
         })
         if (!res.ok) throw new Error(await res.text())
       }
+      invalidate('feed:top') // like changed ranking; next feed view refetches
     } catch (err) {
       setRecipeIsLiked(wasLiked)
       setRecipeLikeCount(c => wasLiked ? c + 1 : c - 1)
@@ -471,7 +514,7 @@ function App() {
         })
       })
       if (!res.ok) throw new Error(await res.text())
-      fetchRecipes()
+      fetchRecipes(true)
       handleNavigate('profile')
     } catch (err) {
       console.error('[Data] Dupe failed:', err.message)
@@ -479,17 +522,27 @@ function App() {
     }
   }
 
-  const fetchUserCategories = async () => {
+  const fetchUserCategories = async (force = false) => {
+    if (!user) return
+    const cacheKey = `categories:${user.id}`
+    if (force) invalidate(cacheKey)
     setCategoriesLoading(true)
     try {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session?.access_token) return
-      const res = await fetch(
-        `${supabaseUrl}/rest/v1/categories?user_id=eq.${user.id}&order=created_at.asc`,
-        { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${session.access_token}` } }
-      )
-      if (!res.ok) return
-      setUserCategories(await res.json() || [])
+      // ttl 10min, same model as own recipes — getSession inside the fetcher so
+      // the cached list paints before any await (no flash).
+      await swr(cacheKey, async () => {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session?.access_token) throw new Error('Not authenticated')
+        const res = await fetch(
+          `${supabaseUrl}/rest/v1/categories?user_id=eq.${user.id}&order=created_at.asc`,
+          { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${session.access_token}` } }
+        )
+        if (!res.ok) throw new Error(`API error: ${res.status}`)
+        return (await res.json()) || []
+      }, (cats) => {
+        setUserCategories(cats)
+        setCategoriesLoading(false)
+      }, 10 * 60 * 1000)
     } catch (err) {
       console.error('[Data] Failed to fetch categories:', err.message)
     } finally {
@@ -531,6 +584,7 @@ function App() {
       if (!res.ok) throw new Error(await res.text())
       const [newCat] = await res.json()
       setUserCategories(prev => [...prev, newCat])
+      invalidate(`categories:${user.id}`)
       return newCat
     } catch (err) {
       console.error('[Data] Create category failed:', err.message)
@@ -554,10 +608,11 @@ function App() {
         headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${session.access_token}` }
       })
       if (!res.ok) throw new Error(await res.text())
+      invalidate(`categories:${user.id}`)
     } catch (err) {
       console.error('[Data] Delete category failed:', err.message)
       setSaveError({ message: language === 'en' ? 'Failed to delete category' : 'מחיקת הקטגוריה נכשלה' })
-      fetchUserCategories()
+      fetchUserCategories(true)
       fetchRecipeCategories(recipes.map(r => r.id))
     }
   }
@@ -573,10 +628,11 @@ function App() {
         body: JSON.stringify({ name: newName.trim() })
       })
       if (!res.ok) throw new Error(await res.text())
+      invalidate(`categories:${user.id}`)
     } catch (err) {
       console.error('[Data] Rename category failed:', err.message)
       setSaveError({ message: language === 'en' ? 'Failed to rename category' : 'שינוי שם הקטגוריה נכשל' })
-      fetchUserCategories()
+      fetchUserCategories(true)
     }
   }
 
@@ -626,7 +682,8 @@ function App() {
           category: r.category || 'MAIN',
           ingredients: Array.isArray(r.ingredients) ? r.ingredients : [],
           instructions: Array.isArray(r.instructions) ? r.instructions : [],
-          user_id: r.user_id
+          user_id: r.user_id,
+          authorId: r.user_id
         });
         setViewMode('detail');
         window.history.replaceState({}, '', `?r=${r.id}`);
@@ -772,16 +829,21 @@ function App() {
 
   const navigateToProfile = async (userId) => {
     try {
-      const res = await fetch(
-        `${supabaseUrl}/rest/v1/users?id=eq.${userId}&select=id,username,display_name,bio,avatar_url`,
-        { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` } }
-      )
-      const data = await res.json()
-      if (!data?.[0]) return
-      setViewingProfile(data[0])
-      setSelectedRecipe(null)
-      setViewMode('profile')
-      window.history.pushState({}, '', `/?user=${data[0].username}`)
+      // ttl 10min: other users' public profiles rarely change mid-session.
+      await swr(`profile:${userId}`, async () => {
+        const res = await fetch(
+          `${supabaseUrl}/rest/v1/users?id=eq.${userId}&select=id,username,display_name,bio,avatar_url`,
+          { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` } }
+        )
+        const data = await res.json()
+        if (!data?.[0]) throw new Error('profile not found')
+        return data[0]
+      }, (profile) => {
+        setViewingProfile(profile)
+        setSelectedRecipe(null)
+        setViewMode('profile')
+        window.history.pushState({}, '', `/?user=${profile.username}`)
+      }, 10 * 60 * 1000)
     } catch (err) {
       console.error('[Nav] Failed to load profile:', err.message)
       setSaveError({ message: language === 'en' ? 'Failed to load profile' : 'טעינת הפרופיל נכשלה' })
@@ -976,7 +1038,7 @@ function App() {
         if (saved?.id) await manageRecipeCategory(saved.id, newRecipe.category, userToken)
       }
 
-      fetchRecipes();
+      fetchRecipes(true);
     } catch (err) {
       console.error('[Data] Error saving recipe:', err);
       setSaveError({ recipe: newRecipe, editingId: editing?.id || null });
@@ -1079,7 +1141,7 @@ function App() {
       );
       if (!res.ok) throw new Error(`Delete failed: ${res.status}`);
 
-      fetchRecipes();
+      fetchRecipes(true);
       setViewMode('profile');
     } catch (error) {
       console.error('[Data] Error deleting recipe:', error);
@@ -1233,7 +1295,7 @@ function App() {
                         }} className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-[#f5f3ef] transition-colors">
                           <div className="w-8 h-8 rounded-full bg-[#e67e22]/10 flex-shrink-0 overflow-hidden">
                             {u.avatar_url
-                              ? <img src={u.avatar_url} alt="" className="w-full h-full object-cover" />
+                              ? <img src={u.avatar_url} alt="" referrerPolicy="no-referrer" className="w-full h-full object-cover" />
                               : <div className="w-full h-full flex items-center justify-center"><UserIcon className="w-4 h-4 text-[#e67e22]" /></div>}
                           </div>
                           <div className="text-start">
@@ -1537,6 +1599,21 @@ function App() {
                 </button>
               </div>
               
+              {!canScrape ? (
+                <div className="space-y-4">
+                  <p className="text-sm text-[#7a7265] text-center py-4">
+                    {language === 'en'
+                      ? "You're not verified to import recipes from URLs."
+                      : 'החשבון שלך אינו מאומת לייבוא מתכונים מ-URL.'}
+                  </p>
+                  <button
+                    onClick={() => setShowUrlModal(false)}
+                    className="w-full px-4 py-3 bg-[#f5f3ef] text-[#3d3429] rounded-xl hover:bg-[#e8e4dc] transition-colors font-medium"
+                  >
+                    {language === 'en' ? 'Close' : 'סגור'}
+                  </button>
+                </div>
+              ) : (
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-[#3d3429] mb-2">
@@ -1550,7 +1627,7 @@ function App() {
                     className="w-full px-4 py-3 bg-[#faf9f7] text-left border border-[#e8e4dc] rounded-2xl text-[#3d3429] placeholder:text-[#7a7265] focus:outline-none focus:ring-2 focus:ring-[#cf711f]/20 focus:border-[#cf711f] transition-all"
                   />
                   <p className={`text-xs text-[#7a7265] mt-2 ${isRtl ? 'text-right' : 'text-left'}`}>
-                    {language === 'en' 
+                    {language === 'en'
                       ? 'Paste the URL of a recipe webpage. AI will extract the recipe details automatically.'
                       : 'הדבק את כתובת ה-URL של דף המתכון. בינה מלאכותית תחלץ את פרטי המתכון באופן אוטומטי.'}
                   </p>
@@ -1579,6 +1656,7 @@ function App() {
                   </button>
                 </div>
               </div>
+              )}
             </div>
           </div>
         </>

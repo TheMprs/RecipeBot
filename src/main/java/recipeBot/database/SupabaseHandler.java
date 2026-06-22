@@ -207,6 +207,19 @@ public class SupabaseHandler {
         return null;
     }
 
+    // True only if the user's can_scrape flag is set. Fails closed on any error.
+    public boolean canScrape(String userId) {
+        HttpRequest req = base("/users?id=eq." + encode(userId) + "&select=can_scrape").GET().build();
+        try {
+            HttpResponse<String> res = client.send(req, HttpResponse.BodyHandlers.ofString());
+            JsonArray arr = gson.fromJson(res.body(), JsonArray.class);
+            return arr.size() > 0 && arr.get(0).getAsJsonObject().get("can_scrape").getAsBoolean();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return false;
+    }
+
     // Validates a Supabase JWT and returns the user's UUID, or null if invalid.
     public String getUserIdFromJwt(String jwt) {
         HttpRequest req = HttpRequest.newBuilder()

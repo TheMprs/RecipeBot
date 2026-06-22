@@ -74,7 +74,12 @@ public class webManager {
 
     public void scrapeRecipeFromUrl(Context ctx) {
         try {
-            if (requireUser(ctx) == null) return;
+            String userId = requireUser(ctx);
+            if (userId == null) return;
+            if (!db.canScrape(userId)) {
+                ctx.status(403).result("Not permitted to use URL import");
+                return;
+            }
 
             String url = ctx.body();
             if (url == null || url.trim().isEmpty()) {
