@@ -125,6 +125,13 @@ function App() {
         setLoading(false)
         clearTimeout(timeoutId)
 
+        // OAuth implicit flow returns tokens in the URL hash; supabase-js has consumed
+        // them by now, so drop the leftover empty "#" for a clean URL.
+        // note: a bare trailing "#" makes location.hash === '', so test the raw URL
+        if (event === 'SIGNED_IN' && window.location.href.includes('#')) {
+          window.history.replaceState({}, '', window.location.pathname + window.location.search)
+        }
+
         // Create profile for new users (OAuth sign-in) — once per user, not on every refocus
         if (event === 'SIGNED_IN' && session?.user && profileCheckedFor.current !== session.user.id) {
           profileCheckedFor.current = session.user.id
@@ -211,6 +218,7 @@ function App() {
       setEditingRecipe(null)
       setViewingProfile(null)
       setShowRecipeForm(false)
+      window.history.replaceState({}, '', '/') // drop ?user= so the [user] effect doesn't re-resolve it as guest
       setViewMode('home')
     }
   }
