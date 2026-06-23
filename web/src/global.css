@@ -36,6 +36,30 @@
   scrollbar-color: rgba(0, 0, 0, 0.1) transparent;
 }
 
+/* Thin branded scrollbar for menus/dropdowns (overrides the global hide) */
+.menu-scroll::-webkit-scrollbar {
+  display: block;
+  width: 6px;
+}
+.menu-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.menu-scroll::-webkit-scrollbar-thumb {
+  background: transparent; /* hidden until the menu is hovered */
+  border-radius: 9999px;
+  transition: background 0.3s;
+}
+.menu-scroll:hover::-webkit-scrollbar-thumb {
+  background: rgba(207, 113, 31, 0.4); /* brand orange */
+}
+.menu-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+.menu-scroll:hover {
+  scrollbar-color: rgba(207, 113, 31, 0.4) transparent;
+}
+
 /* Number inputs without spin arrows */
 .no-spinner::-webkit-outer-spin-button,
 .no-spinner::-webkit-inner-spin-button {

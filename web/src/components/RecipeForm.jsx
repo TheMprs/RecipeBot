@@ -1,5 +1,5 @@
-﻿import { useState, useEffect } from 'react'
-import { ArrowLeft, LinkIcon, ChevronDown } from 'lucide-react'
+﻿import { useState, useEffect, useRef } from 'react'
+import { ArrowLeft, LinkIcon, ChevronDown, Check, Plus, ChefHat } from 'lucide-react'
 
 // Split a free-typed blob (ingredients or instructions) into items: break on line breaks
 // AND sentence endings (. ! ?) followed by whitespace. The lookbehind keeps the punctuation
@@ -18,6 +18,16 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
   const [calories, setCalories] = useState('')
   const [showNewCatInput, setShowNewCatInput] = useState(false)
   const [newCatName, setNewCatName] = useState('')
+  const [catOpen, setCatOpen] = useState(false)
+  const catRef = useRef(null)
+
+  // Close the category dropdown when clicking outside it.
+  useEffect(() => {
+    if (!catOpen) return
+    const onDown = (e) => { if (catRef.current && !catRef.current.contains(e.target)) setCatOpen(false) }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [catOpen])
   // changes locally only; the net delta is applied on save. A retried save
   // carries its unsaved delta back in via editingRecipe.cookCountDelta.
   const [localCookCount, setLocalCookCount] = useState(cookCount + (editingRecipe?.cookCountDelta || 0))
@@ -52,89 +62,106 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
   return (
     <>
       <div className="max-w-2xl mx-auto">
-      <form onSubmit={handleSubmit} className="bg-white rounded-3xl border border-[#e8e4dc]/50 shadow-sm p-6 sm:p-8">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-2">
-          <button onClick={onBack}
-            className="flex items-center gap-2 text-[#7a7265] hover:text-[#3d3429] transition-colors">
-            <ArrowLeft className="w-5 h-5" />
-            <span className="font-medium">Back</span>
-          </button>
-          <button
-            type="button"
-            onClick={onOpenUrlModal}
-            className={`flex items-center gap-2 text-[#7a7265] hover:text-[#cf711f] transition-colors ${isRtl ? 'flex-row-reverse' : ''}`}
-            title="Import recipe from link"
-          >
-            <LinkIcon className="w-5 h-5" />
-            <span className="font-medium text-sm">{language === 'en' ? 'Import from link' : 'יבוא מקישור'}</span>
-          </button>
+      <form onSubmit={handleSubmit} className="bg-white rounded-3xl shadow-sm p-6 sm:p-8 overflow-hidden">
+        {/* Branded header band — matches the login window look */}
+        <div className="-mx-6 -mt-6 sm:-mx-8 sm:-mt-8 px-6 sm:px-8 pt-5 pb-6 bg-gradient-to-b from-[#e67e22] to-[#cf711f]">
+          <div className="relative flex items-center justify-between">
+            <button onClick={onBack}
+              className="flex items-center gap-2 text-white/85 hover:text-white transition-colors">
+              <ArrowLeft className="w-5 h-5" />
+              <span className="font-medium">Back</span>
+            </button>
+            <div className="absolute left-1/2 -translate-x-1/2 w-11 h-11 rounded-2xl bg-white/15 backdrop-blur flex items-center justify-center ring-1 ring-white/25">
+              <ChefHat className="w-6 h-6 text-white" />
+            </div>
+            <button
+              type="button"
+              onClick={onOpenUrlModal}
+              className={`flex items-center gap-2 text-white/85 hover:text-white transition-colors ${isRtl ? 'flex-row-reverse' : ''}`}
+              title="Import recipe from link"
+            >
+              <LinkIcon className="w-5 h-5" />
+              <span className="font-medium text-sm">{language === 'en' ? 'Import from link' : 'יבוא מקישור'}</span>
+            </button>
+          </div>
+          <h1 className="text-center text-3xl sm:text-4xl font-bold tracking-tight text-white mt-3">
+            {editingRecipe?.id ? (language === 'en' ? 'Edit Recipe' : 'עריכת מתכון')
+                               : (language === 'en' ? 'Add New Recipe' : 'הוסף מתכון חדש')}
+          </h1>
         </div>
 
-        <h1 className="text-center text-3xl font-bold text-[#3d3429]">
-          {editingRecipe?.id ? (language === 'en' ? 'Edit Recipe' : 'עריכת מתכון')
-                             : (language === 'en' ? 'Add New Recipe' : 'הוסף מתכון חדש')}
-        </h1>
+        <div style={{ direction: isRtl ? 'rtl' : 'ltr' }} className="relative bg-white pt-3">
 
-        <div style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
-        <div className="border-t border-[#e8e4dc] pt-2 mt-2"/>
-
-        <div className="space-y-6">
+        <div className="space-y-3">
           {/* Title */}
           <div>
-            <label className="block text-sm font-medium text-[#3d3429] mb-2">{language === 'en' ? 'Recipe Title' : 'שם המתכון'}</label>
+            <label className="block text-sm font-medium text-[#3d3429] mb-2 ps-[14px]">{language === 'en' ? 'Recipe Title' : 'שם המתכון'}</label>
             <input
               type="text"
               value={title}
               onChange={e => setTitle(e.target.value)}
               placeholder={language === 'en' ? "e.g., Grandma's Apple Pie" : 'למשל, חלה של יובל'}
               required
-              className="w-full px-[18px] py-3 bg-[#faf9f7] border border-[#e8e4dc] rounded-2xl text-[#3d3429] placeholder:text-[#7a7265] focus:outline-none focus:ring-2 focus:ring-[#cf711f]/20 focus:border-[#cf711f] transition-all"
+              className="w-full px-4 py-3 bg-[#faf9f7] border border-[#e8e4dc] rounded-2xl text-[#3d3429] placeholder:text-[#7a7265] focus:outline-none focus:ring-2 focus:ring-[#cf711f]/20 focus:border-[#cf711f] transition-all"
             />
           </div>
 
           {/* Description */}
           <div>
-            <label className="block text-sm font-medium text-[#3d3429] mb-2">{language === 'en' ? 'Description' : 'תיאור'}</label>
+            <label className="block text-sm font-medium text-[#3d3429] mb-2 ps-[14px]">{language === 'en' ? 'Description' : 'תיאור'}</label>
             <textarea
               value={description}
               onChange={e => setDescription(e.target.value)}
               placeholder={language === 'en' ? 'A brief description of your recipe...' : 'תיאור קצר של המתכון...'}
               rows={3}
-              className="w-full px-[18px] py-3 bg-[#faf9f7] border border-[#e8e4dc] rounded-2xl text-[#3d3429] placeholder:text-[#7a7265] focus:outline-none focus:ring-2 focus:ring-[#cf711f]/20 focus:border-[#cf711f] transition-all resize-none"
+              className="w-full px-4 py-3 bg-[#faf9f7] border border-[#e8e4dc] rounded-2xl text-[#3d3429] placeholder:text-[#7a7265] focus:outline-none focus:ring-2 focus:ring-[#cf711f]/20 focus:border-[#cf711f] transition-all resize-none"
             />
           </div>
 
           {/* Category + prepped count share one row */}
           <div className="flex gap-2 items-start">
-          <div className="flex-1 min-w-0">
-            <label className="block text-sm font-medium text-[#3d3429] mb-2">{language === 'en' ? 'Category' : 'קטגוריה'}</label>
-            <div className="relative">
-            <select
-              value={showNewCatInput ? '__new__' : category}
-              onChange={e => {
-                if (e.target.value === '__new__') {
-                  setShowNewCatInput(true)
-                  setNewCatName('')
-                } else {
-                  setShowNewCatInput(false)
-                  setCategory(e.target.value)
-                }
-              }}
-              className="w-full appearance-none px-[18px] py-3 pr-10 bg-[#faf9f7] border border-[#e8e4dc] rounded-2xl text-[#3d3429] focus:outline-none focus:ring-2 focus:ring-[#cf711f]/20 focus:border-[#cf711f] transition-all"
-            >
-              <option value="">{language === 'en' ? 'None' : 'ללא'}</option>
-              {category && !userCategories.find(c => c.name === category) && (
-                <option value={category}>{category}</option>
+          <div className="flex-1 min-w-0 max-w-xs">
+            <label className="block text-sm font-medium text-[#3d3429] mb-2 ps-[14px]">{language === 'en' ? 'Category' : 'קטגוריה'}</label>
+            <div className="relative" ref={catRef}>
+              <button
+                type="button"
+                onClick={() => setCatOpen(o => !o)}
+                className="w-full flex items-center justify-between gap-2 px-4 py-3 bg-[#faf9f7] border border-[#e8e4dc] rounded-2xl text-[#3d3429] font-medium cursor-pointer hover:border-[#d9d3c8] hover:bg-[#f5f3ef] focus:outline-none focus:ring-2 focus:ring-[#cf711f]/20 focus:border-[#cf711f] transition-all"
+              >
+                <span className={category ? '' : 'text-[#7a7265]'}>{category || (language === 'en' ? 'None' : 'ללא')}</span>
+                <ChevronDown className={`w-4 h-4 text-[#cf711f] flex-shrink-0 transition-transform duration-200 ${catOpen ? 'rotate-180' : ''}`} />
+              </button>
+              {catOpen && (
+                <div style={{ direction: isRtl ? 'ltr' : 'rtl' }} className="menu-scroll absolute z-20 mt-2 w-full bg-white border border-[#e8e4dc] rounded-2xl shadow-lg py-1 max-h-60 overflow-y-auto">
+                  {[{ name: '', label: language === 'en' ? 'None' : 'ללא' },
+                    ...userCategories.map(c => ({ name: c.name, label: c.name }))].map(opt => {
+                    const selected = category === opt.name
+                    return (
+                      <button
+                        key={opt.name || '__none__'}
+                        type="button"
+                        style={{ direction: isRtl ? 'rtl' : 'ltr' }}
+                        onClick={() => { setCategory(opt.name); setShowNewCatInput(false); setCatOpen(false) }}
+                        className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 text-sm text-start transition-colors ${selected ? 'bg-[#e67e22]/10 text-[#cf711f] font-medium' : 'text-[#3d3429] hover:bg-[#faf9f7]'}`}
+                      >
+                        <span className="truncate">{opt.label}</span>
+                        <span className="w-4 flex-shrink-0">{selected && <Check className="w-4 h-4" />}</span>
+                      </button>
+                    )
+                  })}
+                  {onCreateCategory && (
+                    <button
+                      type="button"
+                      style={{ direction: isRtl ? 'rtl' : 'ltr' }}
+                      onClick={() => { setCatOpen(false); setShowNewCatInput(true); setNewCatName('') }}
+                      className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-start text-[#e67e22] hover:bg-[#faf9f7] border-t border-[#e8e4dc]/60 font-medium transition-colors"
+                    >
+                      <Plus className="w-4 h-4 flex-shrink-0" />
+                      {language === 'en' ? 'Add category' : 'הוסף קטגוריה'}
+                    </button>
+                  )}
+                </div>
               )}
-              {userCategories.map(cat => (
-                <option key={cat.id} value={cat.name}>{cat.name}</option>
-              ))}
-              {onCreateCategory && (
-                <option value="__new__">{language === 'en' ? '＋ Add category…' : '＋ הוסף קטגוריה…'}</option>
-              )}
-            </select>
-            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#7a7265]" />
             </div>
             {showNewCatInput && (
               <div className="flex gap-2 mt-2">
@@ -183,7 +210,7 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
 
           {/* Calories per serving (manual for now; auto-calc later) */}
           <div className="shrink-0">
-            <label className="block text-sm font-medium text-[#3d3429] mb-2">{language === 'en' ? 'Calories' : 'קלוריות / מנה'}</label>
+            <label className="block text-sm font-medium text-[#3d3429] mb-2 ps-[14px]">{language === 'en' ? 'Calories' : 'קלוריות / מנה'}</label>
             <input
               type="number"
               min="0"
@@ -198,7 +225,7 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
           {/* Prepped count (existing recipes only) */}
           {editingRecipe?.id && (
             <div className="shrink-0">
-              <label className="block text-sm font-medium text-[#3d3429] mb-2">{language === 'en' ? 'Times prepped' : 'מספר הכנות'}</label>
+              <label className="block text-sm font-medium text-[#3d3429] mb-2 ps-[14px]">{language === 'en' ? 'Times prepped' : 'מספר הכנות'}</label>
               <div className="inline-flex items-center gap-1 bg-[#faf9f7] border border-[#e8e4dc] rounded-2xl px-2 py-1.5">
                 <button
                   type="button"
@@ -246,22 +273,22 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
 
           {/* Ingredients */}
           <div>
-            <label className="block text-sm font-medium text-[#3d3429]">{language === 'en' ? 'Ingredients' : 'רכיבים'}</label>
-            <p className="text-xs text-[#7a7265] mb-2">{language === 'en' ? 'Write naturally — ingredients are split by sentence and line break' : 'כתוב באופן חופשי — הרכיבים מתחלקים לפי משפטים ושורות'}</p>
+            <label className="block text-sm font-medium text-[#3d3429] ps-[14px]">{language === 'en' ? 'Ingredients' : 'רכיבים'}</label>
+            <p className="text-xs text-[#7a7265] mb-2 ps-[14px]">{language === 'en' ? 'Write naturally — ingredients are split by sentence and line break' : 'כתוב באופן חופשי — הרכיבים מתחלקים לפי משפטים ושורות'}</p>
             <textarea
               value={ingredientsText}
               onChange={e => setIngredientsText(e.target.value)}
               placeholder={language === 'en' ? '2 cups flour \n1 cup sugar \n3 eggs \n1/2 cup butter'
                                             : '2 כוסות קמח \n1 כוס סוכר \n3 ביצים \n1/2 כוס שמן'}
               rows={6}
-              className="w-full px-[18px] py-3 bg-[#faf9f7] border border-[#e8e4dc] rounded-2xl text-[#3d3429] placeholder:text-[#7a7265] focus:outline-none focus:ring-2 focus:ring-[#cf711f]/20 focus:border-[#cf711f] transition-all resize-none"
+              className="w-full px-4 py-3 bg-[#faf9f7] border border-[#e8e4dc] rounded-2xl text-[#3d3429] placeholder:text-[#7a7265] focus:outline-none focus:ring-2 focus:ring-[#cf711f]/20 focus:border-[#cf711f] transition-all resize-none"
             />
           </div>
 
           {/* Instructions */}
           <div>
-            <label className="block text-sm font-medium text-[#3d3429]">{language === 'en' ? 'Instructions' : 'הוראות'}</label>
-            <p className="text-xs text-[#7a7265] mb-2">{language === 'en' ? 'Write naturally — steps are split by sentence and line break' : 'כתוב באופן חופשי — השלבים מתחלקים לפי משפטים ושורות'}</p>
+            <label className="block text-sm font-medium text-[#3d3429] ps-[14px]">{language === 'en' ? 'Instructions' : 'הוראות'}</label>
+            <p className="text-xs text-[#7a7265] mb-2 ps-[14px]">{language === 'en' ? 'Write naturally — steps are split by sentence and line break' : 'כתוב באופן חופשי — השלבים מתחלקים לפי משפטים ושורות'}</p>
             <textarea
               value={instructionsText}
               onChange={e => setInstructionsText(e.target.value)}
@@ -269,7 +296,7 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
                       'Preheat oven to 350F\nMix dry ingredients in a bowl\nAdd wet ingredients and stir\nPour into pan and bake for 30 minutes'
                     : 'מחמים תנור ל180 מעלות\nמערבבים את הרכיבים היבשים בקערה\nמוסיפים את הרכיבים הרטובים ומערבבים\nיוצקים לתבנית ואופים במשך 30 דקות'}
               rows={8}
-              className="w-full px-[18px] py-3 bg-[#faf9f7] border border-[#e8e4dc] rounded-2xl text-[#3d3429] placeholder:text-[#7a7265] focus:outline-none focus:ring-2 focus:ring-[#cf711f]/20 focus:border-[#cf711f] transition-all resize-none"
+              className="w-full px-4 py-3 bg-[#faf9f7] border border-[#e8e4dc] rounded-2xl text-[#3d3429] placeholder:text-[#7a7265] focus:outline-none focus:ring-2 focus:ring-[#cf711f]/20 focus:border-[#cf711f] transition-all resize-none"
             />
           </div>
         </div>

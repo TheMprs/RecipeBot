@@ -1,5 +1,5 @@
 ﻿import { useState, useEffect, useRef } from 'react'
-import { ArrowLeft, ArrowRight, Users, ChefHat, Check, Pencil, Trash2, RotateCcw, UtensilsCrossed, Share2, Heart, Copy, Bookmark, Plus } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Users, ChefHat, Check, Pencil, Trash2, RotateCcw, UtensilsCrossed, Share2, Heart, Copy, Bookmark, Plus, Flame } from 'lucide-react'
 import { buildShareText } from '../utils/shareRecipe'
 import { playSizzle } from '../utils/sizzle'
 import { ShareQR } from './ShareQR'
@@ -288,6 +288,15 @@ export function RecipeDetail({ recipe, language = 'en', apiBase = '/api', onBack
               </div>
               <span className="ms-1">{language === 'en' ? `${recipe.ingredients.length} ingredients` : `${recipe.ingredients.length} מצרכים`}</span>
             </div>
+            {/* calories_per_serving — shows once the field is populated; null/absent until calc lands */}
+            {(recipe.caloriesPerServing ?? recipe.calories_per_serving) != null && (
+              <div className={`flex items-center gap-2}`}>
+                <div className="w-8 h-8 rounded-full bg-[#e67e22]/10 flex items-center justify-center">
+                  <Flame className="w-4 h-4 text-[#e67e22]" />
+                </div>
+                <span className="ms-1">≈ {recipe.caloriesPerServing ?? recipe.calories_per_serving} {language === 'en' ? 'kcal / serving' : 'קלוריות / מנה'}</span>
+              </div>
+            )}
           </div>
         </div>
       </div>

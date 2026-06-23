@@ -298,7 +298,7 @@ export function UserProfile({
   return (
     <div>
       {/* Profile Header */}
-      <div className="bg-white rounded-2xl border border-[#e8e4dc] p-4 sm:p-6 mb-8 relative">
+      <div className="bg-white rounded-2xl border border-[#e8e4dc] p-4 sm:p-6 mb-2 relative">
         {!viewingProfile && (
           <button
             onClick={() => setShowSettings(true)}
@@ -373,7 +373,7 @@ export function UserProfile({
       {/* Category pills — own profile only */}
       {isOwnProfile && (
         <div
-          className="mb-4"
+          className="mb-2"
           onMouseEnter={() => setHoveringCategoryPills(true)}
           onMouseLeave={() => setHoveringCategoryPills(false)}
         >
@@ -445,7 +445,7 @@ export function UserProfile({
       )}
 
       {/* Search and sort */}
-      <div className="mb-8 flex items-center">
+      <div className="mb-3 flex items-center">
         <div className="relative flex-1 z-10">
           <Search className={`absolute top-1/2 -translate-y-1/2 w-4 h-4 text-[#7a7265] ${language === 'he' ? 'right-4' : 'left-4'}`} />
           <input
@@ -510,7 +510,9 @@ export function UserProfile({
           {[...Array(6)].map((_, i) => <RecipeCardSkeleton key={i} />)}
         </div>
       ) : filteredRecipes.length > 0 ? (
-        <div style={{ direction: isRtl ? 'rtl' : 'ltr' }} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+        // Cap the visible area to ~2.4 rows so the 3rd row peeks at the bottom — a visual hint
+        // that there's more to scroll. px-2/-mx-2 keeps card hover shadows from being clipped.
+        <div style={{ direction: isRtl ? 'rtl' : 'ltr' }} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-4 max-h-[23.5rem] overflow-y-auto px-2 -mx-2">
           {filteredRecipes.map((recipe) => (
             <RecipeCard
               key={recipe.id}

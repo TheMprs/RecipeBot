@@ -260,6 +260,7 @@ function App() {
           instructions: recipe.instructions,
           created_at: recipe.created_at,
           category: recipe.recipe_categories?.[0]?.categories?.name || null,
+          caloriesPerServing: recipe.calories_per_serving,
           likeCount: recipe.recipe_likes?.length || 0,
           user_id: recipe.user_id,
           authorId: recipe.user_id,
@@ -303,6 +304,7 @@ function App() {
         id: recipe.id,
         title: recipe.name,
         category: recipe.recipe_categories?.[0]?.categories?.name || null,
+        caloriesPerServing: recipe.calories_per_serving,
         description: recipe.description,
         ingredients: recipe.ingredients,
         instructions: recipe.instructions
@@ -436,6 +438,7 @@ function App() {
           id: recipe.id,
           title: recipe.name,
           category: recipe.recipe_categories?.[0]?.categories?.name || null,
+          caloriesPerServing: recipe.calories_per_serving,
           description: recipe.description,
           ingredients: recipe.ingredients,
           instructions: recipe.instructions,
@@ -694,6 +697,7 @@ function App() {
           title: String(r.name || 'Unnamed'),
           description: r.description || '',
           category: r.recipe_categories?.[0]?.categories?.name || 'MAIN',
+          caloriesPerServing: r.calories_per_serving,
           ingredients: Array.isArray(r.ingredients) ? r.ingredients : [],
           instructions: Array.isArray(r.instructions) ? r.instructions : [],
           user_id: r.user_id,
@@ -1019,6 +1023,7 @@ function App() {
               description: newRecipe.description,
               ingredients: newRecipe.ingredients,
               instructions: newRecipe.instructions,
+              calories_per_serving: newRecipe.caloriesPerServing,
             })
           }
         );
@@ -1042,6 +1047,7 @@ function App() {
               description: newRecipe.description,
               ingredients: newRecipe.ingredients,
               instructions: newRecipe.instructions,
+              calories_per_serving: newRecipe.caloriesPerServing,
               visibility: localStorage.getItem('defaultRecipeVisibility') || 'public'
             })
           }
@@ -1611,14 +1617,17 @@ function App() {
         <>
           <div className="fixed inset-0 z-[60] backdrop-blur-sm bg-black/30" onClick={() => setShowUrlModal(false)}></div>
           <div className="fixed inset-0 flex items-center justify-center z-[70] p-4" onClick={() => setShowUrlModal(false)}>
-            <div onClick={(e) => e.stopPropagation()} className="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-lg" style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl font-semibold text-[#3d3429]">
+            <div onClick={(e) => e.stopPropagation()} className="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-lg overflow-hidden" style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
+              {/* Branded header band — gray, mirrors the login / recipe-form bands */}
+              <div className="-mx-6 -mt-6 sm:-mx-8 sm:-mt-8 px-6 sm:px-8 pt-5 pb-6 mb-6 bg-gradient-to-br from-[#7a7265] to-[#5a5248]">
+                <div className="flex items-center justify-end">
+                  <button onClick={() => setShowUrlModal(false)} className="text-white/85 hover:text-white transition-colors">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+                <h2 className="text-center text-2xl font-bold tracking-tight text-white mt-1">
                   {language === 'en' ? 'Import Recipe from URL' : 'ייבא מתכון מ-URL'}
                 </h2>
-                <button onClick={() => setShowUrlModal(false)} className="text-[#7a7265] hover:text-[#3d3429] transition-colors">
-                  <X className="w-5 h-5" />
-                </button>
               </div>
               
               {!canScrape ? (
