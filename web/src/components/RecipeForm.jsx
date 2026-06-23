@@ -1,6 +1,12 @@
 ﻿import { useState, useEffect } from 'react'
 import { ArrowLeft, LinkIcon, ChevronDown } from 'lucide-react'
 
+// Split a free-typed blob (ingredients or instructions) into items: break on line breaks
+// AND sentence endings (. ! ?) followed by whitespace. The lookbehind keeps the punctuation
+// on each item, and requiring whitespace after the dot leaves decimals like "1.5" intact.
+const splitSteps = (text) =>
+  text.split(/\s*\n\s*|(?<=[.!?])\s+/).map(s => s.trim()).filter(Boolean)
+
 export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, language = 'en', userCategories = [], onCreateCategory, cookCount = 0 }) {
   const isRtl = language === 'he'
 
@@ -9,6 +15,7 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
   const [ingredientsText, setIngredientsText] = useState('')
   const [instructionsText, setInstructionsText] = useState('')
   const [category, setCategory] = useState('')
+  const [calories, setCalories] = useState('')
   const [showNewCatInput, setShowNewCatInput] = useState(false)
   const [newCatName, setNewCatName] = useState('')
   // changes locally only; the net delta is applied on save. A retried save
@@ -31,14 +38,15 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
       setIngredientsText(editingRecipe.ingredients.join('\n'))
       setInstructionsText(editingRecipe.instructions.join('\n'))
       setCategory(editingRecipe.category || '')
+      setCalories(editingRecipe.caloriesPerServing != null ? String(editingRecipe.caloriesPerServing) : '')
     }
   }, [editingRecipe])
 
   const handleSubmit = (e) => {
     e.preventDefault()
-    const ingredients = ingredientsText.split('\n').map(i => i.trim()).filter(i => i.length > 0)
-    const instructions = instructionsText.split('\n').map(i => i.trim()).filter(i => i.length > 0)
-    onSave({ title, description, ingredients, instructions, category: category || null, cookCountDelta: localCookCount - cookCount })
+    const ingredients = splitSteps(ingredientsText)
+    const instructions = splitSteps(instructionsText)
+    onSave({ title, description, ingredients, instructions, category: category || null, caloriesPerServing: calories === '' ? null : parseInt(calories, 10), cookCountDelta: localCookCount - cookCount })
   }
 
   return (
@@ -81,7 +89,7 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
               onChange={e => setTitle(e.target.value)}
               placeholder={language === 'en' ? "e.g., Grandma's Apple Pie" : 'למשל, חלה של יובל'}
               required
-              className="w-full px-4 py-3 bg-[#faf9f7] border border-[#e8e4dc] rounded-2xl text-[#3d3429] placeholder:text-[#7a7265] focus:outline-none focus:ring-2 focus:ring-[#cf711f]/20 focus:border-[#cf711f] transition-all"
+              className="w-full px-[18px] py-3 bg-[#faf9f7] border border-[#e8e4dc] rounded-2xl text-[#3d3429] placeholder:text-[#7a7265] focus:outline-none focus:ring-2 focus:ring-[#cf711f]/20 focus:border-[#cf711f] transition-all"
             />
           </div>
 
@@ -93,12 +101,12 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
               onChange={e => setDescription(e.target.value)}
               placeholder={language === 'en' ? 'A brief description of your recipe...' : 'תיאור קצר של המתכון...'}
               rows={3}
-              className="w-full px-4 py-3 bg-[#faf9f7] border border-[#e8e4dc] rounded-2xl text-[#3d3429] placeholder:text-[#7a7265] focus:outline-none focus:ring-2 focus:ring-[#cf711f]/20 focus:border-[#cf711f] transition-all resize-none"
+              className="w-full px-[18px] py-3 bg-[#faf9f7] border border-[#e8e4dc] rounded-2xl text-[#3d3429] placeholder:text-[#7a7265] focus:outline-none focus:ring-2 focus:ring-[#cf711f]/20 focus:border-[#cf711f] transition-all resize-none"
             />
           </div>
 
           {/* Category + prepped count share one row */}
-          <div className="flex gap-4 items-start">
+          <div className="flex gap-2 items-start">
           <div className="flex-1 min-w-0">
             <label className="block text-sm font-medium text-[#3d3429] mb-2">{language === 'en' ? 'Category' : 'קטגוריה'}</label>
             <div className="relative">
@@ -113,7 +121,7 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
                   setCategory(e.target.value)
                 }
               }}
-              className="w-full appearance-none px-4 py-3 pr-10 bg-[#faf9f7] border border-[#e8e4dc] rounded-2xl text-[#3d3429] focus:outline-none focus:ring-2 focus:ring-[#cf711f]/20 focus:border-[#cf711f] transition-all"
+              className="w-full appearance-none px-[18px] py-3 pr-10 bg-[#faf9f7] border border-[#e8e4dc] rounded-2xl text-[#3d3429] focus:outline-none focus:ring-2 focus:ring-[#cf711f]/20 focus:border-[#cf711f] transition-all"
             >
               <option value="">{language === 'en' ? 'None' : 'ללא'}</option>
               {category && !userCategories.find(c => c.name === category) && (
@@ -173,6 +181,20 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
             )}
           </div>
 
+          {/* Calories per serving (manual for now; auto-calc later) */}
+          <div className="shrink-0">
+            <label className="block text-sm font-medium text-[#3d3429] mb-2">{language === 'en' ? 'Calories' : 'קלוריות / מנה'}</label>
+            <input
+              type="number"
+              min="0"
+              inputMode="numeric"
+              value={calories}
+              onChange={e => setCalories(e.target.value)}
+              placeholder="—"
+              className="no-spinner w-28 text-center font-semibold bg-[#faf9f7] border border-[#e8e4dc] rounded-2xl px-3 py-3 text-[#3d3429] placeholder:text-[#7a7265] focus:outline-none focus:ring-2 focus:ring-[#cf711f]/20 focus:border-[#cf711f] transition-all"
+            />
+          </div>
+
           {/* Prepped count (existing recipes only) */}
           {editingRecipe?.id && (
             <div className="shrink-0">
@@ -225,21 +247,21 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
           {/* Ingredients */}
           <div>
             <label className="block text-sm font-medium text-[#3d3429]">{language === 'en' ? 'Ingredients' : 'רכיבים'}</label>
-            <p className="text-xs text-[#7a7265] mb-2">{language === 'en' ? 'Enter each ingredient on a new line' : 'הזן כל רכיב בשורה חדשה'}</p>
+            <p className="text-xs text-[#7a7265] mb-2">{language === 'en' ? 'Write naturally — ingredients are split by sentence and line break' : 'כתוב באופן חופשי — הרכיבים מתחלקים לפי משפטים ושורות'}</p>
             <textarea
               value={ingredientsText}
               onChange={e => setIngredientsText(e.target.value)}
               placeholder={language === 'en' ? '2 cups flour \n1 cup sugar \n3 eggs \n1/2 cup butter'
                                             : '2 כוסות קמח \n1 כוס סוכר \n3 ביצים \n1/2 כוס שמן'}
               rows={6}
-              className="w-full px-4 py-3 bg-[#faf9f7] border border-[#e8e4dc] rounded-2xl text-[#3d3429] placeholder:text-[#7a7265] focus:outline-none focus:ring-2 focus:ring-[#cf711f]/20 focus:border-[#cf711f] transition-all resize-none"
+              className="w-full px-[18px] py-3 bg-[#faf9f7] border border-[#e8e4dc] rounded-2xl text-[#3d3429] placeholder:text-[#7a7265] focus:outline-none focus:ring-2 focus:ring-[#cf711f]/20 focus:border-[#cf711f] transition-all resize-none"
             />
           </div>
 
           {/* Instructions */}
           <div>
             <label className="block text-sm font-medium text-[#3d3429]">{language === 'en' ? 'Instructions' : 'הוראות'}</label>
-            <p className="text-xs text-[#7a7265] mb-2">{language === 'en' ? 'Enter each step on a new line' : 'הזן כל שלב בשורה חדשה'}</p>
+            <p className="text-xs text-[#7a7265] mb-2">{language === 'en' ? 'Write naturally — steps are split by sentence and line break' : 'כתוב באופן חופשי — השלבים מתחלקים לפי משפטים ושורות'}</p>
             <textarea
               value={instructionsText}
               onChange={e => setInstructionsText(e.target.value)}
@@ -247,7 +269,7 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
                       'Preheat oven to 350F\nMix dry ingredients in a bowl\nAdd wet ingredients and stir\nPour into pan and bake for 30 minutes'
                     : 'מחמים תנור ל180 מעלות\nמערבבים את הרכיבים היבשים בקערה\nמוסיפים את הרכיבים הרטובים ומערבבים\nיוצקים לתבנית ואופים במשך 30 דקות'}
               rows={8}
-              className="w-full px-4 py-3 bg-[#faf9f7] border border-[#e8e4dc] rounded-2xl text-[#3d3429] placeholder:text-[#7a7265] focus:outline-none focus:ring-2 focus:ring-[#cf711f]/20 focus:border-[#cf711f] transition-all resize-none"
+              className="w-full px-[18px] py-3 bg-[#faf9f7] border border-[#e8e4dc] rounded-2xl text-[#3d3429] placeholder:text-[#7a7265] focus:outline-none focus:ring-2 focus:ring-[#cf711f]/20 focus:border-[#cf711f] transition-all resize-none"
             />
           </div>
         </div>

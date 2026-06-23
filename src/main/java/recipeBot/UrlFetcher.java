@@ -141,17 +141,24 @@ public class UrlFetcher {
                 && r.getInstructions() != null && r.getInstructions().length >= 1;
     }
 
+    // JSON-LD strings are raw JSON, so HTML entities (&rdquo;, &amp;, &nbsp; …) survive
+    // unescaped — Jsoup only decodes them in parsed page text, not here. Decode them so
+    // we don't store literal "&rdquo;" in ingredients/instructions.
+    private static String clean(String s) {
+        return org.jsoup.parser.Parser.unescapeEntities(s, false).trim();
+    }
+
     private static String str(JsonObject o, String key) {
         JsonElement e = o.get(key);
-        return (e != null && e.isJsonPrimitive()) ? e.getAsString().trim() : null;
+        return (e != null && e.isJsonPrimitive()) ? clean(e.getAsString()) : null;
     }
 
     private static String firstString(JsonElement e) {
         if (e == null) return null;
-        if (e.isJsonPrimitive()) return e.getAsString().trim();
+        if (e.isJsonPrimitive()) return clean(e.getAsString());
         if (e.isJsonArray() && e.getAsJsonArray().size() > 0) {
             JsonElement f = e.getAsJsonArray().get(0);
-            if (f.isJsonPrimitive()) return f.getAsString().trim();
+            if (f.isJsonPrimitive()) return clean(f.getAsString());
         }
         return null;
     }
@@ -162,12 +169,12 @@ public class UrlFetcher {
         if (e.isJsonArray()) {
             for (JsonElement x : e.getAsJsonArray()) {
                 if (x.isJsonPrimitive()) {
-                    String s = x.getAsString().trim();
+                    String s = clean(x.getAsString());
                     if (!s.isEmpty()) out.add(s);
                 }
             }
         } else if (e.isJsonPrimitive()) {
-            String s = e.getAsString().trim();
+            String s = clean(e.getAsString());
             if (!s.isEmpty()) out.add(s);
         }
         return out;
@@ -189,7 +196,7 @@ public class UrlFetcher {
     private static void collectInstruction(JsonElement x, List<String> out) {
         if (x == null) return;
         if (x.isJsonPrimitive()) {
-            String s = x.getAsString().trim();
+            String s = clean(x.getAsString());
             if (!s.isEmpty()) out.add(s);
             return;
         }
@@ -276,6 +283,15 @@ public class UrlFetcher {
                 + "{\"@type\":\"Recipe\",\"name\":\"Pan only\",\"recipeIngredient\":[\"28cm pan\"],"
                 + "\"recipeInstructions\":[\"do stuff\"]}</script></head></html>";
         assert parseJsonLd(org.jsoup.Jsoup.parse(partial)) == null : "partial recipe should fall back";
+
+        // HTML entities in JSON-LD strings must be decoded, not stored literally.
+        String entity = "<html><head><script type=\"application/ld+json\">"
+                + "{\"@type\":\"Recipe\",\"name\":\"Milk &amp; Honey\",\"recipeIngredient\":[\"220 \\u05de&rdquo;\\u05dc milk\",\"2 eggs\"],"
+                + "\"recipeInstructions\":[\"Mix &amp; bake\",\"Cool\"]}</script></head></html>";
+        Recipe er = parseJsonLd(org.jsoup.Jsoup.parse(entity));
+        assert er != null && "Milk & Honey".equals(er.getName()) : "name entities decoded";
+        assert er.getIngredients()[0].equals("220 מ”ל milk") : "ingredient entities decoded"; // &rdquo; -> ”
+        assert er.getInstructions()[0].equals("Mix & bake") : "instruction entities decoded";
 
         System.out.println("UrlFetcher self-check passed (run with -ea).");
     }

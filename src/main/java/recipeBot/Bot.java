@@ -344,22 +344,14 @@ public class Bot extends TelegramLongPollingBot {
         }
         // insert recipe ingredients
         if (state == State.WAITING_FOR_INGREDIENTS) {
-            String[] rawIngredients = message.getText().split("\n");
-            for (int i = 0; i < rawIngredients.length; i++) {
-                rawIngredients[i] = rawIngredients[i].trim();
-            }
-            recipe.setIngredients(rawIngredients);
+            recipe.setIngredients(splitSteps(message.getText()));
             userState.put(id, State.WAITING_FOR_INSTRUCTIONS);
             sendTextWithCancel(id, "Insert recipe instructions (separated by lines):");
             return;
         }
         // insert recipe instructions and save to database
         if (state == State.WAITING_FOR_INSTRUCTIONS) {
-            String[] instructions = message.getText().split("\n");
-            for (int i = 0; i < instructions.length; i++) {
-                instructions[i] = instructions[i].trim();
-            }
-            recipe.setInstructions(instructions);
+            recipe.setInstructions(splitSteps(message.getText()));
             
             // save recipe attributed to the linked user
             db.addRecipe(recipe, userId);
@@ -428,18 +420,14 @@ public class Bot extends TelegramLongPollingBot {
 
         if (state == State.EDITING_INGREDIENTS) {
             Recipe recipeToEdit = tempRecipes.get(id);
-            String[] rawIngredients = message.getText().split("\n");
-            for (int i = 0; i < rawIngredients.length; i++) rawIngredients[i] = rawIngredients[i].trim();
-            db.updateRecipe(recipeToEdit.getId(), "ingredients", String.join(";", rawIngredients));
+            db.updateRecipe(recipeToEdit.getId(), "ingredients", String.join(";", splitSteps(message.getText())));
             sendText(id, "Recipe ingredients updated successfully!");
             return;
         }
 
         if (state == State.EDITING_INSTRUCTIONS) {
             Recipe recipeToEdit = tempRecipes.get(id);
-            String[] instructions = message.getText().split("\n");
-            for (int i = 0; i < instructions.length; i++) instructions[i] = instructions[i].trim();
-            db.updateRecipe(recipeToEdit.getId(), "instructions", String.join(";", instructions));
+            db.updateRecipe(recipeToEdit.getId(), "instructions", String.join(";", splitSteps(message.getText())));
             sendText(id, "Recipe instructions updated successfully!");
             return;
         }
@@ -529,6 +517,18 @@ public class Bot extends TelegramLongPollingBot {
     }
 
     // ownerButtons: only the recipe's owner gets Delete/Edit
+    // Split a free-typed blob (ingredients or instructions) into items on line breaks AND
+    // sentence endings (. ! ?) followed by whitespace — mirrors the web form's splitSteps.
+    // Requiring whitespace after the period keeps decimals like "1.5" intact; empty pieces dropped.
+    private static String[] splitSteps(String text) {
+        java.util.List<String> out = new java.util.ArrayList<>();
+        for (String p : text.split("\\s*\\n\\s*|(?<=[.!?])\\s+")) {
+            String s = p.trim();
+            if (!s.isEmpty()) out.add(s);
+        }
+        return out.toArray(new String[0]);
+    }
+
     private String buildRecipeList(String userId) {
         List<Recipe> recipes = db.getAllRecipes(userId);
         if (recipes.isEmpty()) return "No recipes found. Add some with /recipe!";
