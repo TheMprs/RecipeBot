@@ -40,7 +40,7 @@ export default function Login({ onLoginSuccess }) {
         <div className="w-16 h-16 rounded-2xl bg-white/15 backdrop-blur flex items-center justify-center mx-auto mb-4 ring-1 ring-white/25">
           <BookOpen className="w-8 h-8 text-white" />
         </div>
-        <h2 className="text-2xl font-bold text-white">Welcome in</h2>
+        <h2 className="text-2xl font-bold text-white">Sign in</h2>
         <p className="text-white/85 text-sm mt-1">Your personal recipe book awaits</p>
       </div>
 

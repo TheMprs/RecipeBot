@@ -29,6 +29,7 @@ public class Main {
         Javalin app = Javalin.create(config -> {
             config.bundledPlugins.enableCors(cors -> cors.addRule(it -> {
                 it.allowHost("https://babrecipebook.vercel.app");
+                if (debug) it.allowHost("http://localhost:5173"); // dev origin only in -debug
             }));
         }).start(8080);
 

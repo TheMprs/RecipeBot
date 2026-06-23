@@ -213,9 +213,22 @@ export function RecipeDetail({ recipe, language = 'en', apiBase = '/api', onBack
         <div className="p-6 sm:p-8">
           <div className="flex items-start justify-between gap-4 mb-4 w-full">
             <div>
-              <span className="inline-block px-3 py-1 rounded-full text-xs font-medium bg-[#f8fafc] text-[#5a5248] mb-3">
-                {recipe.category}
-              </span>
+              {(() => {
+                // Show live saved categories; fall back to the recipe's own category field
+                const names = currentRecipeCategories
+                  .map(id => userCategories.find(c => c.id === id)?.name)
+                  .filter(Boolean)
+                const labels = names.length ? names : (recipe.category ? [recipe.category] : [])
+                return labels.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mb-3">
+                    {labels.map(name => (
+                      <span key={name} className="inline-block px-3 py-1 rounded-full text-xs font-medium bg-[#f8fafc] text-[#5a5248]">
+                        {name}
+                      </span>
+                    ))}
+                  </div>
+                )
+              })()}
               <h1 className="text-2xl sm:text-3xl font-bold text-[#1e293b] text-balance">
                 {recipe.title}
               </h1>
