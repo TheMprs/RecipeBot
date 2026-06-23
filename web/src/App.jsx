@@ -259,7 +259,7 @@ function App() {
           ingredients: recipe.ingredients,
           instructions: recipe.instructions,
           created_at: recipe.created_at,
-          category: recipe.recipe_categories?.[0]?.categories?.name || recipe.category || null,
+          category: recipe.recipe_categories?.[0]?.categories?.name || null,
           likeCount: recipe.recipe_likes?.length || 0,
           user_id: recipe.user_id,
           authorId: recipe.user_id,
@@ -283,7 +283,7 @@ function App() {
     try {
       // Get all public recipes using REST API instead of JS client
       const response = await fetch(
-        `${supabaseUrl}/rest/v1/recipes?visibility=eq.public&order=id.desc&limit=50`,
+        `${supabaseUrl}/rest/v1/recipes?visibility=eq.public&order=id.desc&limit=50&select=*,recipe_categories(categories(name))`,
         {
           headers: {
             'apikey': supabaseKey,
@@ -302,7 +302,7 @@ function App() {
       const formattedRecipes = data.map(recipe => ({
         id: recipe.id,
         title: recipe.name,
-        category: recipe.category,
+        category: recipe.recipe_categories?.[0]?.categories?.name || null,
         description: recipe.description,
         ingredients: recipe.ingredients,
         instructions: recipe.instructions
@@ -407,7 +407,7 @@ function App() {
       if (!ranked || ranked.length === 0) { return [] }
 
       const ids = ranked.map(r => r.recipe_id).join(',')
-      const recipesRes = await fetch(`${supabaseUrl}/rest/v1/recipes?id=in.(${ids})&select=*`, {
+      const recipesRes = await fetch(`${supabaseUrl}/rest/v1/recipes?id=in.(${ids})&select=*,recipe_categories(categories(name))`, {
         headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` }
       })
       if (!recipesRes.ok) throw new Error('recipes fetch failed')
@@ -435,7 +435,7 @@ function App() {
         return {
           id: recipe.id,
           title: recipe.name,
-          category: recipe.category,
+          category: recipe.recipe_categories?.[0]?.categories?.name || null,
           description: recipe.description,
           ingredients: recipe.ingredients,
           instructions: recipe.instructions,
@@ -511,11 +511,10 @@ function App() {
       if (!session?.access_token) throw new Error('Not authenticated')
       const res = await fetch(`${supabaseUrl}/rest/v1/recipes`, {
         method: 'POST',
-        headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+        headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json', 'Prefer': 'return=representation' },
         body: JSON.stringify({
           user_id: user.id,
           name: recipe.title,
-          category: recipe.category,
           description: recipe.description,
           ingredients: recipe.ingredients,
           instructions: recipe.instructions,
@@ -523,6 +522,8 @@ function App() {
         })
       })
       if (!res.ok) throw new Error(await res.text())
+      const [dup] = await res.json()
+      if (dup?.id) await manageRecipeCategory(dup.id, recipe.category, session.access_token)
       fetchRecipes(true)
       handleNavigate('profile')
     } catch (err) {
@@ -669,6 +670,10 @@ function App() {
         })
         if (!res.ok) throw new Error(await res.text())
       }
+      // Reflect the change on the recipe card immediately (junction is the source of truth).
+      const newList = isAdding ? [...current, categoryId] : current.filter(id => id !== categoryId)
+      const newCatName = newList.length ? (userCategories.find(c => c.id === newList[0])?.name || null) : null
+      setRecipes(prev => prev.map(r => r.id === recipeId ? { ...r, category: newCatName } : r))
     } catch (err) {
       setRecipeCategories(prev => ({ ...prev, [recipeId]: current }))
       console.error('[Data] Toggle recipe category failed:', err.message)
@@ -677,7 +682,7 @@ function App() {
   }
 
   const loadRecipeFromSupabase = (filter) => {
-    fetch(`${supabaseUrl}/rest/v1/recipes?${filter}&select=*&limit=1`, {
+    fetch(`${supabaseUrl}/rest/v1/recipes?${filter}&select=*,recipe_categories(categories(name))&limit=1`, {
       headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` }
     })
       .then(res => res.json())
@@ -688,7 +693,7 @@ function App() {
           id: r.id,
           title: String(r.name || 'Unnamed'),
           description: r.description || '',
-          category: r.category || 'MAIN',
+          category: r.recipe_categories?.[0]?.categories?.name || 'MAIN',
           ingredients: Array.isArray(r.ingredients) ? r.ingredients : [],
           instructions: Array.isArray(r.instructions) ? r.instructions : [],
           user_id: r.user_id,
@@ -904,7 +909,7 @@ function App() {
       const headers = { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` }
       const [usersRes, recipesRes] = await Promise.all([
         fetch(`${supabaseUrl}/rest/v1/users?or=(username.ilike.${q},display_name.ilike.${q})&select=id,username,display_name,avatar_url&limit=4`, { headers }),
-        fetch(`${supabaseUrl}/rest/v1/recipes?name=ilike.${q}&visibility=eq.public&select=id,name,category,user_id&limit=4`, { headers })
+        fetch(`${supabaseUrl}/rest/v1/recipes?name=ilike.${q}&visibility=eq.public&select=id,name,user_id,recipe_categories(categories(name))&limit=4`, { headers })
       ])
       const [users, recipesRaw] = await Promise.all([usersRes.json(), recipesRes.json()])
       const recipes = Array.isArray(recipesRaw) ? recipesRaw : []
@@ -920,7 +925,7 @@ function App() {
 
       setGlobalResults({
         users: Array.isArray(users) ? users : [],
-        recipes: recipes.map(r => ({ ...r, authorUsername: usernameMap[r.user_id] || null }))
+        recipes: recipes.map(r => ({ ...r, category: r.recipe_categories?.[0]?.categories?.name || null, authorUsername: usernameMap[r.user_id] || null }))
       })
       setShowGlobalResults(true)
     }, 300)
@@ -1011,7 +1016,6 @@ function App() {
             },
             body: JSON.stringify({
               name: newRecipe.title,
-              category: newRecipe.category || '',
               description: newRecipe.description,
               ingredients: newRecipe.ingredients,
               instructions: newRecipe.instructions,
@@ -1035,7 +1039,6 @@ function App() {
             body: JSON.stringify({
               user_id: user.id,
               name: newRecipe.title,
-              category: newRecipe.category || '',
               description: newRecipe.description,
               ingredients: newRecipe.ingredients,
               instructions: newRecipe.instructions,

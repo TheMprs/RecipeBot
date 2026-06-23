@@ -154,7 +154,7 @@ export function UserProfile({
       // ttl 10min: revisiting a profile reuses the cached list (and its count)
       // instantly, no refetch.
       swr(`profile-recipes:${viewingProfile.id}`, async () => {
-        const res = await fetch(`${supabaseUrl}/rest/v1/recipes?user_id=eq.${viewingProfile.id}&visibility=eq.public&select=*,recipe_likes(recipe_id)`, {
+        const res = await fetch(`${supabaseUrl}/rest/v1/recipes?user_id=eq.${viewingProfile.id}&visibility=eq.public&select=*,recipe_likes(recipe_id),recipe_categories(categories(name))`, {
           headers: {
             'apikey': supabaseKey,
             'Authorization': `Bearer ${supabaseKey}`,
@@ -165,7 +165,7 @@ export function UserProfile({
         return (data || []).map(recipe => ({
           id: recipe.id,
           title: recipe.name,
-          category: recipe.category,
+          category: recipe.recipe_categories?.[0]?.categories?.name || null,
           description: recipe.description,
           ingredients: recipe.ingredients,
           instructions: recipe.instructions,

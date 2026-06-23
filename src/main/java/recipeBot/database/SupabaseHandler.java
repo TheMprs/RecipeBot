@@ -51,7 +51,8 @@ public class SupabaseHandler {
     }
 
     public Recipe getRecipeById(String id) {
-        HttpRequest req = base("/recipes?id=eq." + encode(id) + "&select=*").GET().build();
+        HttpRequest req = base("/recipes?id=eq." + encode(id)
+                + "&select=*,recipe_categories(categories(name))").GET().build();
         return fetchSingle(req);
     }
 
@@ -148,7 +149,7 @@ public class SupabaseHandler {
     }
 
     public void updateRecipe(String recipeId, String entry, String newValue) {
-        Set<String> allowed = Set.of("name", "category", "description", "ingredients", "instructions");
+        Set<String> allowed = Set.of("name", "description", "ingredients", "instructions");
         if (!allowed.contains(entry)) throw new IllegalArgumentException("Invalid field: " + entry);
 
         JsonObject body = new JsonObject();
@@ -290,7 +291,6 @@ public class SupabaseHandler {
     private JsonObject buildBody(Recipe recipe, String userId) {
         JsonObject body = new JsonObject();
         body.addProperty("name", recipe.getName());
-        body.addProperty("category", recipe.getCategory());
         body.addProperty("description", recipe.getDescription() != null ? recipe.getDescription() : "");
         body.add("ingredients", toJsonArray(recipe.getIngredients()));
         body.add("instructions", toJsonArray(recipe.getInstructions()));
@@ -308,8 +308,16 @@ public class SupabaseHandler {
     private Recipe parseRecipe(JsonObject obj) {
         String id = obj.get("id").getAsString();
         String name = obj.get("name").getAsString();
-        String cat = obj.has("category") && !obj.get("category").isJsonNull()
-                ? obj.get("category").getAsString() : null;
+        // Category now lives only in the recipe_categories junction; read the first
+        // linked category name when the caller embedded it (select=...recipe_categories(categories(name))).
+        String cat = null;
+        if (obj.has("recipe_categories") && obj.get("recipe_categories").isJsonArray()) {
+            JsonArray rc = obj.getAsJsonArray("recipe_categories");
+            if (rc.size() > 0) {
+                JsonObject c = rc.get(0).getAsJsonObject().getAsJsonObject("categories");
+                if (c != null && c.has("name") && !c.get("name").isJsonNull()) cat = c.get("name").getAsString();
+            }
+        }
         String desc = obj.has("description") && !obj.get("description").isJsonNull()
                 ? obj.get("description").getAsString() : "";
         String[] ingredients = parseArray(obj.get("ingredients"));

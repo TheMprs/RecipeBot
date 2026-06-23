@@ -215,7 +215,6 @@ public class Bot extends TelegramLongPollingBot {
                         "Insert recipe description:");
                 userState.put(id, State.WAITING_FOR_DESCRIPTION); // move to next step in recipe addition process
             } else if (userState.get(id) == State.EDITING_CATEGORY) {
-                db.updateRecipe(recipe.getId(), "category", categoryName != null ? categoryName : "");
                 db.setRecipeCategory(recipe.getId(), none ? null : categoryId);
                 userState.remove(id);
                 tempRecipes.remove(id);
