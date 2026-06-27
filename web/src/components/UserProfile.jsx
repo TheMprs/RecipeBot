@@ -13,6 +13,7 @@ export function UserProfile({
   recipes,
   language,
   onSelectRecipe,
+  onAddRecipe,
   viewingProfile,
   cookCounts = {},
   apiBase = '/api',
@@ -530,10 +531,22 @@ export function UserProfile({
         <div style={{ direction: isRtl ? 'rtl' : 'ltr' }} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
           {[...Array(6)].map((_, i) => <RecipeCardSkeleton key={i} />)}
         </div>
-      ) : filteredRecipes.length > 0 ? (
+      ) : (filteredRecipes.length > 0 || isOwnProfile) ? (
         // Cap the visible area to ~2.4 rows so the 3rd row peeks at the bottom — a visual hint
         // that there's more to scroll. px-2/-mx-2 keeps card hover shadows from being clipped.
         <div style={{ direction: isRtl ? 'rtl' : 'ltr' }} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-4 max-h-[23.5rem] overflow-y-auto px-2 -mx-2">
+          {/* Add-recipe ghost card — own profile only, opens the recipe form */}
+          {isOwnProfile && onAddRecipe && (
+            <button
+              onClick={onAddRecipe}
+              className="group w-full min-h-[8.5rem] rounded-2xl border-2 border-dashed border-[#e8e4dc] flex flex-col items-center justify-center gap-2 text-[#a8a29a] hover:border-[#e67e22]/50 hover:text-[#cf711f] hover:bg-[#e67e22]/5 transition-colors"
+            >
+              <span className="w-11 h-11 rounded-full bg-[#f5f3ef] group-hover:bg-[#e67e22]/10 flex items-center justify-center transition-colors">
+                <Plus className="w-6 h-6" />
+              </span>
+              <span className="text-sm font-medium">{language === 'en' ? 'Add recipe' : 'הוסף מתכון'}</span>
+            </button>
+          )}
           {filteredRecipes.map((recipe) => (
             <RecipeCard
               key={recipe.id}
@@ -579,26 +592,26 @@ export function UserProfile({
               className="bg-white rounded-3xl shadow-xl w-full max-w-md overflow-hidden"
               style={{ direction: isRtl ? 'rtl' : 'ltr' }}
             >
-              {/* Modal Header */}
-              <div className="flex items-center justify-between px-6 py-5 border-b border-[#e8e4dc]">
-                <div className="flex items-center gap-2">
-                  {(showEditProfile || showRecipeSettings) && (
+              {/* Branded header band — gray, mirrors the URL-import / recipe-form bands */}
+              <div className="px-6 pt-5 pb-6 bg-gradient-to-br from-[#7a7265] to-[#5a5248]">
+                <div className="flex items-center justify-between">
+                  {(showEditProfile || showRecipeSettings) ? (
                     <button
                       onClick={() => { setShowEditProfile(false); setShowRecipeSettings(false); setEditingCategoryId(null); }}
-                      className="p-1.5 text-[#7a7265] hover:text-[#3d3429] hover:bg-[#f5f3ef] rounded-xl transition-colors"
+                      className="text-white/85 hover:text-white hover:bg-white/15 rounded-xl p-1.5 transition-colors"
                     >
-                      {isRtl ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+                      {isRtl ? <ChevronRight className="w-5 h-5" /> : <ChevronLeft className="w-5 h-5" />}
                     </button>
-                  )}
-                  <h2 className="text-lg font-semibold text-[#3d3429]">
-                    {showRecipeSettings
-                      ? (language === 'en' ? 'Recipe Settings' : 'הגדרות מתכונים')
-                      : (language === 'en' ? 'Settings' : 'הגדרות')}
-                  </h2>
+                  ) : <span className="w-8" />}
+                  <button onClick={closeSettings} className="text-white/85 hover:text-white hover:bg-white/15 rounded-xl p-1.5 transition-colors">
+                    <X className="w-5 h-5" />
+                  </button>
                 </div>
-                <button onClick={closeSettings} className="p-2 text-[#7a7265] hover:text-[#3d3429] hover:bg-[#f5f3ef] rounded-xl transition-colors">
-                  <X className="w-5 h-5" />
-                </button>
+                <h2 className="text-center text-2xl font-bold tracking-tight text-white mt-1">
+                  {showRecipeSettings
+                    ? (language === 'en' ? 'Recipe Settings' : 'הגדרות מתכונים')
+                    : (language === 'en' ? 'Settings' : 'הגדרות')}
+                </h2>
               </div>
 
               {/* Modal Body */}

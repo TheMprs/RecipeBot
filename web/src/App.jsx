@@ -1616,6 +1616,7 @@ function App() {
             recipes={recipes}
             language={language}
             onSelectRecipe={handleSelectRecipe}
+            onAddRecipe={() => { setEditingRecipe(null); setShowRecipeForm(true); }}
             viewingProfile={viewingProfile}
             cookCounts={cookCounts}
             apiBase={API_BASE}
