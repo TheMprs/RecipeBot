@@ -20,9 +20,11 @@ public class Main {
         if (debug) System.out.println("[Mode] DEBUG — using test bot");
 
         LinkTokenStore tokenStore = new LinkTokenStore();
+        // One shared scrape chokepoint — same permission + rate-limit state for bot and web.
+        ScrapeService scrapeService = new ScrapeService(db, dotenv.get("GEMINI_API_KEY"));
 
         TelegramBotsApi telegramBotsApi = new TelegramBotsApi(DefaultBotSession.class);
-        Bot bot = new Bot(db, debug, tokenStore);
+        Bot bot = new Bot(db, debug, tokenStore, scrapeService);
         telegramBotsApi.registerBot(bot);
         bot.registerCommandMenu();
 
@@ -33,7 +35,7 @@ public class Main {
             }));
         }).start(8080);
 
-        webManager webManager = new webManager(db, tokenStore);
+        webManager webManager = new webManager(db, tokenStore, scrapeService);
         webManager.registerRoutes(app);
     }
 }

@@ -80,6 +80,24 @@ public class SupabaseHandler {
         return categories;
     }
 
+    // Creates a user-defined category. Returns true on success.
+    public boolean createCategory(String userId, String name) {
+        JsonObject body = new JsonObject();
+        body.addProperty("user_id", userId);
+        body.addProperty("name", name);
+        HttpRequest req = base("/categories")
+                .POST(HttpRequest.BodyPublishers.ofString(gson.toJson(body)))
+                .build();
+        try {
+            HttpResponse<String> res = client.send(req, HttpResponse.BodyHandlers.ofString());
+            if (res.statusCode() == 201) return true;
+            System.err.println("[Supabase] createCategory failed: " + res.statusCode() + " " + res.body());
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return false;
+    }
+
     public String getCategoryName(String categoryId) {
         HttpRequest req = base("/categories?id=eq." + encode(categoryId) + "&select=name").GET().build();
         try {
@@ -135,8 +153,9 @@ public class SupabaseHandler {
         if (categoryId != null) linkRecipeCategory(recipeId, categoryId);
     }
 
-    public boolean deleteRecipeById(String id) {
-        HttpRequest req = base("/recipes?id=eq." + encode(id))
+    public boolean deleteRecipeById(String id, String userId) {
+        // user_id filter enforces ownership at the query — the service key bypasses RLS.
+        HttpRequest req = base("/recipes?id=eq." + encode(id) + "&user_id=eq." + encode(userId))
                 .DELETE()
                 .build();
         try {
@@ -148,20 +167,45 @@ public class SupabaseHandler {
         }
     }
 
-    public void updateRecipe(String recipeId, String entry, String newValue) {
-        Set<String> allowed = Set.of("name", "description", "ingredients", "instructions");
+    public void updateRecipe(String recipeId, String userId, String entry, String newValue) {
+        Set<String> allowed = Set.of("name", "description");
         if (!allowed.contains(entry)) throw new IllegalArgumentException("Invalid field: " + entry);
 
         JsonObject body = new JsonObject();
-        if (entry.equals("ingredients") || entry.equals("instructions")) {
-            JsonArray arr = new JsonArray();
-            for (String part : newValue.split(";")) arr.add(part.trim());
-            body.add(entry, arr);
-        } else {
-            body.addProperty(entry, newValue);
-        }
+        body.addProperty(entry, newValue);
+        patchRecipe(recipeId, userId, body);
+    }
 
-        HttpRequest req = base("/recipes?id=eq." + encode(recipeId))
+    // Sets an array column (ingredients/instructions) directly — no string round-trip,
+    // so items containing ';' or other delimiters survive intact.
+    public void updateRecipeArray(String recipeId, String userId, String entry, String[] values) {
+        Set<String> allowed = Set.of("ingredients", "instructions");
+        if (!allowed.contains(entry)) throw new IllegalArgumentException("Invalid field: " + entry);
+
+        JsonObject body = new JsonObject();
+        body.add(entry, toJsonArray(values));
+        patchRecipe(recipeId, userId, body);
+    }
+
+    // Sets visibility ("public"/"private") on an existing recipe.
+    public void updateRecipeVisibility(String recipeId, String userId, String visibility) {
+        JsonObject body = new JsonObject();
+        body.addProperty("visibility", visibility);
+        patchRecipe(recipeId, userId, body);
+    }
+
+    // Sets calories_per_serving (same column the web form writes). null clears it.
+    public void updateRecipeCalories(String recipeId, String userId, Integer calories) {
+        JsonObject body = new JsonObject();
+        if (calories == null) body.add("calories_per_serving", com.google.gson.JsonNull.INSTANCE);
+        else body.addProperty("calories_per_serving", calories);
+        patchRecipe(recipeId, userId, body);
+    }
+
+    // The user_id filter enforces ownership at the write itself (service key bypasses RLS),
+    // so a wrong/missing owner patches zero rows instead of someone else's recipe.
+    private void patchRecipe(String recipeId, String userId, JsonObject body) {
+        HttpRequest req = base("/recipes?id=eq." + encode(recipeId) + "&user_id=eq." + encode(userId))
                 .method("PATCH", HttpRequest.BodyPublishers.ofString(gson.toJson(body)))
                 .build();
         try {
@@ -240,13 +284,12 @@ public class SupabaseHandler {
         return null;
     }
 
-    // Deletes all user data and the auth account. Returns true on success.
+    // Deletes the user and the auth account. Recipe/category data (recipes, categories,
+    // cook_logs, recipe_likes, recipe_categories) cascades off the users row via ON DELETE
+    // CASCADE FKs. telegram_auth is deleted explicitly since its FK cascade isn't confirmed.
     public boolean deleteAccount(String userId) {
         try {
-            // Delete all user data first
             for (String path : new String[]{
-                "/recipes?user_id=eq." + encode(userId),
-                "/cook_logs?user_id=eq." + encode(userId),
                 "/telegram_auth?user_id=eq." + encode(userId),
                 "/users?id=eq." + encode(userId)
             }) {
@@ -255,7 +298,7 @@ public class SupabaseHandler {
                     HttpResponse.BodyHandlers.ofString()
                 );
                 if (res.statusCode() >= 400) {
-                    System.err.println("[Supabase] deleteAccount data cleanup failed on " + path + ": " + res.statusCode() + " " + res.body());
+                    System.err.println("[Supabase] deleteAccount failed on " + path + ": " + res.statusCode() + " " + res.body());
                 }
             }
 
@@ -294,7 +337,7 @@ public class SupabaseHandler {
         body.addProperty("description", recipe.getDescription() != null ? recipe.getDescription() : "");
         body.add("ingredients", toJsonArray(recipe.getIngredients()));
         body.add("instructions", toJsonArray(recipe.getInstructions()));
-        body.addProperty("visibility", "public");
+        body.addProperty("visibility", recipe.getVisibility() != null ? recipe.getVisibility() : "private");
         body.addProperty("user_id", userId);
         return body;
     }

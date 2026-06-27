@@ -521,7 +521,7 @@ function App() {
           description: recipe.description,
           ingredients: recipe.ingredients,
           instructions: recipe.instructions,
-          visibility: localStorage.getItem('defaultRecipeVisibility') || 'public'
+          visibility: localStorage.getItem('defaultRecipeVisibility') || 'private'
         })
       })
       if (!res.ok) throw new Error(await res.text())
@@ -1048,7 +1048,7 @@ function App() {
               ingredients: newRecipe.ingredients,
               instructions: newRecipe.instructions,
               calories_per_serving: newRecipe.caloriesPerServing,
-              visibility: localStorage.getItem('defaultRecipeVisibility') || 'public'
+              visibility: localStorage.getItem('defaultRecipeVisibility') || 'private'
             })
           }
         );

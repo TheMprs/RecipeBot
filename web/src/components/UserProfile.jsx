@@ -74,7 +74,7 @@ export function UserProfile({
   const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showRecipeSettings, setShowRecipeSettings] = useState(false);
-  const [defaultVisibility, setDefaultVisibility] = useState(() => localStorage.getItem('defaultRecipeVisibility') || 'public');
+  const [defaultVisibility, setDefaultVisibility] = useState(() => localStorage.getItem('defaultRecipeVisibility') || 'private');
   const [editingCategoryId, setEditingCategoryId] = useState(null);
   const [editingCategoryName, setEditingCategoryName] = useState('');
   const [newCategoryInput, setNewCategoryInput] = useState('');

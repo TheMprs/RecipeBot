@@ -274,7 +274,7 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
           {/* Ingredients */}
           <div>
             <label className="block text-sm font-medium text-[#3d3429] ps-[14px]">{language === 'en' ? 'Ingredients' : 'רכיבים'}</label>
-            <p className="text-xs text-[#7a7265] mb-2 ps-[14px]">{language === 'en' ? 'Write naturally — ingredients are split by sentence and line break' : 'כתוב באופן חופשי — הרכיבים מתחלקים לפי משפטים ושורות'}</p>
+            <p className="text-xs text-[#7a7265] mb-2 ps-[14px]">{language === 'en' ? 'Separate ingredients with new lines or with a period.' : 'הפרד בין הרכיבים בשורות חדשות או בנקודה.'}</p>
             <textarea
               value={ingredientsText}
               onChange={e => setIngredientsText(e.target.value)}
@@ -288,7 +288,7 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
           {/* Instructions */}
           <div>
             <label className="block text-sm font-medium text-[#3d3429] ps-[14px]">{language === 'en' ? 'Instructions' : 'הוראות'}</label>
-            <p className="text-xs text-[#7a7265] mb-2 ps-[14px]">{language === 'en' ? 'Write naturally — steps are split by sentence and line break' : 'כתוב באופן חופשי — השלבים מתחלקים לפי משפטים ושורות'}</p>
+            <p className="text-xs text-[#7a7265] mb-2 ps-[14px]">{language === 'en' ? 'Separate steps with new lines or with a period.' : 'הפרד בין השלבים בשורות חדשות או בנקודה.'}</p>
             <textarea
               value={instructionsText}
               onChange={e => setInstructionsText(e.target.value)}
