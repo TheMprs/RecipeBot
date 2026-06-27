@@ -64,15 +64,15 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
       <div className="max-w-2xl mx-auto">
       <form onSubmit={handleSubmit} className="bg-white rounded-3xl shadow-sm p-6 sm:p-8 overflow-hidden">
         {/* Branded header band — matches the login window look */}
-        <div className="-mx-6 -mt-6 sm:-mx-8 sm:-mt-8 px-6 sm:px-8 pt-5 pb-6 bg-gradient-to-b from-[#e67e22] to-[#cf711f]">
+        <div className="-mx-6 -mt-6 sm:-mx-8 sm:-mt-8 px-6 sm:px-8 pt-5 pb-4 bg-gradient-to-b from-[#e67e22] to-[#cf711f]">
           <div className="relative flex items-center justify-between">
             <button onClick={onBack}
               className="flex items-center gap-2 text-white/85 hover:text-white transition-colors">
               <ArrowLeft className="w-5 h-5" />
               <span className="font-medium">Back</span>
             </button>
-            <div className="absolute left-1/2 -translate-x-1/2 w-11 h-11 rounded-2xl bg-white/15 backdrop-blur flex items-center justify-center ring-1 ring-white/25">
-              <ChefHat className="w-6 h-6 text-white" />
+            <div className="absolute left-1/2 -translate-x-1/2 translate-y-5 w-11 h-11 sm:w-14 sm:h-14 rounded-2xl bg-white/15 backdrop-blur flex items-center justify-center ring-1 ring-white/25">
+              <ChefHat className="w-6 h-6 sm:w-8 sm:h-8 text-white" />
             </div>
             <button
               type="button"
@@ -84,7 +84,7 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
               <span className="font-medium text-sm">{language === 'en' ? 'Import from link' : 'יבוא מקישור'}</span>
             </button>
           </div>
-          <h1 className="text-center text-3xl sm:text-4xl font-bold tracking-tight text-white mt-3">
+          <h1 className="text-center text-2xl font-bold tracking-tight text-white mt-10">
             {editingRecipe?.id ? (language === 'en' ? 'Edit Recipe' : 'עריכת מתכון')
                                : (language === 'en' ? 'Add New Recipe' : 'הוסף מתכון חדש')}
           </h1>

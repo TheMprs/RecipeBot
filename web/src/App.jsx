@@ -1,6 +1,6 @@
 ﻿import { useState, useEffect, useRef } from 'react'
 import { createPortal, flushSync } from 'react-dom'
-import { BookOpen, Plus, Search, Filter, X, Link as LinkIcon, User as UserIcon, ChevronLeft, ChevronRight, Heart, RotateCcw, Pencil, Menu, Settings, LogOut } from 'lucide-react'
+import { BookOpen, Plus, Search, Filter, X, Link as LinkIcon, User as UserIcon, ChevronLeft, ChevronRight, Heart, RotateCcw, Pencil, Menu, Settings, LogOut, Check } from 'lucide-react'
 import { RecipeCard, RecipeCardSkeleton } from './components/RecipeCard'
 import { RecipeDetail } from './components/RecipeDetail'
 import { RecipeForm } from './components/RecipeForm'
@@ -82,6 +82,9 @@ function App() {
   const globalSearchRef = useRef(null)
   const [confirmDialog, setConfirmDialog] = useState(null)
   const [saveError, setSaveError] = useState(null) // failed background save, offered for retry
+  const [saveSuccess, setSaveSuccess] = useState(null) // 'added' | 'saved' — transient success banner
+  const [pendingDelete, setPendingDelete] = useState(null) // recipe queued for deletion (drives the undo banner)
+  const pendingDeleteRef = useRef(null) // { recipe, timeoutId, token } — survives renders for the timer/flush
   const [showLinkSuccess, setShowLinkSuccess] = useState(false) // Telegram linking celebration
   const [isOffline, setIsOffline] = useState(typeof navigator !== 'undefined' && !navigator.onLine)
   const [isStirring, setIsStirring] = useState(false) // offline-pan click animation
@@ -101,8 +104,12 @@ function App() {
     return () => document.removeEventListener('mousedown', handler)
   }, [navMenuOpen])
 
-  // Trigger the slide-up exit; the panel unmounts on animationend (see onAnimationEnd)
-  const closeNavMenu = () => setNavClosing(true)
+  // Mobile: trigger the slide-up exit, panel unmounts on animationend.
+  // Desktop: no animation runs, so unmount immediately.
+  const closeNavMenu = () => {
+    if (window.matchMedia('(min-width: 640px)').matches) { setNavClosing(false); setNavMenuOpen(false) }
+    else setNavClosing(true)
+  }
 
   // Navigate with a sliding page transition. `dir` = 'right' (new page enters
   // from the right) or 'left'. Uses the View Transitions API so the outgoing
@@ -163,6 +170,13 @@ function App() {
     const t = setTimeout(() => setSaveError(null), 8000)
     return () => clearTimeout(t)
   }, [saveError])
+
+  // Success banner auto-dismisses after 3s
+  useEffect(() => {
+    if (!saveSuccess) return
+    const t = setTimeout(() => setSaveSuccess(null), 3000)
+    return () => clearTimeout(t)
+  }, [saveSuccess])
 
   // Check auth status on mount
   useEffect(() => {
@@ -1062,12 +1076,25 @@ function App() {
     // close the form right away — the save runs in the background and
     // failures surface in the retry banner
     const editing = editingRecipe;
+    // Optimistically reflect the edit in the open detail view; rolled back on failure
+    const prevSelected = selectedRecipe;
+    if (editing?.id) {
+      setSelectedRecipe(prev => prev && prev.id === editing.id ? {
+        ...prev,
+        title: newRecipe.title,
+        description: newRecipe.description,
+        ingredients: newRecipe.ingredients,
+        instructions: newRecipe.instructions,
+        category: newRecipe.category,
+        caloriesPerServing: newRecipe.caloriesPerServing,
+      } : prev)
+    }
     setShowRecipeForm(false);
     setEditingRecipe(null);
-    performSave(newRecipe, editing);
+    performSave(newRecipe, editing, prevSelected);
   }
 
-  const performSave = async (newRecipe, editing) => {
+  const performSave = async (newRecipe, editing, prevSelected) => {
     setSaveError(null);
 
     try {
@@ -1124,9 +1151,12 @@ function App() {
         if (saved?.id) await manageRecipeCategory(saved.id, newRecipe.category, userToken)
       }
 
+      setSaveSuccess(editing?.id ? 'saved' : 'added');
       fetchRecipes(true);
     } catch (err) {
       console.error('[Data] Error saving recipe:', err);
+      // roll back the optimistic detail-view update
+      if (editing?.id && prevSelected !== undefined) setSelectedRecipe(prevSelected);
       setSaveError({ recipe: newRecipe, editingId: editing?.id || null });
     }
   }
@@ -1204,42 +1234,88 @@ function App() {
     }
   }
 
+  // Fire the actual network DELETE (after the undo grace period, or on flush).
+  const performDeleteNow = async (recipe, token) => {
+    try {
+      const res = await fetch(`${supabaseUrl}/rest/v1/recipes?id=eq.${recipe.id}`, {
+        method: 'DELETE',
+        headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
+      });
+      if (!res.ok) throw new Error(`Delete failed: ${res.status}`);
+    } catch (error) {
+      console.error('[Data] Error deleting recipe:', error);
+      setSaveError({ message: language === 'en' ? 'Failed to delete recipe' : 'מחיקת המתכון נכשלה' });
+    }
+    fetchRecipes(true); // resync either way (recipe gone on success, still there on failure)
+  };
+
+  // Commit a queued delete immediately (e.g. before queuing another, or on unload).
+  const flushPendingDelete = () => {
+    const p = pendingDeleteRef.current;
+    if (!p) return;
+    clearTimeout(p.timeoutId);
+    pendingDeleteRef.current = null;
+    setPendingDelete(null);
+    performDeleteNow(p.recipe, p.token);
+  };
+
+  // Cancel a queued delete — the recipe is still on the server, just repaint it.
+  const undoDelete = () => {
+    const p = pendingDeleteRef.current;
+    if (!p) return;
+    clearTimeout(p.timeoutId);
+    pendingDeleteRef.current = null;
+    setPendingDelete(null);
+    fetchRecipes(true);
+  };
+
+  // If the tab closes mid-grace-period, still commit the delete (keepalive fetch).
+  useEffect(() => {
+    const onUnload = () => {
+      const p = pendingDeleteRef.current;
+      if (!p) return;
+      fetch(`${supabaseUrl}/rest/v1/recipes?id=eq.${p.recipe.id}`, {
+        method: 'DELETE', keepalive: true,
+        headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${p.token}` }
+      });
+    };
+    window.addEventListener('beforeunload', onUnload);
+    window.addEventListener('pagehide', onUnload); // iOS Safari fires this, not beforeunload
+    return () => {
+      window.removeEventListener('beforeunload', onUnload);
+      window.removeEventListener('pagehide', onUnload);
+    };
+  }, []);
+
   // 4. DELETE RECIPE
   const handleDeleteRecipe = async (recipe) => {
     const confirmed = await new Promise(resolve => {
       setConfirmDialog({
         title: language === 'en' ? `Delete "${recipe.title}"?` : `למחוק את "${recipe.title}"?`,
-        message: language === 'en' ? 'This cannot be undone.' : 'לא ניתן לבטל פעולה זו.',
+        message: language === 'en' ? "You'll have a few seconds to undo." : 'יהיו לך כמה שניות לבטל.',
         confirmLabel: language === 'en' ? 'Delete' : 'מחק',
         onConfirm: () => { setConfirmDialog(null); resolve(true); },
         onCancel: () => { setConfirmDialog(null); resolve(false); },
       });
     });
     if (!confirmed) return;
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.access_token) throw new Error('Not authenticated');
-      const userToken = session.access_token;
-
-      const res = await fetch(
-        `${supabaseUrl}/rest/v1/recipes?id=eq.${recipe.id}`,
-        {
-          method: 'DELETE',
-          headers: {
-            'apikey': supabaseKey,
-            'Authorization': `Bearer ${userToken}`,
-            'Content-Type': 'application/json'
-          }
-        }
-      );
-      if (!res.ok) throw new Error(`Delete failed: ${res.status}`);
-
-      fetchRecipes(true);
-      setViewMode('profile');
-    } catch (error) {
-      console.error('[Data] Error deleting recipe:', error);
-      setSaveError({ message: language === 'en' ? 'Failed to delete recipe' : 'מחיקת המתכון נכשלה' });
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) {
+      setSaveError({ message: language === 'en' ? 'Not authenticated' : 'לא מחובר' });
+      return;
     }
+    // Deferred delete: drop it from the list now, fire the network DELETE after a
+    // grace period so the user can undo. Any earlier pending delete commits first.
+    flushPendingDelete();
+    setRecipes(prev => prev.filter(r => r.id !== recipe.id));
+    setViewMode('profile');
+    const timeoutId = setTimeout(() => {
+      pendingDeleteRef.current = null;
+      setPendingDelete(null);
+      performDeleteNow(recipe, session.access_token);
+    }, 5000);
+    pendingDeleteRef.current = { recipe, timeoutId, token: session.access_token };
+    setPendingDelete(recipe);
   }
 
   // 5. SCRAPE RECIPE FROM URL
@@ -1285,6 +1361,41 @@ function App() {
     }
   }
 
+  // Shared nav-menu items (desktop dropdown + mobile panel)
+  const navItems = (
+    <>
+      <button onClick={() => { closeNavMenu(); setEditingRecipe(null); setShowRecipeForm(true); }}
+        className="w-full flex items-center gap-3 px-4 py-4 text-base text-[#3d3429] hover:bg-[#f5f3ef] transition-colors text-start sm:py-2.5 sm:text-sm">
+        <Plus className="w-5 h-5 text-[#7a7265] sm:w-4 sm:h-4"/>
+        {language === 'en' ? 'Add recipe' : 'הוסף מתכון'}
+      </button>
+      <button onClick={() => { closeNavMenu(); handleNavigate('profile'); }}
+        className="w-full flex items-center gap-3 px-4 py-4 text-base text-[#3d3429] hover:bg-[#f5f3ef] transition-colors text-start sm:py-2.5 sm:text-sm">
+        <UserIcon className="w-5 h-5 text-[#7a7265] sm:w-4 sm:h-4"/>
+        {language === 'en' ? 'Profile' : 'פרופיל'}
+      </button>
+      <button onClick={() => { closeNavMenu(); setOpenProfileSettings(true); handleNavigate('profile'); }}
+        className="w-full flex items-center gap-3 px-4 py-4 text-base text-[#3d3429] hover:bg-[#f5f3ef] transition-colors text-start sm:py-2.5 sm:text-sm">
+        <Settings className="w-5 h-5 text-[#7a7265] sm:w-4 sm:h-4"/>
+        {language === 'en' ? 'Settings' : 'הגדרות'}
+      </button>
+      <div className="my-1 border-t border-[#e8e4dc]" />
+      <button onClick={() => {
+          closeNavMenu()
+          setConfirmDialog({
+            title: language === 'en' ? 'come back quick :(' : 'תחזרו מהר :(',
+            confirmLabel: language === 'en' ? 'Log out' : 'התנתק',
+            onConfirm: () => { setConfirmDialog(null); handleLogout(); },
+            onCancel: () => setConfirmDialog(null),
+          })
+        }}
+        className="w-full flex items-center gap-3 px-4 py-4 text-base text-[#dc2626] hover:bg-[#fef2f2] transition-colors text-start sm:py-2.5 sm:text-sm">
+        <LogOut className="w-5 h-5 sm:w-4 sm:h-4"/>
+        {language === 'en' ? 'Log out' : 'התנתק'}
+      </button>
+    </>
+  )
+
   return (
     <>
       {loading ? (
@@ -1312,54 +1423,32 @@ function App() {
               {user ? (
                 <div className="relative" ref={navMenuRef}>
                   <button onClick={() => { if (navMenuOpen && !navClosing) { closeNavMenu() } else { setNavClosing(false); setNavMenuOpen(true) } }}
-                    className="flex items-center gap-2 text-[#64748b] hover:text-[#1e293b] transition-colors p-2">
+                    className="flex items-center gap-2 text-[#64748b] hover:text-[#1e293b] transition-colors p-2 -me-2">
                     <Menu className="w-5 h-5"/>
                   </button>
-                  {navMenuOpen && createPortal(
-                    <>
-                    {/* Mobile backdrop — tap the uncovered bottom to dismiss */}
-                    <div className={`fixed inset-0 z-[65] bg-black/20 sm:hidden transition-opacity duration-200 ${navClosing ? 'opacity-0' : 'opacity-100'}`} onClick={closeNavMenu} />
-                    <div ref={navPanelRef}
-                      onAnimationEnd={(e) => { if (navClosing && e.target === navPanelRef.current) { setNavClosing(false); setNavMenuOpen(false) } }}
-                      className={`fixed top-0 inset-x-0 h-3/5 bg-white py-2 z-[70] rounded-b-3xl shadow-xl ${navClosing ? 'nav-flow-up' : 'nav-flow-down'} sm:inset-auto sm:h-auto sm:top-14 sm:right-4 sm:w-44 sm:rounded-2xl sm:rounded-b-2xl sm:border sm:border-[#e8e4dc] sm:shadow-lg sm:py-1`}
+                  {/* Desktop: plain anchored dropdown (same style as the recipe-form category menu) */}
+                  {navMenuOpen && (
+                    <div className="hidden sm:block absolute right-0 mt-2 w-48 bg-white border border-[#e8e4dc] rounded-2xl shadow-lg py-1 z-50"
                       style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
-                      {/* Mobile-only close row */}
-                      <div className="flex justify-end px-4 py-2 sm:hidden">
-                        <button onClick={closeNavMenu} className="p-2 text-[#7a7265]">
-                          <X className="w-6 h-6"/>
-                        </button>
-                      </div>
-                      <button onClick={() => { closeNavMenu(); setEditingRecipe(null); setShowRecipeForm(true); }}
-                        className="w-full flex items-center gap-3 px-4 py-4 text-base text-[#3d3429] hover:bg-[#f5f3ef] transition-colors text-start sm:py-2.5 sm:text-sm">
-                        <Plus className="w-5 h-5 text-[#7a7265] sm:w-4 sm:h-4"/>
-                        {language === 'en' ? 'Add recipe' : 'הוסף מתכון'}
-                      </button>
-                      <button onClick={() => { closeNavMenu(); handleNavigate('profile'); }}
-                        className="w-full flex items-center gap-3 px-4 py-4 text-base text-[#3d3429] hover:bg-[#f5f3ef] transition-colors text-start sm:py-2.5 sm:text-sm">
-                        <UserIcon className="w-5 h-5 text-[#7a7265] sm:w-4 sm:h-4"/>
-                        {language === 'en' ? 'Profile' : 'פרופיל'}
-                      </button>
-                      <button onClick={() => { closeNavMenu(); setOpenProfileSettings(true); handleNavigate('profile'); }}
-                        className="w-full flex items-center gap-3 px-4 py-4 text-base text-[#3d3429] hover:bg-[#f5f3ef] transition-colors text-start sm:py-2.5 sm:text-sm">
-                        <Settings className="w-5 h-5 text-[#7a7265] sm:w-4 sm:h-4"/>
-                        {language === 'en' ? 'Settings' : 'הגדרות'}
-                      </button>
-                      <div className="my-1 border-t border-[#e8e4dc]" />
-                      <button onClick={() => {
-                          closeNavMenu()
-                          setConfirmDialog({
-                            title: language === 'en' ? 'come back quick :(' : 'תחזרו מהר :(',
-                            confirmLabel: language === 'en' ? 'Log out' : 'התנתק',
-                            onConfirm: () => { setConfirmDialog(null); handleLogout(); },
-                            onCancel: () => setConfirmDialog(null),
-                          })
-                        }}
-                        className="w-full flex items-center gap-3 px-4 py-4 text-base text-[#dc2626] hover:bg-[#fef2f2] transition-colors text-start sm:py-2.5 sm:text-sm">
-                        <LogOut className="w-5 h-5 sm:w-4 sm:h-4"/>
-                        {language === 'en' ? 'Log out' : 'התנתק'}
-                      </button>
+                      {navItems}
                     </div>
-                    </>,
+                  )}
+                  {/* Mobile: full-width sliding panel (portaled past the header's backdrop-blur) */}
+                  {navMenuOpen && createPortal(
+                    <div className="sm:hidden">
+                      <div className={`fixed inset-0 z-[65] bg-black/20 transition-opacity duration-200 ${navClosing ? 'opacity-0' : 'opacity-100'}`} onClick={closeNavMenu} />
+                      <div ref={navPanelRef}
+                        onAnimationEnd={(e) => { if (navClosing && e.target === navPanelRef.current) { setNavClosing(false); setNavMenuOpen(false) } }}
+                        className={`fixed top-0 inset-x-0 h-3/5 bg-white py-2 z-[70] rounded-b-3xl shadow-xl ${navClosing ? 'nav-flow-up' : 'nav-flow-down'}`}
+                        style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
+                        <div className="flex justify-end px-4 py-2">
+                          <button onClick={closeNavMenu} className="p-2 text-[#7a7265]">
+                            <X className="w-6 h-6"/>
+                          </button>
+                        </div>
+                        {navItems}
+                      </div>
+                    </div>,
                     document.body
                   )}
                 </div>
@@ -1738,7 +1827,7 @@ function App() {
                   </button>
                 </div>
                 <h2 className="text-center text-2xl font-bold tracking-tight text-white mt-1">
-                  {language === 'en' ? 'Import Recipe from URL' : 'ייבא מתכון מ-URL'}
+                  {language === 'en' ? 'Import Recipe from URL' : 'ייבא מתכון מקישור'}
                 </h2>
               </div>
               
@@ -1833,11 +1922,35 @@ function App() {
       )}
 
       {/* Bottom banners — offline (persistent until dismissed) stacked with errors */}
-      {(saveError || (isOffline && !offlineDismissed)) && (
+      {(saveError || saveSuccess || pendingDelete || (isOffline && !offlineDismissed)) && (
       <div
         className="fixed left-1/2 -translate-x-1/2 z-[80] flex flex-col-reverse items-center gap-2 max-w-[calc(100vw-2rem)]"
         style={{ bottom: 'calc(1rem + env(safe-area-inset-bottom))' }}
       >
+        {saveSuccess && (
+          <div className="flex items-center gap-2 bg-white border border-[#e8e4dc] shadow-lg rounded-2xl px-4 py-3">
+            <span className="w-6 h-6 rounded-full bg-[#e67e22]/10 flex items-center justify-center shrink-0">
+              <Check className="w-4 h-4 text-[#e67e22]" />
+            </span>
+            <span className="text-sm font-medium text-[#3d3429] whitespace-nowrap">
+              {saveSuccess === 'added'
+                ? (language === 'en' ? 'Recipe added' : 'המתכון נוסף')
+                : (language === 'en' ? 'Changes saved' : 'השינויים נשמרו')}
+            </span>
+          </div>
+        )}
+
+        {pendingDelete && (
+          <div className={`flex items-center gap-3 bg-white border border-[#e8e4dc] shadow-lg rounded-2xl px-4 py-2.5 ${language === 'en' ? 'flex-row-reverse' : ''}`} style={{ direction: 'ltr' }}>
+            <button onClick={undoDelete}
+              className="shrink-0 text-sm font-semibold text-[#e67e22] hover:text-[#cf711f] transition-colors">
+              {language === 'en' ? 'Undo' : 'ביטול'}
+            </button>
+            <span className="text-sm font-medium text-[#3d3429] whitespace-nowrap">
+              {language === 'en' ? 'Recipe deleted' : 'המתכון נמחק'}
+            </span>
+          </div>
+        )}
         {isOffline && !offlineDismissed && (
           <div className="flex items-center gap-3 bg-white border border-[#e8e4dc] shadow-lg rounded-2xl px-4 py-2">
             <button
