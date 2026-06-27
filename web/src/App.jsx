@@ -1,5 +1,6 @@
 ﻿import { useState, useEffect, useRef } from 'react'
-import { BookOpen, Plus, Search, Filter, X, Link as LinkIcon, User as UserIcon, ChevronLeft, ChevronRight, Heart, RotateCcw, Pencil } from 'lucide-react'
+import { createPortal, flushSync } from 'react-dom'
+import { BookOpen, Plus, Search, Filter, X, Link as LinkIcon, User as UserIcon, ChevronLeft, ChevronRight, Heart, RotateCcw, Pencil, Menu, Settings, LogOut } from 'lucide-react'
 import { RecipeCard, RecipeCardSkeleton } from './components/RecipeCard'
 import { RecipeDetail } from './components/RecipeDetail'
 import { RecipeForm } from './components/RecipeForm'
@@ -58,6 +59,11 @@ function App() {
   const [ownRecipesLoading, setOwnRecipesLoading] = useState(() => seedOwnRecipes().length === 0)
   const [recipeCategories, setRecipeCategories] = useState({})
   const [showRecipeForm, setShowRecipeForm] = useState(false)
+  const [navMenuOpen, setNavMenuOpen] = useState(false)
+  const [navClosing, setNavClosing] = useState(false)
+  const navMenuRef = useRef(null)
+  const navPanelRef = useRef(null)
+  const [openProfileSettings, setOpenProfileSettings] = useState(false)
   const [showUrlModal, setShowUrlModal] = useState(false)
   const [urlInput, setUrlInput] = useState('')
   const [isScrapingLoading, setIsScrapingLoading] = useState(false)
@@ -83,6 +89,57 @@ function App() {
   const profileCheckedFor = useRef(null) // user id whose profile row was already verified this session
 
   const isRtl = language === 'he'
+
+  // Close the header nav menu on outside click
+  useEffect(() => {
+    if (!navMenuOpen) return
+    const handler = (e) => {
+      if (navMenuRef.current?.contains(e.target) || navPanelRef.current?.contains(e.target)) return
+      closeNavMenu()
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [navMenuOpen])
+
+  // Trigger the slide-up exit; the panel unmounts on animationend (see onAnimationEnd)
+  const closeNavMenu = () => setNavClosing(true)
+
+  // Navigate with a sliding page transition. `dir` = 'right' (new page enters
+  // from the right) or 'left'. Uses the View Transitions API so the outgoing
+  // page slides out while the new one slides in; falls back to a plain nav.
+  const slideNav = (target, dir) => {
+    if (!document.startViewTransition) { handleNavigate(target); return }
+    document.documentElement.dataset.swipe = dir
+    const transition = document.startViewTransition(() => {
+      flushSync(() => handleNavigate(target))
+    })
+    transition.finished.finally(() => { delete document.documentElement.dataset.swipe })
+  }
+
+  // Mobile left-swipe navigation: right-edge → profile (from home), anywhere → home (from profile)
+  useEffect(() => {
+    if (!user) return
+    let startX = null, startY = null, fromRightEdge = false
+    const onStart = (e) => {
+      const t = e.touches[0]
+      startX = t.clientX
+      startY = t.clientY
+      fromRightEdge = t.clientX > window.innerWidth - 30
+    }
+    const onEnd = (e) => {
+      if (startX === null) return
+      const t = e.changedTouches[0]
+      const dx = startX - t.clientX, dy = Math.abs(t.clientY - startY)
+      if (dy < 50) {
+        if (viewMode === 'profile' && dx < -60) slideNav('home', 'left')        // swipe right → back to main
+        else if (viewMode !== 'profile' && dx > 60 && fromRightEdge) slideNav('profile', 'right') // right-edge swipe left → profile
+      }
+      startX = null
+    }
+    window.addEventListener('touchstart', onStart, { passive: true })
+    window.addEventListener('touchend', onEnd, { passive: true })
+    return () => { window.removeEventListener('touchstart', onStart); window.removeEventListener('touchend', onEnd) }
+  }, [user, viewMode])
 
   // Online/offline tracking — refetch everything when the connection returns
   useEffect(() => {
@@ -586,6 +643,11 @@ function App() {
   }
 
   const handleCreateCategory = async (name) => {
+    const reserved = ['all', 'הכל', 'uncategorized', 'ללא קטגוריה']
+    if (reserved.includes(name.trim().toLowerCase())) {
+      setSaveError({ message: language === 'en' ? `"${name.trim()}" is a reserved name` : `"${name.trim()}" הוא שם שמור` })
+      return null
+    }
     try {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session?.access_token) throw new Error('Not authenticated')
@@ -631,6 +693,10 @@ function App() {
   }
 
   const handleRenameCategory = async (categoryId, newName) => {
+    if (['all', 'הכל', 'uncategorized', 'ללא קטגוריה'].includes(newName.trim().toLowerCase())) {
+      setSaveError({ message: language === 'en' ? `"${newName.trim()}" is a reserved name` : `"${newName.trim()}" הוא שם שמור` })
+      return
+    }
     setUserCategories(prev => prev.map(c => c.id === categoryId ? { ...c, name: newName } : c))
     try {
       const { data: { session } } = await supabase.auth.getSession()
@@ -959,6 +1025,7 @@ function App() {
       category: recipeObj.category || 'MAIN',
       ingredients: formatArray(recipeObj.ingredients),
       instructions: formatArray(recipeObj.instructions),
+      caloriesPerServing: recipeObj.caloriesPerServing ?? recipeObj.calories_per_serving ?? null,
       user_id: recipeObj.user_id || recipeObj.authorId,
       authorId: recipeObj.authorId || recipeObj.user_id,
       authorUsername: recipeObj.authorUsername || null
@@ -1198,7 +1265,6 @@ function App() {
         // Convert recipe data to format expected by RecipeForm
         setEditingRecipe({
           title: scrapedRecipe.name,
-          category: scrapedRecipe.category,
           description: scrapedRecipe.description,
           ingredients: scrapedRecipe.ingredients || [],
           instructions: scrapedRecipe.instructions || [],
@@ -1244,16 +1310,59 @@ function App() {
 
             <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0">
               {user ? (
-                <>
-                  <button onClick={() => { setEditingRecipe(null); setShowRecipeForm(true); }}
+                <div className="relative" ref={navMenuRef}>
+                  <button onClick={() => { if (navMenuOpen && !navClosing) { closeNavMenu() } else { setNavClosing(false); setNavMenuOpen(true) } }}
                     className="flex items-center gap-2 text-[#64748b] hover:text-[#1e293b] transition-colors p-2">
-                    <Plus className="w-5 h-5"/>
+                    <Menu className="w-5 h-5"/>
                   </button>
-                  <button onClick={() => handleNavigate('profile')}
-                    className="flex items-center gap-2 text-[#64748b] hover:text-[#1e293b] transition-colors p-2">
-                    <UserIcon className="w-5 h-5"/>
-                  </button>
-                </>
+                  {navMenuOpen && createPortal(
+                    <>
+                    {/* Mobile backdrop — tap the uncovered bottom to dismiss */}
+                    <div className={`fixed inset-0 z-[65] bg-black/20 sm:hidden transition-opacity duration-200 ${navClosing ? 'opacity-0' : 'opacity-100'}`} onClick={closeNavMenu} />
+                    <div ref={navPanelRef}
+                      onAnimationEnd={(e) => { if (navClosing && e.target === navPanelRef.current) { setNavClosing(false); setNavMenuOpen(false) } }}
+                      className={`fixed top-0 inset-x-0 h-3/5 bg-white py-2 z-[70] rounded-b-3xl shadow-xl ${navClosing ? 'nav-flow-up' : 'nav-flow-down'} sm:inset-auto sm:h-auto sm:top-14 sm:right-4 sm:w-44 sm:rounded-2xl sm:rounded-b-2xl sm:border sm:border-[#e8e4dc] sm:shadow-lg sm:py-1`}
+                      style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
+                      {/* Mobile-only close row */}
+                      <div className="flex justify-end px-4 py-2 sm:hidden">
+                        <button onClick={closeNavMenu} className="p-2 text-[#7a7265]">
+                          <X className="w-6 h-6"/>
+                        </button>
+                      </div>
+                      <button onClick={() => { closeNavMenu(); setEditingRecipe(null); setShowRecipeForm(true); }}
+                        className="w-full flex items-center gap-3 px-4 py-4 text-base text-[#3d3429] hover:bg-[#f5f3ef] transition-colors text-start sm:py-2.5 sm:text-sm">
+                        <Plus className="w-5 h-5 text-[#7a7265] sm:w-4 sm:h-4"/>
+                        {language === 'en' ? 'Add recipe' : 'הוסף מתכון'}
+                      </button>
+                      <button onClick={() => { closeNavMenu(); handleNavigate('profile'); }}
+                        className="w-full flex items-center gap-3 px-4 py-4 text-base text-[#3d3429] hover:bg-[#f5f3ef] transition-colors text-start sm:py-2.5 sm:text-sm">
+                        <UserIcon className="w-5 h-5 text-[#7a7265] sm:w-4 sm:h-4"/>
+                        {language === 'en' ? 'Profile' : 'פרופיל'}
+                      </button>
+                      <button onClick={() => { closeNavMenu(); setOpenProfileSettings(true); handleNavigate('profile'); }}
+                        className="w-full flex items-center gap-3 px-4 py-4 text-base text-[#3d3429] hover:bg-[#f5f3ef] transition-colors text-start sm:py-2.5 sm:text-sm">
+                        <Settings className="w-5 h-5 text-[#7a7265] sm:w-4 sm:h-4"/>
+                        {language === 'en' ? 'Settings' : 'הגדרות'}
+                      </button>
+                      <div className="my-1 border-t border-[#e8e4dc]" />
+                      <button onClick={() => {
+                          closeNavMenu()
+                          setConfirmDialog({
+                            title: language === 'en' ? 'come back quick :(' : 'תחזרו מהר :(',
+                            confirmLabel: language === 'en' ? 'Log out' : 'התנתק',
+                            onConfirm: () => { setConfirmDialog(null); handleLogout(); },
+                            onCancel: () => setConfirmDialog(null),
+                          })
+                        }}
+                        className="w-full flex items-center gap-3 px-4 py-4 text-base text-[#dc2626] hover:bg-[#fef2f2] transition-colors text-start sm:py-2.5 sm:text-sm">
+                        <LogOut className="w-5 h-5 sm:w-4 sm:h-4"/>
+                        {language === 'en' ? 'Log out' : 'התנתק'}
+                      </button>
+                    </div>
+                    </>,
+                    document.body
+                  )}
+                </div>
               ) : (
                 <button onClick={() => setShowLoginModal(true)}
                   className="flex items-center gap-1.5 px-4 py-2 bg-[#e8e4dc] text-[#3d3429] rounded-xl hover:bg-[#ddd9d0] transition-colors text-sm font-medium whitespace-nowrap">
@@ -1520,6 +1629,8 @@ function App() {
             onToggleRecipeCategory={handleToggleRecipeCategory}
             onRenameCategory={handleRenameCategory}
             onHandleChange={setUserHandle}
+            openSettings={openProfileSettings}
+            onSettingsOpened={() => setOpenProfileSettings(false)}
             onError={(message) => setSaveError({ message })}
           />
         )}

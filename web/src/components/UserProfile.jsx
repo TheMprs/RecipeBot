@@ -5,6 +5,9 @@ import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../supabaseClient';
 import { swr } from '../utils/cache';
 
+// Virtual category sentinel — recipes with no category assignments live here. ponytail: no DB row, pure client filter.
+const UNCATEGORIZED = '\0uncategorized';
+
 export function UserProfile({
   user,
   recipes,
@@ -23,6 +26,8 @@ export function UserProfile({
   onToggleRecipeCategory,
   onRenameCategory,
   onHandleChange,
+  openSettings = false,
+  onSettingsOpened,
   onError,
 }) {
   const isRtl = language === 'he';
@@ -74,6 +79,11 @@ export function UserProfile({
   const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showRecipeSettings, setShowRecipeSettings] = useState(false);
+
+  // Open the settings modal when the header menu requests it
+  useEffect(() => {
+    if (openSettings) { setShowSettings(true); onSettingsOpened?.(); }
+  }, [openSettings]);
   const [defaultVisibility, setDefaultVisibility] = useState(() => localStorage.getItem('defaultRecipeVisibility') || 'private');
   const [editingCategoryId, setEditingCategoryId] = useState(null);
   const [editingCategoryName, setEditingCategoryName] = useState('');
@@ -280,10 +290,13 @@ export function UserProfile({
     .filter(recipe => {
       const matchesSearch = recipe.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
                            recipe.description.toLowerCase().includes(searchQuery.toLowerCase());
+      const isUncategorized = !(recipeCategories[recipe.id]?.length > 0) && !recipe.category;
       const matchesCategory = !selectedCategoryName || (
-        recipeCategories[recipe.id]?.some(catId =>
-          userCategories.find(c => c.id === catId)?.name === selectedCategoryName
-        ) || recipe.category === selectedCategoryName
+        selectedCategoryName === UNCATEGORIZED ? isUncategorized : (
+          recipeCategories[recipe.id]?.some(catId =>
+            userCategories.find(c => c.id === catId)?.name === selectedCategoryName
+          ) || recipe.category === selectedCategoryName
+        )
       );
       return matchesSearch && matchesCategory;
     })
@@ -395,6 +408,14 @@ export function UserProfile({
                 }`}
               >
                 {language === 'en' ? 'All' : 'הכל'}
+              </button>
+              <button
+                onClick={() => setSelectedCategoryName(selectedCategoryName === UNCATEGORIZED ? null : UNCATEGORIZED)}
+                className={`flex-shrink-0 px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                  selectedCategoryName === UNCATEGORIZED ? 'bg-[#e67e22] text-white' : 'bg-white border border-[#e8e4dc] text-[#7a7265] hover:border-[#e67e22]/40'
+                }`}
+              >
+                {language === 'en' ? 'Uncategorized' : 'ללא קטגוריה'}
               </button>
               {userCategories.map(cat => (
                 <button

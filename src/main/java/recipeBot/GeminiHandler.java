@@ -27,11 +27,9 @@ public class GeminiHandler {
             "CRITICAL: All values (name, description, ingredients, instructions) MUST be in the same language as the source text (e.g., if the source is Hebrew, output Hebrew). " +
             "Return ONLY a valid JSON object without markdown formatting. " +
             "The 'name' and 'description' should be short and concise. " +
-            "The 'category' should be a short descriptive label for the dish type in English (e.g., Main, Dessert, Snack, Soup, Salad, Breakfast, Appetizer). " +
-            "CRITICAL: Set 'direction' to 'rtl' or 'ltr' according to the recipe's language. " +
             "Ensure no details are missed in the instructions. " +
             "Use this exact JSON structure with English keys: " +
-            "{\"name\": \"...\", \"category\": \"...\", \"description\": \"...\", \"ingredients\": [], \"instructions\": [], \"direction\": \"...\"}. " +
+            "{\"name\": \"...\", \"description\": \"...\", \"ingredients\": [], \"instructions\": []}. " +
             "Text to parse: " + rawText;
         
         // Safely build the JSON request body

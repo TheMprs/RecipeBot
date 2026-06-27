@@ -95,3 +95,29 @@
 .animate-veg-jump {
   animation: veg-jump 0.9s ease-in-out both;
 }
+
+/* Nav menu open animation — slide down */
+@keyframes nav-flow-down {
+  from { transform: translateY(-100%); opacity: 0.4; }
+  to   { transform: translateY(0);     opacity: 1; }
+}
+.nav-flow-down { animation: nav-flow-down 0.3s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+/* Nav menu close animation — slide back up */
+@keyframes nav-flow-up {
+  from { transform: translateY(0);     opacity: 1; }
+  to   { transform: translateY(-100%); opacity: 0.4; }
+}
+.nav-flow-up { animation: nav-flow-up 0.25s cubic-bezier(0.55, 0, 0.55, 0.2) both; }
+
+/* Page slide on swipe navigation — only the new page slides in (over a held
+   snapshot of the old one). Driven by View Transitions; dir via html[data-swipe]. */
+@keyframes vt-in-right { from { transform: translateX(100%);  opacity: 0.5; } to { transform: translateX(0); opacity: 1; } }
+@keyframes vt-in-left  { from { transform: translateX(-100%); opacity: 0.5; } to { transform: translateX(0); opacity: 1; } }
+
+/* Outgoing page stays put underneath; kill the default cross-fade */
+::view-transition-old(root),
+::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
+
+html[data-swipe="right"]::view-transition-new(root) { animation: vt-in-right 0.3s cubic-bezier(0.22, 1, 0.36, 1) both; }
+html[data-swipe="left"]::view-transition-new(root)  { animation: vt-in-left  0.3s cubic-bezier(0.22, 1, 0.36, 1) both; }
