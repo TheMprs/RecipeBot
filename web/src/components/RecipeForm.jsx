@@ -24,7 +24,7 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
   // Close the category dropdown when clicking outside it.
   useEffect(() => {
     if (!catOpen) return
-    const onDown = (e) => { if (catRef.current && !catRef.current.contains(e.target)) setCatOpen(false) }
+    const onDown = (e) => { if (catRef.current && !catRef.current.contains(e.target)) { setCatOpen(false); setShowNewCatInput(false); setNewCatName('') } }
     document.addEventListener('mousedown', onDown)
     return () => document.removeEventListener('mousedown', onDown)
   }, [catOpen])
@@ -125,14 +125,14 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
             <div className="relative" ref={catRef}>
               <button
                 type="button"
-                onClick={() => setCatOpen(o => !o)}
+                onClick={() => setCatOpen(o => { if (o) { setShowNewCatInput(false); setNewCatName('') } return !o })}
                 className="w-full flex items-center justify-between gap-2 px-4 py-3 bg-[#faf9f7] border border-[#e8e4dc] rounded-2xl text-[#3d3429] font-medium cursor-pointer hover:border-[#d9d3c8] hover:bg-[#f5f3ef] focus:outline-none focus:ring-2 focus:ring-[#cf711f]/20 focus:border-[#cf711f] transition-all"
               >
                 <span className={category ? '' : 'text-[#7a7265]'}>{category || (language === 'en' ? 'None' : 'ללא')}</span>
                 <ChevronDown className={`w-4 h-4 text-[#cf711f] flex-shrink-0 transition-transform duration-200 ${catOpen ? 'rotate-180' : ''}`} />
               </button>
               {catOpen && (
-                <div style={{ direction: isRtl ? 'ltr' : 'rtl' }} className="menu-scroll absolute z-20 mt-2 w-full bg-white border border-[#e8e4dc] rounded-2xl shadow-lg py-1 max-h-60 overflow-y-auto">
+                <div style={{ direction: isRtl ? 'ltr' : 'rtl' }} className="menu-scroll absolute z-20 mt-2 w-full bg-white border border-[#e8e4dc] rounded-2xl shadow-lg max-h-60 overflow-y-auto overflow-x-hidden">
                   {[{ name: '', label: language === 'en' ? 'None' : 'ללא' },
                     ...userCategories.map(c => ({ name: c.name, label: c.name }))].map(opt => {
                     const selected = category === opt.name
@@ -149,63 +149,57 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
                       </button>
                     )
                   })}
-                  {onCreateCategory && (
+                  {onCreateCategory && (showNewCatInput ? (
+                    <div style={{ direction: isRtl ? 'rtl' : 'ltr' }} className="flex items-center gap-2 px-3 py-2 border-t border-[#e8e4dc]/60">
+                      <input
+                        autoFocus
+                        type="text"
+                        style={{ direction: isRtl ? 'rtl' : 'ltr' }}
+                        value={newCatName}
+                        onChange={e => setNewCatName(e.target.value)}
+                        onKeyDown={async e => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault()
+                            const name = newCatName.trim()
+                            if (!name) return
+                            const newCat = await onCreateCategory(name)
+                            if (newCat) setCategory(newCat.name)
+                            setShowNewCatInput(false); setNewCatName(''); setCatOpen(false)
+                          } else if (e.key === 'Escape') {
+                            setShowNewCatInput(false); setNewCatName('')
+                          }
+                        }}
+                        placeholder={language === 'en' ? 'Category name' : 'שם קטגוריה'}
+                        className="flex-1 min-w-0 px-3 py-2 bg-[#faf9f7] border border-[#e8e4dc] rounded-2xl text-sm text-[#3d3429] focus:outline-none focus:border-[#cf711f]"
+                      />
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const name = newCatName.trim()
+                          if (!name) return
+                          const newCat = await onCreateCategory(name)
+                          if (newCat) setCategory(newCat.name)
+                          setShowNewCatInput(false); setNewCatName(''); setCatOpen(false)
+                        }}
+                        className="px-3 py-2 bg-[#e67e22] text-white rounded-2xl text-sm font-medium hover:bg-[#cf711f] flex-shrink-0"
+                      >
+                        {language === 'en' ? 'Add' : 'הוסף'}
+                      </button>
+                    </div>
+                  ) : (
                     <button
                       type="button"
                       style={{ direction: isRtl ? 'rtl' : 'ltr' }}
-                      onClick={() => { setCatOpen(false); setShowNewCatInput(true); setNewCatName('') }}
+                      onClick={() => { setShowNewCatInput(true); setNewCatName('') }}
                       className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-start text-[#e67e22] hover:bg-[#faf9f7] border-t border-[#e8e4dc]/60 font-medium transition-colors"
                     >
                       <Plus className="w-4 h-4 flex-shrink-0" />
                       {language === 'en' ? 'Add category' : 'הוסף קטגוריה'}
                     </button>
-                  )}
+                  ))}
                 </div>
               )}
             </div>
-            {showNewCatInput && (
-              <div className="flex gap-2 mt-2">
-                <input
-                  autoFocus
-                  type="text"
-                  value={newCatName}
-                  onChange={e => setNewCatName(e.target.value)}
-                  onKeyDown={async e => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault()
-                      const name = newCatName.trim()
-                      if (!name) return
-                      const newCat = await onCreateCategory(name)
-                      if (newCat) setCategory(newCat.name)
-                      setShowNewCatInput(false)
-                      setNewCatName('')
-                    } else if (e.key === 'Escape') {
-                      setShowNewCatInput(false)
-                      setNewCatName('')
-                    }
-                  }}
-                  placeholder={language === 'en' ? 'Category name…' : 'שם קטגוריה…'}
-                  className="flex-1 px-3 py-2 bg-[#faf9f7] border border-[#e8e4dc] rounded-xl text-sm text-[#3d3429] placeholder:text-[#7a7265] focus:outline-none focus:ring-2 focus:ring-[#cf711f]/20 focus:border-[#cf711f] transition-all"
-                />
-                <button
-                  type="button"
-                  onClick={async () => {
-                    const name = newCatName.trim()
-                    if (!name) return
-                    const newCat = await onCreateCategory(name)
-                    if (newCat) setCategory(newCat.name)
-                    setShowNewCatInput(false)
-                    setNewCatName('')
-                  }}
-                  className="px-4 py-2 bg-[#e67e22] text-white rounded-xl text-sm font-medium hover:bg-[#cf711f] transition-colors"
-                >
-                  {language === 'en' ? 'Add' : 'הוסף'}
-                </button>
-                <button type="button" onClick={() => { setShowNewCatInput(false); setNewCatName('') }} className="px-3 py-2 text-sm text-[#7a7265] hover:text-[#3d3429] transition-colors">
-                  {language === 'en' ? 'Cancel' : 'בטל'}
-                </button>
-              </div>
-            )}
           </div>
 
           {/* Calories per serving (manual for now; auto-calc later) */}

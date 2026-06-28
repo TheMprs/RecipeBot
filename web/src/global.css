@@ -39,7 +39,7 @@
 /* Thin branded scrollbar for menus/dropdowns (overrides the global hide) */
 .menu-scroll::-webkit-scrollbar {
   display: block;
-  width: 6px;
+  width: 10px;
 }
 .menu-scroll::-webkit-scrollbar-track {
   background: transparent;
@@ -47,10 +47,17 @@
 .menu-scroll::-webkit-scrollbar-thumb {
   background: transparent; /* hidden until the menu is hovered */
   border-radius: 9999px;
+  border: 3px solid transparent; /* insets thumb so it floats off the edge */
+  background-clip: padding-box;
   transition: background 0.3s;
 }
 .menu-scroll:hover::-webkit-scrollbar-thumb {
-  background: rgba(207, 113, 31, 0.4); /* brand orange */
+  background: rgba(207, 113, 31, 0.35); /* brand orange */
+  background-clip: padding-box;
+}
+.menu-scroll:hover::-webkit-scrollbar-thumb:hover {
+  background: rgba(207, 113, 31, 0.55);
+  background-clip: padding-box;
 }
 .menu-scroll {
   scrollbar-width: thin;
