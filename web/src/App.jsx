@@ -1,7 +1,8 @@
 ﻿import { useState, useEffect, useRef } from 'react'
 import { createPortal, flushSync } from 'react-dom'
-import { BookOpen, Plus, Search, Filter, X, Link as LinkIcon, User as UserIcon, ChevronLeft, ChevronRight, Heart, RotateCcw, Pencil, Menu, Settings, LogOut, Check } from 'lucide-react'
+import { BookOpen, Plus, Search, Filter, X, Link as LinkIcon, User as UserIcon, ChevronLeft, ChevronRight, Heart, RotateCcw, Pencil, Menu, Settings, LogOut, Check, Trash2, Sparkles } from 'lucide-react'
 import { RecipeCard, RecipeCardSkeleton } from './components/RecipeCard'
+import { CATEGORY_PALETTE } from './utils/categoryColor'
 import { RecipeDetail } from './components/RecipeDetail'
 import { RecipeForm } from './components/RecipeForm'
 import { UserProfile } from './components/UserProfile'
@@ -310,7 +311,7 @@ function App() {
         const { data: { session } } = await supabase.auth.getSession();
         if (!session?.access_token) throw new Error('Not authenticated');
         const response = await fetch(
-          `${supabaseUrl}/rest/v1/recipes?user_id=eq.${user.id}&select=*,recipe_likes(recipe_id),recipe_categories(category_id,categories(name))`,
+          `${supabaseUrl}/rest/v1/recipes?user_id=eq.${user.id}&select=*,recipe_likes(recipe_id),recipe_categories(category_id,categories(name,color))`,
           {
             headers: {
               'apikey': supabaseKey,
@@ -331,7 +332,10 @@ function App() {
           instructions: recipe.instructions,
           created_at: recipe.created_at,
           category: recipe.recipe_categories?.[0]?.categories?.name || null,
+          categoryColor: recipe.recipe_categories?.[0]?.categories?.color || null,
+          categoryColors: recipe.recipe_categories?.map(rc => rc.categories?.color).filter(Boolean) || [],
           caloriesPerServing: recipe.calories_per_serving,
+          visibility: recipe.visibility,
           likeCount: recipe.recipe_likes?.length || 0,
           user_id: recipe.user_id,
           authorId: recipe.user_id,
@@ -355,7 +359,7 @@ function App() {
     try {
       // Get all public recipes using REST API instead of JS client
       const response = await fetch(
-        `${supabaseUrl}/rest/v1/recipes?visibility=eq.public&order=id.desc&limit=50&select=*,recipe_categories(categories(name))`,
+        `${supabaseUrl}/rest/v1/recipes?visibility=eq.public&order=id.desc&limit=50&select=*,recipe_categories(categories(name,color))`,
         {
           headers: {
             'apikey': supabaseKey,
@@ -375,6 +379,8 @@ function App() {
         id: recipe.id,
         title: recipe.name,
         category: recipe.recipe_categories?.[0]?.categories?.name || null,
+        categoryColor: recipe.recipe_categories?.[0]?.categories?.color || null,
+          categoryColors: recipe.recipe_categories?.map(rc => rc.categories?.color).filter(Boolean) || [],
         caloriesPerServing: recipe.calories_per_serving,
         description: recipe.description,
         ingredients: recipe.ingredients,
@@ -480,7 +486,7 @@ function App() {
       if (!ranked || ranked.length === 0) { return [] }
 
       const ids = ranked.map(r => r.recipe_id).join(',')
-      const recipesRes = await fetch(`${supabaseUrl}/rest/v1/recipes?id=in.(${ids})&select=*,recipe_categories(categories(name))`, {
+      const recipesRes = await fetch(`${supabaseUrl}/rest/v1/recipes?id=in.(${ids})&select=*,recipe_categories(categories(name,color))`, {
         headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` }
       })
       if (!recipesRes.ok) throw new Error('recipes fetch failed')
@@ -509,6 +515,8 @@ function App() {
           id: recipe.id,
           title: recipe.name,
           category: recipe.recipe_categories?.[0]?.categories?.name || null,
+          categoryColor: recipe.recipe_categories?.[0]?.categories?.color || null,
+          categoryColors: recipe.recipe_categories?.map(rc => rc.categories?.color).filter(Boolean) || [],
           caloriesPerServing: recipe.calories_per_serving,
           description: recipe.description,
           ingredients: recipe.ingredients,
@@ -656,19 +664,21 @@ function App() {
     }
   }
 
-  const handleCreateCategory = async (name) => {
+  const handleCreateCategory = async (name, color) => {
     const reserved = ['all', 'הכל', 'uncategorized', 'ללא קטגוריה']
     if (reserved.includes(name.trim().toLowerCase())) {
       setSaveError({ message: language === 'en' ? `"${name.trim()}" is a reserved name` : `"${name.trim()}" הוא שם שמור` })
       return null
     }
+    // undefined = inline quick-create (no picker) → cycle palette; null = user chose "no color".
+    const finalColor = color === undefined ? CATEGORY_PALETTE[userCategories.length % CATEGORY_PALETTE.length] : color
     try {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session?.access_token) throw new Error('Not authenticated')
       const res = await fetch(`${supabaseUrl}/rest/v1/categories`, {
         method: 'POST',
         headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json', 'Prefer': 'return=representation' },
-        body: JSON.stringify({ user_id: user.id, name: name.trim() })
+        body: JSON.stringify({ user_id: user.id, name: name.trim(), color: finalColor })
       })
       if (!res.ok) throw new Error(await res.text())
       const [newCat] = await res.json()
@@ -729,6 +739,27 @@ function App() {
     }
   }
 
+  const handleRecolorCategory = async (categoryId, color) => {
+    setUserCategories(prev => prev.map(c => c.id === categoryId ? { ...c, color } : c))
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) throw new Error('Not authenticated')
+      const res = await fetch(`${supabaseUrl}/rest/v1/categories?id=eq.${categoryId}`, {
+        method: 'PATCH',
+        headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+        body: JSON.stringify({ color })
+      })
+      if (!res.ok) throw new Error(await res.text())
+      invalidate(`categories:${user.id}`)
+      // Recolor recipe cards immediately — they carry a copy of the category color.
+      setRecipes(prev => prev.map(r => r.category && userCategories.find(c => c.id === categoryId)?.name === r.category ? { ...r, categoryColor: color } : r))
+    } catch (err) {
+      console.error('[Data] Recolor category failed:', err.message)
+      setSaveError({ message: language === 'en' ? 'Failed to update color' : 'עדכון הצבע נכשל' })
+      fetchUserCategories(true)
+    }
+  }
+
   const handleToggleRecipeCategory = async (recipeId, categoryId) => {
     const current = recipeCategories[recipeId] || []
     const isAdding = !current.includes(categoryId)
@@ -755,8 +786,9 @@ function App() {
       }
       // Reflect the change on the recipe card immediately (junction is the source of truth).
       const newList = isAdding ? [...current, categoryId] : current.filter(id => id !== categoryId)
-      const newCatName = newList.length ? (userCategories.find(c => c.id === newList[0])?.name || null) : null
-      setRecipes(prev => prev.map(r => r.id === recipeId ? { ...r, category: newCatName } : r))
+      const newCat = newList.length ? userCategories.find(c => c.id === newList[0]) : null
+      const newColors = newList.map(id => userCategories.find(c => c.id === id)?.color).filter(Boolean)
+      setRecipes(prev => prev.map(r => r.id === recipeId ? { ...r, category: newCat?.name || null, categoryColor: newCat?.color || null, categoryColors: newColors } : r))
     } catch (err) {
       setRecipeCategories(prev => ({ ...prev, [recipeId]: current }))
       console.error('[Data] Toggle recipe category failed:', err.message)
@@ -764,9 +796,12 @@ function App() {
     }
   }
 
-  const loadRecipeFromSupabase = (filter) => {
-    fetch(`${supabaseUrl}/rest/v1/recipes?${filter}&select=*,recipe_categories(categories(name))&limit=1`, {
-      headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` }
+  const loadRecipeFromSupabase = async (filter) => {
+    // Use the user's token so RLS lets owners read their own private recipes (anon key only sees public).
+    const { data: { session } } = await supabase.auth.getSession()
+    const token = session?.access_token || supabaseKey
+    fetch(`${supabaseUrl}/rest/v1/recipes?${filter}&select=*,recipe_categories(categories(name,color))&limit=1`, {
+      headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${token}` }
     })
       .then(res => res.json())
       .then(data => {
@@ -776,8 +811,11 @@ function App() {
           id: r.id,
           title: String(r.name || 'Unnamed'),
           description: r.description || '',
-          category: r.recipe_categories?.[0]?.categories?.name || 'MAIN',
+          category: r.recipe_categories?.[0]?.categories?.name || null,
+          categoryColor: r.recipe_categories?.[0]?.categories?.color || null,
+          categoryColors: r.recipe_categories?.map(rc => rc.categories?.color).filter(Boolean) || [],
           caloriesPerServing: r.calories_per_serving,
+          visibility: r.visibility,
           ingredients: Array.isArray(r.ingredients) ? r.ingredients : [],
           instructions: Array.isArray(r.instructions) ? r.instructions : [],
           user_id: r.user_id,
@@ -993,7 +1031,7 @@ function App() {
       const headers = { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` }
       const [usersRes, recipesRes] = await Promise.all([
         fetch(`${supabaseUrl}/rest/v1/users?or=(username.ilike.${q},display_name.ilike.${q})&select=id,username,display_name,avatar_url&limit=4`, { headers }),
-        fetch(`${supabaseUrl}/rest/v1/recipes?name=ilike.${q}&visibility=eq.public&select=id,name,user_id,recipe_categories(categories(name))&limit=4`, { headers })
+        fetch(`${supabaseUrl}/rest/v1/recipes?name=ilike.${q}&visibility=eq.public&select=id,name,user_id,recipe_categories(categories(name,color))&limit=4`, { headers })
       ])
       const [users, recipesRaw] = await Promise.all([usersRes.json(), recipesRes.json()])
       const recipes = Array.isArray(recipesRaw) ? recipesRaw : []
@@ -1009,7 +1047,7 @@ function App() {
 
       setGlobalResults({
         users: Array.isArray(users) ? users : [],
-        recipes: recipes.map(r => ({ ...r, category: r.recipe_categories?.[0]?.categories?.name || null, authorUsername: usernameMap[r.user_id] || null }))
+        recipes: recipes.map(r => ({ ...r, category: r.recipe_categories?.[0]?.categories?.name || null, categoryColor: r.recipe_categories?.[0]?.categories?.color || null, categoryColors: r.recipe_categories?.map(rc => rc.categories?.color).filter(Boolean) || [], authorUsername: usernameMap[r.user_id] || null }))
       })
       setShowGlobalResults(true)
     }, 300)
@@ -1036,7 +1074,7 @@ function App() {
       id: recipeObj.id,
       title: String(recipeObj.title || recipeObj.name || 'Unnamed'),
       description: recipeObj.description || '',
-      category: recipeObj.category || 'MAIN',
+      category: recipeObj.category || null,
       ingredients: formatArray(recipeObj.ingredients),
       instructions: formatArray(recipeObj.instructions),
       caloriesPerServing: recipeObj.caloriesPerServing ?? recipeObj.calories_per_serving ?? null,
@@ -1049,6 +1087,20 @@ function App() {
     setSelectedRecipe(recipeData);
     setViewMode('detail');
     window.history.pushState({}, '', `?r=${recipeObj.id}`);
+  }
+
+  // Sync a recipe's junction rows to exactly `categoryIds` (delete all, re-insert).
+  const syncRecipeCategories = async (recipeId, categoryIds, token) => {
+    await fetch(`${supabaseUrl}/rest/v1/recipe_categories?recipe_id=eq.${recipeId}`, {
+      method: 'DELETE',
+      headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${token}` }
+    })
+    if (!categoryIds?.length) return
+    await fetch(`${supabaseUrl}/rest/v1/recipe_categories`, {
+      method: 'POST',
+      headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+      body: JSON.stringify(categoryIds.map(id => ({ recipe_id: recipeId, category_id: id })))
+    })
   }
 
   const manageRecipeCategory = async (recipeId, categoryName, token) => {
@@ -1078,14 +1130,18 @@ function App() {
     const editing = editingRecipe;
     // Optimistically reflect the edit in the open detail view; rolled back on failure
     const prevSelected = selectedRecipe;
+    const primaryCat = newRecipe.categoryIds?.length ? userCategories.find(c => c.id === newRecipe.categoryIds[0]) : null;
     if (editing?.id) {
+      // junction state drives category chips on detail/cards
+      setRecipeCategories(prev => ({ ...prev, [editing.id]: newRecipe.categoryIds || [] }));
       setSelectedRecipe(prev => prev && prev.id === editing.id ? {
         ...prev,
         title: newRecipe.title,
         description: newRecipe.description,
         ingredients: newRecipe.ingredients,
         instructions: newRecipe.instructions,
-        category: newRecipe.category,
+        category: primaryCat?.name || null,
+        categoryColor: primaryCat?.color || null,
         caloriesPerServing: newRecipe.caloriesPerServing,
       } : prev)
     }
@@ -1118,11 +1174,12 @@ function App() {
               ingredients: newRecipe.ingredients,
               instructions: newRecipe.instructions,
               calories_per_serving: newRecipe.caloriesPerServing,
+              visibility: newRecipe.visibility,
             })
           }
         );
         if (!res.ok) throw new Error(`Update failed: ${res.status} ${await res.text()}`);
-        await manageRecipeCategory(editing.id, newRecipe.category, userToken)
+        await syncRecipeCategories(editing.id, newRecipe.categoryIds, userToken)
         await applyCookCountDelta(editing.id, newRecipe.cookCountDelta)
       } else {
         const res = await fetch(
@@ -1142,13 +1199,13 @@ function App() {
               ingredients: newRecipe.ingredients,
               instructions: newRecipe.instructions,
               calories_per_serving: newRecipe.caloriesPerServing,
-              visibility: localStorage.getItem('defaultRecipeVisibility') || 'private'
+              visibility: newRecipe.visibility || localStorage.getItem('defaultRecipeVisibility') || 'private'
             })
           }
         );
         if (!res.ok) throw new Error(`Insert failed: ${res.status} ${await res.text()}`);
         const [saved] = await res.json()
-        if (saved?.id) await manageRecipeCategory(saved.id, newRecipe.category, userToken)
+        if (saved?.id) await syncRecipeCategories(saved.id, newRecipe.categoryIds, userToken)
       }
 
       setSaveSuccess(editing?.id ? 'saved' : 'added');
@@ -1294,6 +1351,7 @@ function App() {
         title: language === 'en' ? `Delete "${recipe.title}"?` : `למחוק את "${recipe.title}"?`,
         message: language === 'en' ? "You'll have a few seconds to undo." : 'יהיו לך כמה שניות לבטל.',
         confirmLabel: language === 'en' ? 'Delete' : 'מחק',
+        icon: Trash2,
         onConfirm: () => { setConfirmDialog(null); resolve(true); },
         onCancel: () => { setConfirmDialog(null); resolve(false); },
       });
@@ -1379,12 +1437,15 @@ function App() {
         <Settings className="w-5 h-5 text-[#7a7265] sm:w-4 sm:h-4"/>
         {language === 'en' ? 'Settings' : 'הגדרות'}
       </button>
-      <div className="my-1 border-t border-[#e8e4dc]" />
+      <div className="border-t border-[#e8e4dc]" />
       <button onClick={() => {
           closeNavMenu()
           setConfirmDialog({
-            title: language === 'en' ? 'come back quick :(' : 'תחזרו מהר :(',
+            title: language === 'en' ? 'Log out?' : 'להתנתק?',
+            message: language === 'en' ? 'You can hop back in anytime.' : 'אפשר לחזור בכל רגע.',
             confirmLabel: language === 'en' ? 'Log out' : 'התנתק',
+            icon: LogOut,
+            danger: false,
             onConfirm: () => { setConfirmDialog(null); handleLogout(); },
             onCancel: () => setConfirmDialog(null),
           })
@@ -1428,7 +1489,7 @@ function App() {
                   </button>
                   {/* Desktop: plain anchored dropdown (same style as the recipe-form category menu) */}
                   {navMenuOpen && (
-                    <div className="hidden sm:block absolute right-0 mt-2 w-48 bg-white border border-[#e8e4dc] rounded-2xl shadow-lg py-1 z-50"
+                    <div className="hidden sm:block absolute right-0 mt-2 w-48 bg-white border border-[#e8e4dc] rounded-2xl shadow-lg overflow-hidden z-50"
                       style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
                       {navItems}
                     </div>
@@ -1439,7 +1500,7 @@ function App() {
                       <div className={`fixed inset-0 z-[65] bg-black/20 transition-opacity duration-200 ${navClosing ? 'opacity-0' : 'opacity-100'}`} onClick={closeNavMenu} />
                       <div ref={navPanelRef}
                         onAnimationEnd={(e) => { if (navClosing && e.target === navPanelRef.current) { setNavClosing(false); setNavMenuOpen(false) } }}
-                        className={`fixed top-0 inset-x-0 h-3/5 bg-white py-2 z-[70] rounded-b-3xl shadow-xl ${navClosing ? 'nav-flow-up' : 'nav-flow-down'}`}
+                        className={`fixed top-0 inset-x-0 h-3/5 bg-white py-2 z-[70] rounded-b-3xl overflow-hidden shadow-xl ${navClosing ? 'nav-flow-up' : 'nav-flow-down'}`}
                         style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
                         <div className="flex justify-end px-4 py-2">
                           <button onClick={closeNavMenu} className="p-2 text-[#7a7265]">
@@ -1718,6 +1779,7 @@ function App() {
             onDeleteCategory={handleDeleteCategory}
             onToggleRecipeCategory={handleToggleRecipeCategory}
             onRenameCategory={handleRenameCategory}
+            onRecolorCategory={handleRecolorCategory}
             onHandleChange={setUserHandle}
             openSettings={openProfileSettings}
             onSettingsOpened={() => setOpenProfileSettings(false)}
@@ -1731,7 +1793,10 @@ function App() {
             <div className="flex items-center justify-between mb-6 gap-2">
               <div className="h-9 w-20 rounded-xl bg-[#e8e4dc]/60" />
               <div className="flex items-center gap-2">
+                {/* matches the detail toolbar: Share · Saved · Edit · Delete */}
                 <div className="h-9 w-9 sm:w-20 rounded-xl bg-[#e8e4dc]/60" />
+                <div className="h-9 w-9 sm:w-20 rounded-xl bg-[#e8e4dc]/60" />
+                <div className="h-9 w-9 sm:w-16 rounded-xl bg-[#e8e4dc]/60" />
                 <div className="h-9 w-9 sm:w-20 rounded-xl bg-[#e8e4dc]/60" />
               </div>
             </div>
@@ -1805,6 +1870,7 @@ function App() {
                 onSave={handleAddRecipe}
                 onOpenUrlModal={() => setShowUrlModal(true)}
                 userCategories={userCategories}
+                currentCategoryIds={recipeCategories[editingRecipe?.id] || []}
                 onCreateCategory={handleCreateCategory}
                 cookCount={cookCounts[editingRecipe?.id] || 0}
               />
@@ -1819,16 +1885,19 @@ function App() {
           <div className="fixed inset-0 z-[60] backdrop-blur-sm bg-black/30" onClick={() => setShowUrlModal(false)}></div>
           <div className="fixed inset-0 flex items-center justify-center z-[70] p-4" onClick={() => setShowUrlModal(false)}>
             <div onClick={(e) => e.stopPropagation()} className="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-lg overflow-hidden" style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
-              {/* Branded header band — gray, mirrors the login / recipe-form bands */}
-              <div className="-mx-6 -mt-6 sm:-mx-8 sm:-mt-8 px-6 sm:px-8 pt-5 pb-6 mb-6 bg-gradient-to-br from-[#7a7265] to-[#5a5248]">
-                <div className="flex items-center justify-end">
-                  <button onClick={() => setShowUrlModal(false)} className="text-white/85 hover:text-white transition-colors">
-                    <X className="w-5 h-5" />
-                  </button>
+              {/* Branded header band — gray, matches the settings menu */}
+              <div className="relative -mx-6 -mt-6 sm:-mx-8 sm:-mt-8 px-6 sm:px-8 pt-7 pb-7 mb-6 bg-gradient-to-br from-[#7a7265] to-[#5a5248]">
+                <button onClick={() => setShowUrlModal(false)} className="absolute top-4 end-4 text-white/85 hover:text-white transition-colors">
+                  <X className="w-5 h-5" />
+                </button>
+                <div className="flex flex-col items-center gap-3">
+                  <div className="w-14 h-14 rounded-2xl bg-white/15 backdrop-blur flex items-center justify-center ring-1 ring-white/25">
+                    <LinkIcon className="w-7 h-7 text-white" />
+                  </div>
+                  <h2 className="text-center text-2xl font-bold tracking-tight text-white">
+                    {language === 'en' ? 'Import Recipe from URL' : 'ייבא מתכון מקישור'}
+                  </h2>
                 </div>
-                <h2 className="text-center text-2xl font-bold tracking-tight text-white mt-1">
-                  {language === 'en' ? 'Import Recipe from URL' : 'ייבא מתכון מקישור'}
-                </h2>
               </div>
               
               {!canScrape ? (
@@ -1851,17 +1920,24 @@ function App() {
                   <label className="block text-sm font-medium text-[#3d3429] mb-2">
                     {language === 'en' ? 'Recipe URL' : 'לינק למתכון'}
                   </label>
-                  <input
-                    type="url"
-                    value={urlInput}
-                    onChange={(e) => setUrlInput(e.target.value)}
-                    placeholder='https://example.com/recipe'
-                    className="w-full px-4 py-3 bg-[#faf9f7] text-left border border-[#e8e4dc] rounded-2xl text-[#3d3429] placeholder:text-[#7a7265] focus:outline-none focus:ring-2 focus:ring-[#cf711f]/20 focus:border-[#cf711f] transition-all"
-                  />
-                  <p className={`text-xs text-[#7a7265] mt-2 ${isRtl ? 'text-right' : 'text-left'}`}>
-                    {language === 'en'
-                      ? 'Paste the URL of a recipe webpage. AI will extract the recipe details automatically.'
-                      : 'הדבק את כתובת ה-URL של דף המתכון. בינה מלאכותית תחלץ את פרטי המתכון באופן אוטומטי.'}
+                  <div className="relative">
+                    <LinkIcon className="w-4 h-4 text-[#7a7265] absolute top-1/2 -translate-y-1/2 left-4 pointer-events-none" />
+                    <input
+                      type="url"
+                      dir="ltr"
+                      value={urlInput}
+                      onChange={(e) => setUrlInput(e.target.value)}
+                      placeholder='https://example.com/recipe'
+                      className="w-full pl-11 pr-4 py-3 bg-[#faf9f7] text-left border border-[#e8e4dc] rounded-2xl text-[#3d3429] placeholder:text-[#7a7265] focus:outline-none focus:ring-2 focus:ring-[#cf711f]/20 focus:border-[#cf711f] transition-all"
+                    />
+                  </div>
+                  <p className="flex items-start gap-1.5 text-xs text-[#7a7265] mt-2 text-start">
+                    <Sparkles className="w-3.5 h-3.5 text-[#cf711f] flex-shrink-0 mt-0.5" />
+                    <span>
+                      {language === 'en'
+                        ? 'Paste the URL of a recipe webpage. AI will extract the recipe details automatically.'
+                        : 'הדבק כתובת למתכון, אנחנו נשלוף את כל הפרטים.'}
+                    </span>
                   </p>
                 </div>
 
@@ -1883,7 +1959,10 @@ function App() {
                         <span>{language === 'en' ? 'Importing...' : 'מייבא...'}</span>
                       </>
                     ) : (
-                      <span>{language === 'en' ? 'Import' : 'ייבא'}</span>
+                      <>
+                        <Sparkles className="w-4 h-4" />
+                        <span>{language === 'en' ? 'Import' : 'ייבא'}</span>
+                      </>
                     )}
                   </button>
                 </div>
@@ -1916,6 +1995,7 @@ function App() {
           title={confirmDialog.title}
           message={confirmDialog.message}
           confirmLabel={confirmDialog.confirmLabel}
+          icon={confirmDialog.icon}
           onConfirm={confirmDialog.onConfirm}
           onCancel={confirmDialog.onCancel}
         />

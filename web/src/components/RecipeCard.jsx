@@ -1,6 +1,7 @@
 ﻿import { useState } from 'react'
-import { Share2, Heart } from 'lucide-react'
+import { Share2, Heart, Carrot } from 'lucide-react'
 import { buildShareText } from '../utils/shareRecipe'
+import { MarbleSpine } from './MarbleSpine'
 import { ShareQR } from './ShareQR'
 
 export function RecipeCardSkeleton() {
@@ -43,20 +44,28 @@ export function RecipeCard({ recipe, language = 'en', apiBase = '/api', onSelect
     } catch (err) {}
   }
 
+  // null color = intentional "no color" → plain white header.
+  const color = recipe.categoryColor
+  const spineColors = recipe.categoryColors?.length ? recipe.categoryColors : (color ? [color] : [])
+
   return (
-    <div className="group relative w-full bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-all duration-300 border border-[#e8e4dc]/50 cursor-pointer flex flex-col" onClick={() => onSelect(recipe)}>
+    <div
+      className="group relative w-full bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 border border-[#e8e4dc]/50 cursor-pointer flex flex-col"
+      onClick={() => onSelect(recipe)}
+    >
+      <MarbleSpine colors={spineColors} id={recipe.id} />
       {showQR && <ShareQR recipe={recipe} language={language} copied={copied} onShare={handleShare} onClose={() => setShowQR(false)} />}
-      {/* Header area with title and buttons */}
-      <div className={`px-5 pt-5 pb-1 border-b border-[#e8e4dc]/30 flex items-center gap-3`} style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
+      {/* Header — color lives on the left spine (card border), so the header stays plain white. */}
+      <div className="px-5 pt-5 pb-1 border-b border-[#e8e4dc]/30 flex items-center gap-3" style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
         <h3 className={`font-semibold text-[#3d3429] text-lg group-hover:text-[#cf711f] transition-colors line-clamp-1 ${isRtl ? 'text-right' : 'text-left'} flex-1`}>
           {recipe.title}
         </h3>
-        
-        {/* Action button */}
-        <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+
+        {/* Action button — faintly visible on touch, hover-only on desktop */}
+        <div className="flex items-center gap-1.5 opacity-70 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity flex-shrink-0">
           <button
             onClick={e => { e.stopPropagation(); setShowQR(true) }}
-            className="w-8 h-8 rounded-lg bg-white/90 backdrop-blur flex items-center justify-center text-[#7a7265] hover:text-[#cf711f] hover:bg-white transition-colors shadow-sm border border-[#e8e4dc]/50"
+            className="w-8 h-8 rounded-lg bg-white/80 backdrop-blur flex items-center justify-center text-[#7a7265] hover:text-[#cf711f] hover:bg-white transition-colors shadow-sm border border-[#e8e4dc]/50"
           >
             <Share2 className="w-3.5 h-3.5" />
           </button>
@@ -68,13 +77,21 @@ export function RecipeCard({ recipe, language = 'en', apiBase = '/api', onSelect
         <p className={`text-[#7a7265] text-sm line-clamp-1 flex-grow ${isRtl ? 'text-right' : 'text-left'}`}>
           {recipe.description}
         </p>
-        
+
           <div className="border-t border-[#e8e4dc] pt-2 mt-2">
-            <div className="flex justify-between items-center" style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
-              <span className="flex text-xs text-[#7a7265]">
-                {recipe.ingredients.length} {language === 'en' ? 'ingredients' : 'מצרכים'}
-              </span>
-              <div className="flex items-center gap-2">
+            <div className="flex justify-between items-center gap-2" style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
+              <div className="flex items-center gap-2 min-w-0">
+                {showCategory && recipe.category && (
+                  <span className="text-[11px] font-semibold uppercase tracking-wide truncate" style={{ color: color || '#a39b8d' }}>
+                    {recipe.category}
+                  </span>
+                )}
+                <span className="flex items-center gap-1 text-xs text-[#7a7265] flex-shrink-0" title={language === 'en' ? 'ingredients' : 'מצרכים'}>
+                  <Carrot className="w-3.5 h-3.5" />
+                  {recipe.ingredients.length}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
                 {authorUsername && (
                   <button
                     onClick={e => { e.stopPropagation(); onSelectAuthor && onSelectAuthor(authorId) }}

@@ -1,9 +1,11 @@
-﻿import { User, BookOpen, Search, Filter, X, Settings, Plus, ChevronLeft, ChevronRight, LogOut } from 'lucide-react';
+﻿import { User, BookOpen, Search, Filter, X, Settings, Plus, ChevronLeft, ChevronRight, LogOut, Pencil, Trash2, Check, Globe, Lock } from 'lucide-react';
 import { RecipeCard, RecipeCardSkeleton } from './RecipeCard';
 import { ConfirmDialog } from './ConfirmDialog';
 import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { supabase } from '../supabaseClient';
 import { swr } from '../utils/cache';
+import { CATEGORY_PALETTE, CHECKERBOARD } from '../utils/categoryColor';
 
 // Virtual category sentinel — recipes with no category assignments live here. ponytail: no DB row, pure client filter.
 const UNCATEGORIZED = '\0uncategorized';
@@ -26,6 +28,7 @@ export function UserProfile({
   onDeleteCategory,
   onToggleRecipeCategory,
   onRenameCategory,
+  onRecolorCategory,
   onHandleChange,
   openSettings = false,
   onSettingsOpened,
@@ -63,8 +66,20 @@ export function UserProfile({
   const avatarUrl = rawAvatarUrl?.replace(/=s\d+.*$/, '=s288-c-no');
   const avatarUrlLarge = rawAvatarUrl?.replace(/=s\d+.*$/, '=s800-c-no');
   const [showAvatarFull, setShowAvatarFull] = useState(false);
+  // Start on the already-cached small image so the lightbox opens instantly; upgrade to large on load.
+  const [lightboxSrc, setLightboxSrc] = useState(avatarUrl);
 
   // Lock page scroll while the avatar lightbox is open
+  // When the lightbox opens, reset to the cached small image then preload the large one.
+  useEffect(() => {
+    if (!showAvatarFull || !avatarUrlLarge) return;
+    setLightboxSrc(avatarUrl);
+    const big = new Image();
+    big.referrerPolicy = 'no-referrer';
+    big.onload = () => setLightboxSrc(avatarUrlLarge);
+    big.src = avatarUrlLarge;
+  }, [showAvatarFull, avatarUrl, avatarUrlLarge]);
+
   useEffect(() => {
     if (!showAvatarFull) return;
     const prev = document.body.style.overflow;
@@ -86,9 +101,12 @@ export function UserProfile({
     if (openSettings) { setShowSettings(true); onSettingsOpened?.(); }
   }, [openSettings]);
   const [defaultVisibility, setDefaultVisibility] = useState(() => localStorage.getItem('defaultRecipeVisibility') || 'private');
+  // {id, x, y} — popover is portaled to body (modal has backdrop-blur which clips fixed children).
+  const [recolor, setRecolor] = useState(null);
   const [editingCategoryId, setEditingCategoryId] = useState(null);
   const [editingCategoryName, setEditingCategoryName] = useState('');
   const [newCategoryInput, setNewCategoryInput] = useState('');
+  const [newCategoryColor, setNewCategoryColor] = useState(CATEGORY_PALETTE[0]);
   const [showNewCategoryInput, setShowNewCategoryInput] = useState(false);
   const [confirmDialog, setConfirmDialog] = useState(null);
   const newCategoryInputRef = useRef(null);
@@ -177,6 +195,8 @@ export function UserProfile({
           id: recipe.id,
           title: recipe.name,
           category: recipe.recipe_categories?.[0]?.categories?.name || null,
+          categoryColor: recipe.recipe_categories?.[0]?.categories?.color || null,
+          categoryColors: recipe.recipe_categories?.map(rc => rc.categories?.color).filter(Boolean) || [],
           description: recipe.description,
           ingredients: recipe.ingredients,
           instructions: recipe.instructions,
@@ -267,6 +287,7 @@ export function UserProfile({
           ? 'This will permanently delete your account and all your recipes. This cannot be undone.'
           : 'פעולה זו תמחק לצמיתות את חשבונך וכל המתכונים שלך. לא ניתן לבטל.',
         confirmLabel: language === 'en' ? 'Delete account' : 'מחק חשבון',
+        icon: Trash2,
         onConfirm: () => { setConfirmDialog(null); resolve(true); },
         onCancel: () => { setConfirmDialog(null); resolve(false); },
       });
@@ -418,18 +439,23 @@ export function UserProfile({
               >
                 {language === 'en' ? 'Uncategorized' : 'ללא קטגוריה'}
               </button>
-              {userCategories.map(cat => (
-                <button
-                  key={cat.id}
-                  onClick={() => setSelectedCategoryName(selectedCategoryName === cat.name ? null : cat.name)}
-                  className={`flex-shrink-0 rounded-full text-sm font-medium transition-colors px-3 py-1.5 ${
-                    selectedCategoryName === cat.name ? 'bg-[#e67e22] text-white' : 'bg-white border border-[#e8e4dc] text-[#7a7265] hover:border-[#e67e22]/40'
-                  }`}
-                >
-                  {cat.name}
-                </button>
-              ))}
-              {showNewCategoryInput ? (
+              {userCategories.map(cat => {
+                const selected = selectedCategoryName === cat.name;
+                return (
+                  <button
+                    key={cat.id}
+                    onClick={() => setSelectedCategoryName(selected ? null : cat.name)}
+                    className={`flex-shrink-0 inline-flex items-center gap-1.5 rounded-full text-sm font-medium transition-colors px-3 py-1.5 border ${selected ? 'text-white border-transparent' : 'bg-white text-[#7a7265]'}`}
+                    style={selected
+                      ? { backgroundColor: cat.color || '#e67e22' }
+                      : { borderColor: cat.color ? `${cat.color}66` : '#e8e4dc' }}
+                  >
+                    <span className="w-2 h-2 rounded-full flex-shrink-0" style={selected ? { backgroundColor: '#fff' } : (cat.color ? { backgroundColor: cat.color } : CHECKERBOARD)} />
+                    {cat.name}
+                  </button>
+                );
+              })}
+              {showNewCategoryInput && !showSettings ? (
                 <form
                   onSubmit={async e => {
                     e.preventDefault();
@@ -572,7 +598,7 @@ export function UserProfile({
           <div className="fixed inset-0 z-40 backdrop-blur-sm bg-black/60" onClick={() => setShowAvatarFull(false)} />
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={() => setShowAvatarFull(false)}>
             <img
-              src={avatarUrlLarge}
+              src={lightboxSrc}
               alt={displayName}
               referrerPolicy="no-referrer"
               className="w-[min(80vw,80vh,28rem)] h-[min(80vw,80vh,28rem)] object-cover rounded-full shadow-xl"
@@ -607,11 +633,29 @@ export function UserProfile({
                     <X className="w-5 h-5" />
                   </button>
                 </div>
-                <h2 className="text-center text-2xl font-bold tracking-tight text-white mt-1">
-                  {showRecipeSettings
-                    ? (language === 'en' ? 'Recipe Settings' : 'הגדרות מתכונים')
-                    : (language === 'en' ? 'Settings' : 'הגדרות')}
-                </h2>
+                <div className="flex flex-col items-center mt-1">
+                  <span className="w-14 h-14 rounded-2xl bg-white/15 flex items-center justify-center mb-2.5">
+                    {showEditProfile
+                      ? <User className="w-7 h-7 text-white" />
+                      : showRecipeSettings
+                        ? <BookOpen className="w-7 h-7 text-white" />
+                        : <Settings className="w-7 h-7 text-white" />}
+                  </span>
+                  <h2 className="text-2xl font-bold tracking-tight text-white">
+                    {showEditProfile
+                      ? (language === 'en' ? 'Edit Profile' : 'עריכת פרופיל')
+                      : showRecipeSettings
+                        ? (language === 'en' ? 'Recipe Settings' : 'הגדרות מתכונים')
+                        : (language === 'en' ? 'Settings' : 'הגדרות')}
+                  </h2>
+                  <p className="text-sm text-white/70 mt-0.5">
+                    {showEditProfile
+                      ? (language === 'en' ? 'Your public details' : 'הפרטים הציבוריים שלך')
+                      : showRecipeSettings
+                        ? (language === 'en' ? 'Visibility & categories' : 'נראות וקטגוריות')
+                        : <span dir="ltr">@{ownProfile?.username || ''}</span>}
+                  </p>
+                </div>
               </div>
 
               {/* Modal Body */}
@@ -628,7 +672,8 @@ export function UserProfile({
                         onChange={e => setEditDisplayName(e.target.value.replace(/[^A-Za-z0-9 '.\-]/g, ''))}
                         maxLength={64}
                         placeholder={language === 'en' ? 'Your name' : 'השם שלך'}
-                        className="w-full px-4 py-2.5 bg-[#faf9f7] border border-[#e8e4dc] rounded-2xl text-[#3d3429] focus:outline-none focus:ring-2 focus:ring-[#cf711f]/20 focus:border-[#cf711f] text-sm transition-all"
+                        dir="ltr"
+                        className="w-full px-4 py-2.5 bg-[#faf9f7] border border-[#e8e4dc] rounded-2xl text-[#3d3429] focus:outline-none focus:ring-2 focus:ring-[#cf711f]/20 focus:border-[#cf711f] text-sm transition-all text-start"
                       />
                       <p className="text-xs text-[#7a7265] mt-1">{language === 'en' ? 'English letters only' : 'אותיות באנגלית בלבד'}</p>
                     </div>
@@ -644,15 +689,19 @@ export function UserProfile({
                           onChange={e => setEditHandle(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
                           maxLength={32}
                           placeholder="yourhandle"
-                          className="w-full pl-8 pr-4 py-2.5 bg-[#faf9f7] border border-[#e8e4dc] rounded-2xl text-[#3d3429] focus:outline-none focus:ring-2 focus:ring-[#cf711f]/20 focus:border-[#cf711f] text-sm transition-all"
+                          dir="ltr"
+                          className="w-full pl-8 pr-4 py-2.5 bg-[#faf9f7] border border-[#e8e4dc] rounded-2xl text-[#3d3429] focus:outline-none focus:ring-2 focus:ring-[#cf711f]/20 focus:border-[#cf711f] text-sm transition-all text-start"
                         />
                       </div>
                       <p className="text-xs text-[#7a7265] mt-1">{language === 'en' ? 'Letters, numbers and underscores only' : 'אותיות, מספרים וקווים תחתונים בלבד'}</p>
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold text-[#7a7265] uppercase tracking-wide mb-1.5">
-                        {language === 'en' ? 'Bio' : 'ביוגרפיה'}
-                      </label>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="block text-xs font-semibold text-[#7a7265] uppercase tracking-wide">
+                          {language === 'en' ? 'Bio' : 'ביוגרפיה'}
+                        </label>
+                        <span className="text-xs text-[#a39b8d]">{editBio.length}/100</span>
+                      </div>
                       <textarea
                         value={editBio}
                         onChange={e => { if (e.target.value.split('\n').length <= 3) setEditBio(e.target.value); }}
@@ -679,9 +728,16 @@ export function UserProfile({
                     <div className="pt-4 border-t border-[#e8e4dc] mt-2">
                       <button
                         onClick={handleDeleteAccount}
-                        className="w-full text-start px-4 py-3 rounded-2xl text-red-500 hover:bg-red-50 transition-colors text-sm font-medium"
+                        className="group w-full flex items-center gap-3 px-3 py-3 rounded-2xl border border-red-100 bg-red-50/50 hover:bg-red-50 hover:border-red-200 transition-colors"
                       >
-                        {language === 'en' ? 'Delete account' : 'מחיקת חשבון'}
+                        <span className="w-9 h-9 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
+                          <Trash2 className="w-[18px] h-[18px] text-red-500" />
+                        </span>
+                        <span className="flex-1 text-start min-w-0">
+                          <span className="block text-sm font-semibold text-[#3d3429]">{language === 'en' ? 'Delete account' : 'מחיקת חשבון'}</span>
+                          <span className="block text-xs text-[#7a7265]">{language === 'en' ? 'Permanently remove your account' : 'מחיקה לצמיתות של החשבון'}</span>
+                        </span>
+                        {isRtl ? <ChevronLeft className="w-4 h-4 text-red-300 group-hover:text-red-500 flex-shrink-0" /> : <ChevronRight className="w-4 h-4 text-red-300 group-hover:text-red-500 flex-shrink-0" />}
                       </button>
                     </div>
                   </div>
@@ -690,19 +746,20 @@ export function UserProfile({
                     {/* Default Visibility */}
                     <div>
                       <p className="text-xs font-semibold text-[#7a7265] uppercase tracking-wide mb-2">
-                        {language === 'en' ? 'Default Visibility' : 'נראות ברירת מחדל'}
+                        {language === 'en' ? 'Default Visibility For New Recipes' : 'נראות ברירת מחדל של מתכונים חדשים'}
                       </p>
                       <div className="flex gap-2">
                         {['public', 'private'].map(v => (
                           <button
                             key={v}
                             onClick={() => handleSetDefaultVisibility(v)}
-                            className={`flex-1 py-2.5 rounded-2xl text-sm font-medium transition-colors border ${
+                            className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-2xl text-sm font-medium transition-colors border ${
                               defaultVisibility === v
                                 ? 'bg-[#e67e22] text-white border-[#e67e22]'
                                 : 'bg-[#faf9f7] text-[#3d3429] border-[#e8e4dc] hover:bg-[#f5f3ef]'
                             }`}
                           >
+                            {v === 'public' ? <Globe className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
                             {v === 'public'
                               ? (language === 'en' ? 'Public' : 'ציבורי')
                               : (language === 'en' ? 'Private' : 'פרטי')}
@@ -717,6 +774,11 @@ export function UserProfile({
                         {language === 'en' ? 'Categories' : 'קטגוריות'}
                       </p>
                       <div className="space-y-1">
+                        {userCategories.length === 0 && !showNewCategoryInput && (
+                          <p className="text-sm text-[#a39b8d] text-center py-3">
+                            {language === 'en' ? 'No categories yet' : 'אין קטגוריות עדיין'}
+                          </p>
+                        )}
                         {userCategories.map(cat => (
                           <div key={cat.id} className="flex items-center gap-2 px-3 py-2 rounded-2xl bg-[#faf9f7] border border-[#e8e4dc]">
                             {editingCategoryId === cat.id ? (
@@ -743,27 +805,41 @@ export function UserProfile({
                                     }
                                     setEditingCategoryId(null);
                                   }}
-                                  className="text-xs text-[#e67e22] font-medium hover:text-[#cf711f]"
+                                  title={language === 'en' ? 'Save' : 'שמור'}
+                                  className="w-7 h-7 flex items-center justify-center rounded-lg text-[#e67e22] hover:text-white hover:bg-[#e67e22] transition-colors"
                                 >
-                                  {language === 'en' ? 'Save' : 'שמור'}
+                                  <Check className="w-4 h-4" />
                                 </button>
                               </>
                             ) : (
                               <>
+                                <button
+                                  type="button"
+                                  title={language === 'en' ? 'Change color' : 'שנה צבע'}
+                                  onClick={e => {
+                                    const r = e.currentTarget.getBoundingClientRect();
+                                    setRecolor(recolor?.id === cat.id ? null : { id: cat.id, color: cat.color, x: r.left, y: r.bottom });
+                                  }}
+                                  className="w-4 h-4 rounded-full ring-1 ring-black/10 hover:scale-110 transition-transform flex-shrink-0"
+                                  style={cat.color ? { backgroundColor: cat.color } : CHECKERBOARD}
+                                />
                                 <span className="flex-1 text-sm text-[#3d3429] truncate min-w-0">{cat.name}</span>
                                 <button
+                                  title={language === 'en' ? 'Rename' : 'שנה שם'}
                                   onClick={() => { setEditingCategoryId(cat.id); setEditingCategoryName(cat.name); }}
-                                  className="text-xs text-[#7a7265] hover:text-[#3d3429] px-1"
+                                  className="w-7 h-7 flex items-center justify-center rounded-lg text-[#7a7265] hover:text-[#3d3429] hover:bg-[#e8e4dc]/60 transition-colors"
                                 >
-                                  {language === 'en' ? 'Rename' : 'שנה שם'}
+                                  <Pencil className="w-3.5 h-3.5" />
                                 </button>
                                 <button
+                                  title={language === 'en' ? 'Delete' : 'מחק'}
                                   onClick={() => {
                                     const confirmed = new Promise(resolve => {
                                       setConfirmDialog({
                                         title: language === 'en' ? `Delete "${cat.name}"?` : `למחוק את "${cat.name}"?`,
                                         message: language === 'en' ? 'Recipes in this category will not be deleted.' : 'המתכונים בקטגוריה זו לא יימחקו.',
                                         confirmLabel: language === 'en' ? 'Delete' : 'מחק',
+                                        icon: Trash2,
                                         onConfirm: () => { setConfirmDialog(null); resolve(true); },
                                         onCancel: () => { setConfirmDialog(null); resolve(false); },
                                       });
@@ -774,9 +850,9 @@ export function UserProfile({
                                       onDeleteCategory(cat.id);
                                     });
                                   }}
-                                  className="text-xs text-red-400 hover:text-red-600 px-1"
+                                  className="w-7 h-7 flex items-center justify-center rounded-lg text-red-400 hover:text-red-600 hover:bg-red-50 transition-colors"
                                 >
-                                  {language === 'en' ? 'Delete' : 'מחק'}
+                                  <Trash2 className="w-3.5 h-3.5" />
                                 </button>
                               </>
                             )}
@@ -785,49 +861,70 @@ export function UserProfile({
                       </div>
 
                       {showNewCategoryInput ? (
-                        <div className="flex gap-2 mt-2">
-                          <input
-                            ref={newCategoryInputRef}
-                            autoFocus
-                            value={newCategoryInput}
-                            onChange={e => setNewCategoryInput(e.target.value)}
-                            onKeyDown={async e => {
-                              if (e.key === 'Enter' && newCategoryInput.trim()) {
-                                await onCreateCategory(newCategoryInput.trim());
+                        <div className="mt-2 space-y-2">
+                          <div className="flex gap-2">
+                            <input
+                              ref={newCategoryInputRef}
+                              autoFocus
+                              value={newCategoryInput}
+                              onChange={e => setNewCategoryInput(e.target.value)}
+                              onKeyDown={async e => {
+                                if (e.key === 'Enter' && newCategoryInput.trim()) {
+                                  await onCreateCategory(newCategoryInput.trim(), newCategoryColor);
+                                  setNewCategoryInput('');
+                                  setNewCategoryColor(CATEGORY_PALETTE[0]);
+                                  setShowNewCategoryInput(false);
+                                }
+                                if (e.key === 'Escape') { setShowNewCategoryInput(false); setNewCategoryInput(''); }
+                              }}
+                              placeholder={language === 'en' ? 'Category name' : 'שם קטגוריה'}
+                              className="flex-1 px-3 py-2 bg-[#faf9f7] border border-[#e8e4dc] rounded-2xl text-sm text-[#3d3429] focus:outline-none focus:border-[#cf711f]"
+                            />
+                            <button
+                              onClick={async () => {
+                                if (newCategoryInput.trim()) await onCreateCategory(newCategoryInput.trim(), newCategoryColor);
                                 setNewCategoryInput('');
+                                setNewCategoryColor(CATEGORY_PALETTE[0]);
                                 setShowNewCategoryInput(false);
-                              }
-                              if (e.key === 'Escape') { setShowNewCategoryInput(false); setNewCategoryInput(''); }
-                            }}
-                            placeholder={language === 'en' ? 'Category name' : 'שם קטגוריה'}
-                            className="flex-1 px-3 py-2 bg-[#faf9f7] border border-[#e8e4dc] rounded-2xl text-sm text-[#3d3429] focus:outline-none focus:border-[#cf711f]"
-                          />
-                          <button
-                            onClick={async () => {
-                              if (newCategoryInput.trim()) await onCreateCategory(newCategoryInput.trim());
-                              setNewCategoryInput('');
-                              setShowNewCategoryInput(false);
-                            }}
-                            className="px-3 py-2 bg-[#e67e22] text-white rounded-2xl text-sm font-medium hover:bg-[#cf711f]"
-                          >
-                            {language === 'en' ? 'Add' : 'הוסף'}
-                          </button>
+                              }}
+                              className="px-3 py-2 bg-[#e67e22] text-white rounded-2xl text-sm font-medium hover:bg-[#cf711f]"
+                            >
+                              {language === 'en' ? 'Add' : 'הוסף'}
+                            </button>
+                          </div>
+                          <div className="flex flex-wrap gap-2 px-1">
+                            {CATEGORY_PALETTE.map(c => (
+                              <button
+                                key={c}
+                                type="button"
+                                onClick={() => setNewCategoryColor(c)}
+                                title={c}
+                                className={`w-6 h-6 rounded-full transition-transform hover:scale-110 ${newCategoryColor === c ? 'ring-2 ring-offset-2 ring-[#3d3429]' : ''}`}
+                                style={{ backgroundColor: c }}
+                              />
+                            ))}
+                            <button
+                              type="button"
+                              onClick={() => setNewCategoryColor(null)}
+                              title={language === 'en' ? 'No color' : 'ללא צבע'}
+                              className={`w-6 h-6 rounded-full ring-1 ring-black/10 transition-transform hover:scale-110 ${newCategoryColor === null ? 'ring-2 ring-offset-2 ring-[#3d3429]' : ''}`}
+                              style={CHECKERBOARD}
+                            />
+                          </div>
                         </div>
                       ) : (
                         <button
                           onClick={() => setShowNewCategoryInput(true)}
-                          className="mt-2 w-full px-4 py-2.5 bg-[#faf9f7] border border-dashed border-[#e8e4dc] rounded-2xl text-sm text-[#7a7265] hover:bg-[#f5f3ef] hover:text-[#3d3429] transition-colors"
+                          className="mt-2 w-full flex items-center justify-center gap-1.5 px-4 py-2.5 bg-[#faf9f7] border border-dashed border-[#e8e4dc] rounded-2xl text-sm text-[#7a7265] hover:bg-[#f5f3ef] hover:text-[#3d3429] hover:border-[#cf711f]/40 transition-colors"
                         >
-                          + {language === 'en' ? 'Add category' : 'הוסף קטגוריה'}
+                          <Plus className="w-4 h-4" />
+                          {language === 'en' ? 'Add category' : 'הוסף קטגוריה'}
                         </button>
                       )}
                     </div>
                   </div>
                 ) : (
-                  <>
-                    <p className="text-xs font-semibold text-[#7a7265] uppercase tracking-wide px-2 pb-1">
-                      {language === 'en' ? 'Account' : 'חשבון'}
-                    </p>
+                  <div className="space-y-2 py-1">
                     <button
                       onClick={() => {
                         setEditDisplayName(ownProfile?.display_name || '');
@@ -835,29 +932,48 @@ export function UserProfile({
                         setEditBio(ownProfile?.bio || '');
                         setShowEditProfile(true);
                       }}
-                      className="w-full text-start px-4 py-3 rounded-2xl text-[#3d3429] hover:bg-[#f5f3ef] transition-colors text-sm font-medium"
+                      className="group w-full flex items-center gap-3 px-3 py-3 rounded-2xl bg-[#faf9f7] border border-[#e8e4dc] hover:border-[#cf711f]/40 hover:bg-[#f5f3ef] transition-all"
                     >
-                      {language === 'en' ? 'Edit profile' : 'עריכת פרופיל'}
+                      <span className="w-9 h-9 rounded-full bg-[#e67e22]/10 flex items-center justify-center flex-shrink-0">
+                        <User className="w-[18px] h-[18px] text-[#e67e22]" />
+                      </span>
+                      <span className="flex-1 text-start min-w-0">
+                        <span className="block text-sm font-semibold text-[#3d3429]">{language === 'en' ? 'Edit profile' : 'עריכת פרופיל'}</span>
+                        <span className="block text-xs text-[#7a7265] truncate">{language === 'en' ? 'Name, handle, bio' : 'שם, שם משתמש, ביוגרפיה'}</span>
+                      </span>
+                      {isRtl ? <ChevronLeft className="w-4 h-4 text-[#cdc6ba] group-hover:text-[#cf711f] flex-shrink-0" /> : <ChevronRight className="w-4 h-4 text-[#cdc6ba] group-hover:text-[#cf711f] flex-shrink-0" />}
                     </button>
-                    <p className="text-xs font-semibold text-[#7a7265] uppercase tracking-wide px-2 pt-3 pb-1">
-                      {language === 'en' ? 'Recipes' : 'מתכונים'}
-                    </p>
                     <button
                       onClick={() => setShowRecipeSettings(true)}
-                      className="w-full text-start px-4 py-3 rounded-2xl text-[#3d3429] hover:bg-[#f5f3ef] transition-colors text-sm font-medium"
+                      className="group w-full flex items-center gap-3 px-3 py-3 rounded-2xl bg-[#faf9f7] border border-[#e8e4dc] hover:border-[#cf711f]/40 hover:bg-[#f5f3ef] transition-all"
                     >
-                      {language === 'en' ? 'Recipe settings' : 'הגדרות מתכונים'}
+                      <span className="w-9 h-9 rounded-full bg-[#e67e22]/10 flex items-center justify-center flex-shrink-0">
+                        <BookOpen className="w-[18px] h-[18px] text-[#e67e22]" />
+                      </span>
+                      <span className="flex-1 text-start min-w-0">
+                        <span className="block text-sm font-semibold text-[#3d3429]">{language === 'en' ? 'Recipe settings' : 'הגדרות מתכונים'}</span>
+                        <span className="block text-xs text-[#7a7265] truncate">{language === 'en' ? 'Visibility, categories' : 'נראות, קטגוריות'}</span>
+                      </span>
+                      {isRtl ? <ChevronLeft className="w-4 h-4 text-[#cdc6ba] group-hover:text-[#cf711f] flex-shrink-0" /> : <ChevronRight className="w-4 h-4 text-[#cdc6ba] group-hover:text-[#cf711f] flex-shrink-0" />}
                     </button>
-                    <div className="pt-4 mt-3 border-t border-[#e8e4dc]">
-                      <button
-                        onClick={() => { closeSettings(); if (onLogout) onLogout(); }}
-                        className={`w-full flex ${isRtl ? 'flex-row-reverse' : ''} items-center justify-center gap-2 px-4 py-3 bg-red-500 text-white rounded-2xl hover:bg-red-600 transition-colors text-sm font-semibold`}
-                      >
-                        <LogOut className="w-4 h-4" />
-                        {language === 'en' ? 'Logout' : 'התנתקות'}
-                      </button>
-                    </div>
-                  </>
+                    <button
+                      onClick={() => {
+                        setConfirmDialog({
+                          title: language === 'en' ? 'Log out?' : 'להתנתק?',
+                          message: language === 'en' ? 'You can hop back in anytime.' : 'אפשר לחזור בכל רגע.',
+                          confirmLabel: language === 'en' ? 'Log out' : 'התנתק',
+                          icon: LogOut,
+                          danger: false,
+                          onConfirm: () => { setConfirmDialog(null); closeSettings(); if (onLogout) onLogout(); },
+                          onCancel: () => setConfirmDialog(null),
+                        });
+                      }}
+                      className={`w-full flex ${isRtl ? 'flex-row-reverse' : ''} items-center justify-center gap-2 mt-1 px-4 py-3 bg-red-500 text-white rounded-2xl hover:bg-red-600 transition-colors text-sm font-semibold`}
+                    >
+                      <LogOut className="w-4 h-4" />
+                      {language === 'en' ? 'Logout' : 'התנתקות'}
+                    </button>
+                  </div>
                 )}
               </div>
 
@@ -872,9 +988,37 @@ export function UserProfile({
           title={confirmDialog.title}
           message={confirmDialog.message}
           confirmLabel={confirmDialog.confirmLabel}
+          icon={confirmDialog.icon}
           onConfirm={confirmDialog.onConfirm}
           onCancel={confirmDialog.onCancel}
         />
+      )}
+      {recolor && createPortal(
+        <>
+          <div className="fixed inset-0 z-[60]" onClick={() => setRecolor(null)} />
+          <div
+            className="fixed z-[61] p-2 bg-white rounded-2xl shadow-xl border border-[#e8e4dc] grid grid-cols-3 gap-2"
+            style={{ top: Math.min(recolor.y + 6, window.innerHeight - 130), left: Math.min(recolor.x, window.innerWidth - 130) }}
+          >
+            {CATEGORY_PALETTE.map(c => (
+              <button
+                key={c}
+                type="button"
+                onClick={() => { onRecolorCategory?.(recolor.id, c); setRecolor(null); }}
+                className={`w-7 h-7 rounded-full transition-transform hover:scale-110 ${recolor.color === c ? 'ring-2 ring-offset-1 ring-[#3d3429]' : ''}`}
+                style={{ backgroundColor: c }}
+              />
+            ))}
+            <button
+              type="button"
+              title={language === 'en' ? 'No color' : 'ללא צבע'}
+              onClick={() => { onRecolorCategory?.(recolor.id, null); setRecolor(null); }}
+              className={`w-7 h-7 rounded-full ring-1 ring-black/10 transition-transform hover:scale-110 ${!recolor.color ? 'ring-2 ring-offset-1 ring-[#3d3429]' : ''}`}
+              style={CHECKERBOARD}
+            />
+          </div>
+        </>,
+        document.body
       )}
     </div>
   );

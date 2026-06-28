@@ -103,6 +103,13 @@
   animation: veg-jump 0.9s ease-in-out both;
 }
 
+/* Confirm dialog pop-in */
+@keyframes confirm-pop {
+  from { transform: scale(0.92); opacity: 0; }
+  to   { transform: scale(1);    opacity: 1; }
+}
+.confirm-pop { animation: confirm-pop 0.2s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
 /* Nav menu slide animations — mobile only (desktop dropdown appears instantly) */
 @keyframes nav-flow-down {
   from { transform: translateY(-100%); opacity: 0.4; }
