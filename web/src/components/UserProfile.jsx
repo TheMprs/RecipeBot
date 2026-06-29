@@ -581,6 +581,10 @@ export function UserProfile({
               onSelect={onSelectRecipe}
               showCategory={false}
               likeCount={likeCounts[recipe.id]}
+              userCategories={isOwnProfile ? userCategories : undefined}
+              currentRecipeCategories={isOwnProfile ? (recipeCategories[recipe.id] || []) : undefined}
+              onToggleRecipeCategory={isOwnProfile ? onToggleRecipeCategory : undefined}
+              onCreateCategory={isOwnProfile ? onCreateCategory : undefined}
             />
           ))}
         </div>

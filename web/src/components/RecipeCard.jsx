@@ -3,6 +3,7 @@ import { Share2, Heart, Carrot } from 'lucide-react'
 import { buildShareText } from '../utils/shareRecipe'
 import { MarbleSpine } from './MarbleSpine'
 import { ShareQR } from './ShareQR'
+import { SaveToMenu } from './SaveToMenu'
 
 export function RecipeCardSkeleton() {
   return (
@@ -24,10 +25,11 @@ export function RecipeCardSkeleton() {
   )
 }
 
-export function RecipeCard({ recipe, language = 'en', apiBase = '/api', onSelect, showCategory = true, likeCount, authorUsername, authorId, onSelectAuthor }) {
+export function RecipeCard({ recipe, language = 'en', apiBase = '/api', onSelect, showCategory = true, likeCount, authorUsername, authorId, onSelectAuthor, userCategories, currentRecipeCategories, onToggleRecipeCategory, onCreateCategory }) {
   const isRtl = language === 'he'
   const [copied, setCopied] = useState(false)
   const [showQR, setShowQR] = useState(false)
+  const [saveOpen, setSaveOpen] = useState(false)
 
   const handleShare = async (e) => {
     e?.stopPropagation()
@@ -49,10 +51,17 @@ export function RecipeCard({ recipe, language = 'en', apiBase = '/api', onSelect
   const spineColors = recipe.categoryColors?.length ? recipe.categoryColors : (color ? [color] : [])
 
   return (
+    // OUTER is the static hover target (no transform) + holds the shadow unclipped — so the
+    // lift never moves the card out from under the cursor (that oscillation was the stutter),
+    // and clip-path on the inner doesn't clip the shadow off.
+    // INNER does the visual lift and uses clip-path to keep the colored spine inside the
+    // rounded corners while transformed (plain overflow+radius leaks the spine past the
+    // corner during a transform in Chrome).
     <div
-      className="group relative w-full bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 border border-[#e8e4dc]/50 cursor-pointer flex flex-col"
+      className="group relative w-full h-full rounded-2xl shadow-sm hover:shadow-md transition-shadow duration-300 cursor-pointer flex flex-col"
       onClick={() => onSelect(recipe)}
     >
+      <div className="relative flex-1 bg-white border border-[#e8e4dc]/50 flex flex-col group-hover:-translate-y-0.5 transition-transform duration-300" style={{ clipPath: 'inset(0 round 1rem)' }}>
       <MarbleSpine colors={spineColors} id={recipe.id} />
       {showQR && <ShareQR recipe={recipe} language={language} copied={copied} onShare={handleShare} onClose={() => setShowQR(false)} />}
       {/* Header — color lives on the left spine (card border), so the header stays plain white. */}
@@ -62,7 +71,20 @@ export function RecipeCard({ recipe, language = 'en', apiBase = '/api', onSelect
         </h3>
 
         {/* Action button — faintly visible on touch, hover-only on desktop */}
-        <div className="flex items-center gap-1.5 opacity-70 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity flex-shrink-0">
+        <div className={`flex items-center gap-1.5 opacity-70 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity flex-shrink-0 ${saveOpen ? 'sm:opacity-100' : ''}`}>
+          {onToggleRecipeCategory && (
+            <SaveToMenu
+              compact
+              recipe={recipe}
+              language={language}
+              accent={color || undefined}
+              userCategories={userCategories}
+              currentRecipeCategories={currentRecipeCategories}
+              onToggleRecipeCategory={onToggleRecipeCategory}
+              onCreateCategory={onCreateCategory}
+              onOpenChange={setSaveOpen}
+            />
+          )}
           <button
             onClick={e => { e.stopPropagation(); setShowQR(true) }}
             className="w-8 h-8 rounded-lg bg-white/80 backdrop-blur flex items-center justify-center text-[#7a7265] hover:text-[#cf711f] hover:bg-white transition-colors shadow-sm border border-[#e8e4dc]/50"
@@ -111,5 +133,6 @@ export function RecipeCard({ recipe, language = 'en', apiBase = '/api', onSelect
           </div>
         </div>
       </div>
+    </div>
   )
 }

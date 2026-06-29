@@ -752,7 +752,17 @@ function App() {
       if (!res.ok) throw new Error(await res.text())
       invalidate(`categories:${user.id}`)
       // Recolor recipe cards immediately — they carry a copy of the category color.
-      setRecipes(prev => prev.map(r => r.category && userCategories.find(c => c.id === categoryId)?.name === r.category ? { ...r, categoryColor: color } : r))
+      // Recompute from the junction so both the primary color and the full spine array update.
+      const cats = userCategories.map(c => c.id === categoryId ? { ...c, color } : c)
+      setRecipes(prev => prev.map(r => {
+        const ids = recipeCategories[r.id] || []
+        if (!ids.includes(categoryId)) return r
+        return {
+          ...r,
+          categoryColor: cats.find(c => c.id === ids[0])?.color || null,
+          categoryColors: ids.map(id => cats.find(c => c.id === id)?.color).filter(Boolean),
+        }
+      }))
     } catch (err) {
       console.error('[Data] Recolor category failed:', err.message)
       setSaveError({ message: language === 'en' ? 'Failed to update color' : 'עדכון הצבע נכשל' })

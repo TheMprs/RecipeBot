@@ -4,6 +4,7 @@ import { buildShareText } from '../utils/shareRecipe'
 import { MarbleSpine } from './MarbleSpine'
 import { playSizzle } from '../utils/sizzle'
 import { ShareQR } from './ShareQR'
+import { SaveToMenu } from './SaveToMenu'
 
 const COOKIE_NAME_PREFIX = 'recipe_ingredients_'
 const BRAND = '#e67e22'
@@ -79,81 +80,6 @@ function ToolbarButton({ icon: Icon, label, onClick, danger }) {
       <Icon className="w-4 h-4" />
       <span className="hidden sm:inline">{label}</span>
     </button>
-  )
-}
-
-// "Save to" category dropdown (checkbox list + inline create).
-function SaveToMenu({ recipe, language, accent, userCategories, currentRecipeCategories, onToggleRecipeCategory, onCreateCategory }) {
-  const [open, setOpen] = useState(false)
-  const [newCategoryInput, setNewCategoryInput] = useState('')
-  const ref = useRef(null)
-
-  useEffect(() => {
-    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [])
-
-  const saved = currentRecipeCategories.length > 0
-
-  return (
-    <div className="relative" ref={ref}>
-      <button
-        onClick={() => setOpen(v => !v)}
-        className={`flex items-center gap-2 px-3 py-2 text-sm rounded-xl transition-colors ${saved ? '' : 'text-[#7a7265] hover:text-[#cf711f] hover:bg-[#faf9f7]'}`}
-        style={saved ? { color: accent, backgroundColor: `${accent}1a` } : undefined}
-      >
-        <Bookmark className="w-4 h-4" style={saved ? { fill: accent } : undefined} />
-        <span className="hidden sm:inline">{saved ? 'Saved' : 'Save to'}</span>
-      </button>
-      {open && (
-        <div className="absolute top-full mt-2 z-50 bg-white border border-[#e8e4dc] rounded-2xl shadow-lg overflow-hidden min-w-[200px] start-0">
-          {userCategories.length === 0 && !onCreateCategory && (
-            <p className="px-4 py-3 text-sm text-[#7a7265]">{language === 'en' ? 'No categories yet' : 'אין קטגוריות עדיין'}</p>
-          )}
-          {userCategories.map(cat => {
-            const isSaved = currentRecipeCategories.includes(cat.id)
-            const dot = cat.color || BRAND
-            return (
-              <button
-                key={cat.id}
-                onClick={() => onToggleRecipeCategory(recipe.id, cat.id)}
-                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors hover:bg-[#faf9f7] text-start"
-              >
-                <div
-                  className="w-4 h-4 rounded flex-shrink-0 flex items-center justify-center border-2 transition-colors"
-                  style={{ backgroundColor: isSaved ? dot : 'transparent', borderColor: isSaved ? dot : '#e8e4dc' }}
-                >
-                  {isSaved && <Check className="w-2.5 h-2.5 text-white" />}
-                </div>
-                <span className="text-[#3d3429]">{cat.name}</span>
-              </button>
-            )
-          })}
-          {onCreateCategory && (
-            <form
-              onSubmit={async e => {
-                e.preventDefault()
-                const val = newCategoryInput.trim()
-                if (!val) return
-                const newCat = await onCreateCategory(val)
-                if (newCat) onToggleRecipeCategory(recipe.id, newCat.id)
-                setNewCategoryInput('')
-              }}
-              className="border-t border-[#e8e4dc] px-3 py-2 flex items-center gap-2"
-            >
-              <Plus className="w-3.5 h-3.5 text-[#7a7265] flex-shrink-0" />
-              <input
-                value={newCategoryInput}
-                onChange={e => setNewCategoryInput(e.target.value)}
-                placeholder={language === 'en' ? 'New category...' : 'קטגוריה חדשה...'}
-                className="flex-1 text-sm text-[#3d3429] placeholder:text-[#7a7265] focus:outline-none bg-transparent"
-              />
-            </form>
-          )}
-        </div>
-      )}
-    </div>
   )
 }
 
