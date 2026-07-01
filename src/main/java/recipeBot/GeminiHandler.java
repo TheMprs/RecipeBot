@@ -22,7 +22,9 @@ public class GeminiHandler {
     }
 
     public Recipe extractRecipeFromText(String rawText) {
-        String url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=" + apiKey;
+        // Key goes in the x-goog-api-key header, not the query string — a ?key= URL
+        // leaks the secret into server/proxy/access logs.
+        String url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent";
         String prompt = "Extract the recipe from the provided text. " +
             "CRITICAL: All values (name, description, ingredients, instructions) MUST be in the same language as the source text (e.g., if the source is Hebrew, output Hebrew). " +
             "Return ONLY a valid JSON object without markdown formatting. " +
@@ -61,6 +63,7 @@ public class GeminiHandler {
                 .uri(URI.create(url))
                 .timeout(java.time.Duration.ofSeconds(20))
                 .header("Content-Type", "application/json")
+                .header("x-goog-api-key", apiKey)
                 .POST(HttpRequest.BodyPublishers.ofString(gson.toJson(requestBody)))
                 .build();
 

@@ -12,8 +12,16 @@ public class LinkTokenStore {
     private final Map<String, Entry> tokens = new ConcurrentHashMap<>();
 
     public String generate(long chatId) {
+        long now = System.currentTimeMillis();
+        // Purge expired entries so the map can't grow unbounded when an unlinked user
+        // spams messages (each used to mint a fresh, never-evicted token).
+        tokens.values().removeIf(e -> now > e.expiresAt());
+        // Reuse a still-valid token for this chat instead of minting a new one every message.
+        for (Map.Entry<String, Entry> e : tokens.entrySet()) {
+            if (e.getValue().chatId() == chatId) return e.getKey();
+        }
         String token = UUID.randomUUID().toString();
-        tokens.put(token, new Entry(chatId, System.currentTimeMillis() + TTL_MS));
+        tokens.put(token, new Entry(chatId, now + TTL_MS));
         return token;
     }
 

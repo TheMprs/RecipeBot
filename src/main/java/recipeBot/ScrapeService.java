@@ -59,7 +59,9 @@ public class ScrapeService {
         try {
             recipe = UrlFetcher.fetchRecipe(url, gemini);
         } catch (Exception e) {
-            throw new ScrapeException(400, "Invalid URL: " + e.getMessage());
+            // Log the detail server-side; don't leak internal error/host info to the client.
+            System.err.println("[Scrape] fetch failed for user " + userId + ": " + e);
+            throw new ScrapeException(400, "Couldn't read a recipe from that URL.");
         }
         if (recipe == null || recipe.getName() == null) {
             throw new ScrapeException(400, "Failed to extract recipe from the URL content.");
@@ -72,6 +74,12 @@ public class ScrapeService {
     private synchronized String checkLimit(String userId) {
         long now = System.currentTimeMillis();
         long day = now / 86_400_000L;
+
+        // Bound memory: drop entries that can no longer matter (window elapsed / previous day).
+        if (minHits.size() + dayHits.size() > 10_000) {
+            minHits.values().removeIf(v -> now - v[0] >= MIN_WINDOW_MS);
+            dayHits.values().removeIf(v -> v[0] != day);
+        }
 
         long[] m = minHits.get(userId);
         boolean sameMin = m != null && now - m[0] < MIN_WINDOW_MS;

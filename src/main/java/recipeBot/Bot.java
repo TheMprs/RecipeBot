@@ -260,6 +260,10 @@ public class Bot extends TelegramLongPollingBot {
         if (data.startsWith("VIS_")) {
             if (userState.get(id) != State.WAITING_FOR_VISIBILITY) return;
             Recipe recipe = tempRecipes.get(id);
+            if (recipe == null) { // state expired / stale callback
+                replaceMessageWithText(id, callbackQuery.getMessage().getMessageId(), "That recipe is no longer being added.");
+                return;
+            }
             recipe.setVisibility(data.equals("VIS_PUBLIC") ? "public" : "private");
 
             db.addRecipe(recipe, userId);
@@ -308,6 +312,10 @@ public class Bot extends TelegramLongPollingBot {
             }
             String categoryName = none ? null : db.getCategoryName(categoryId);
             Recipe recipe = tempRecipes.get(id);
+            if (recipe == null) { // state expired / stale callback
+                replaceMessageWithText(id, callbackQuery.getMessage().getMessageId(), "That recipe is no longer being edited.");
+                return;
+            }
 
             if (userState.get(id) == State.WAITING_FOR_CATEGORY) {
                 recipe.setCategory(categoryName);

@@ -20,7 +20,9 @@ public class SupabaseHandler {
         this.supabaseUrl = supabaseUrl;
         this.baseUrl = supabaseUrl + "/rest/v1";
         this.serviceKey = serviceKey;
-        this.client = HttpClient.newHttpClient();
+        this.client = HttpClient.newBuilder()
+                .connectTimeout(java.time.Duration.ofSeconds(10))
+                .build();
         this.gson = new Gson();
     }
 
@@ -121,7 +123,9 @@ public class SupabaseHandler {
             e.printStackTrace();
         }
         if (recipeIds.isEmpty()) return new ArrayList<>();
-        return fetchList(base("/recipes?id=in.(" + String.join(",", recipeIds) + ")&select=*").GET().build());
+        List<String> encoded = new ArrayList<>();
+        for (String rid : recipeIds) encoded.add(encode(rid));
+        return fetchList(base("/recipes?id=in.(" + String.join(",", encoded) + ")&select=*").GET().build());
     }
 
     public void linkRecipeCategory(String recipeId, String categoryId) {
@@ -269,6 +273,7 @@ public class SupabaseHandler {
     public String getUserIdFromJwt(String jwt) {
         HttpRequest req = HttpRequest.newBuilder()
                 .uri(URI.create(supabaseUrl + "/auth/v1/user"))
+                .timeout(java.time.Duration.ofSeconds(15))
                 .header("apikey", serviceKey)
                 .header("Authorization", "Bearer " + jwt)
                 .GET()
@@ -289,22 +294,26 @@ public class SupabaseHandler {
     // CASCADE FKs. telegram_auth is deleted explicitly since its FK cascade isn't confirmed.
     public boolean deleteAccount(String userId) {
         try {
-            for (String path : new String[]{
-                "/telegram_auth?user_id=eq." + encode(userId),
-                "/users?id=eq." + encode(userId)
-            }) {
-                HttpResponse<String> res = client.send(
-                    base(path).DELETE().build(),
-                    HttpResponse.BodyHandlers.ofString()
-                );
-                if (res.statusCode() >= 400) {
-                    System.err.println("[Supabase] deleteAccount failed on " + path + ": " + res.statusCode() + " " + res.body());
-                }
+            // telegram_auth cascades off the users row too, but delete it explicitly
+            // first; a failure here is non-fatal (the cascade still covers it).
+            client.send(base("/telegram_auth?user_id=eq." + encode(userId)).DELETE().build(),
+                    HttpResponse.BodyHandlers.ofString());
+
+            // The users-row delete is the one that cascades everything. If it fails,
+            // do NOT delete the auth account — that would orphan it from its profile.
+            HttpResponse<String> usersRes = client.send(
+                    base("/users?id=eq." + encode(userId)).DELETE().build(),
+                    HttpResponse.BodyHandlers.ofString());
+            if (usersRes.statusCode() >= 400) {
+                System.err.println("[Supabase] deleteAccount: users delete failed: "
+                        + usersRes.statusCode() + " " + usersRes.body());
+                return false;
             }
 
             // Delete the auth user via admin API
             HttpRequest req = HttpRequest.newBuilder()
                     .uri(URI.create(supabaseUrl + "/auth/v1/admin/users/" + userId))
+                    .timeout(java.time.Duration.ofSeconds(15))
                     .header("apikey", serviceKey)
                     .header("Authorization", "Bearer " + serviceKey)
                     .DELETE()
@@ -322,6 +331,7 @@ public class SupabaseHandler {
     private HttpRequest.Builder base(String path) {
         return HttpRequest.newBuilder()
                 .uri(URI.create(baseUrl + path))
+                .timeout(java.time.Duration.ofSeconds(15))
                 .header("apikey", serviceKey)
                 .header("Authorization", "Bearer " + serviceKey)
                 .header("Content-Type", "application/json");
