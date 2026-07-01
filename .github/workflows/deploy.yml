@@ -72,8 +72,10 @@ jobs:
 
           # Clean restart
           sudo systemctl stop recipebot 2>/dev/null || true
-          # Only our jar — a bare `pkill -9 java` would kill any other JVM on the VM
-          pkill -9 -f RecipeBot-1.0-SNAPSHOT-jar-with-dependencies.jar 2>/dev/null || true
+          # Force-kill only what's left in the service's own cgroup. Targeted (never
+          # touches other JVMs) and safe: unlike `pkill -f <jar>` it can't match this
+          # deploy script's own text and SIGKILL the SSH session mid-run.
+          sudo systemctl kill -s KILL recipebot 2>/dev/null || true
           sleep 2
 
           sudo tee /etc/systemd/system/recipebot.service > /dev/null <<EOF
