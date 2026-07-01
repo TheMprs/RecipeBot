@@ -1432,9 +1432,10 @@ function App() {
   // Shared nav-menu items (desktop dropdown + mobile panel)
   const navItems = (
     <>
+      {/* ponytail: desktop shows Add recipe as its own button (below), so hide it here on sm+ */}
       <button onClick={() => { closeNavMenu(); setEditingRecipe(null); setShowRecipeForm(true); }}
-        className="w-full flex items-center gap-3 px-4 py-4 text-base text-[#3d3429] hover:bg-[#f5f3ef] transition-colors text-start sm:py-2.5 sm:text-sm">
-        <Plus className="w-5 h-5 text-[#7a7265] sm:w-4 sm:h-4"/>
+        className="w-full flex items-center gap-3 px-4 py-4 text-base text-[#3d3429] hover:bg-[#f5f3ef] transition-colors text-start sm:hidden">
+        <Plus className="w-5 h-5 text-[#7a7265]"/>
         {language === 'en' ? 'Add recipe' : 'הוסף מתכון'}
       </button>
       <button onClick={() => { closeNavMenu(); handleNavigate('profile'); }}
@@ -1492,6 +1493,11 @@ function App() {
 
             <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0">
               {user ? (
+                <>
+                <button onClick={() => { setEditingRecipe(null); setShowRecipeForm(true); }}
+                  className="hidden sm:flex items-center text-[#64748b] hover:text-[#1e293b] transition-colors p-2 sm:-me-3">
+                  <Plus className="w-5 h-5" />
+                </button>
                 <div className="relative" ref={navMenuRef}>
                   <button onClick={() => { if (navMenuOpen && !navClosing) { closeNavMenu() } else { setNavClosing(false); setNavMenuOpen(true) } }}
                     className="flex items-center gap-2 text-[#64748b] hover:text-[#1e293b] transition-colors p-2 -me-2">
@@ -1523,6 +1529,7 @@ function App() {
                     document.body
                   )}
                 </div>
+                </>
               ) : (
                 <button onClick={() => setShowLoginModal(true)}
                   className="flex items-center gap-1.5 px-4 py-2 bg-[#e8e4dc] text-[#3d3429] rounded-xl hover:bg-[#ddd9d0] transition-colors text-sm font-medium whitespace-nowrap">
