@@ -33,7 +33,9 @@ public class Main {
                 it.allowHost("https://babrecipebook.vercel.app");
                 if (debug) it.allowHost("http://localhost:5173"); // dev origin only in -debug
             }));
-        }).start(8080);
+        // Bind to localhost only — Caddy (same VM) terminates TLS on 443 and
+        // reverse-proxies here. The cleartext port is never exposed publicly.
+        }).start("127.0.0.1", 8080);
 
         webManager webManager = new webManager(db, tokenStore, scrapeService);
         webManager.registerRoutes(app);

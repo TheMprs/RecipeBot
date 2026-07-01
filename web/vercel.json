@@ -2,7 +2,7 @@
     "rewrites": [
         {
             "source": "/api/:path*",
-            "destination": "http://8.229.229.162:8080/api/:path*"
+            "destination": "https://babrecipebook.duckdns.org/api/:path*"
         }
     ]
 }
