@@ -61,7 +61,11 @@ export function RecipeCard({ recipe, language = 'en', apiBase = '/api', onSelect
       className="group relative w-full h-full rounded-2xl shadow-sm hover:shadow-md transition-shadow duration-300 cursor-pointer flex flex-col"
       onClick={() => onSelect(recipe)}
     >
-      <div className="relative flex-1 bg-white border border-[#e8e4dc]/50 flex flex-col group-hover:-translate-y-0.5 transition-transform duration-300" style={{ clipPath: 'inset(0 round 1rem)' }}>
+      {/* will-change keeps this permanently on its own compositor layer: without it, Chrome
+          promotes the layer when the hover transform starts and demotes it when it ends, and
+          each promote/demote re-rasterizes the gradient spine ~1 device px sideways (the
+          multi-color hover stutter — verified with a controlled repro, 2026-07-02). */}
+      <div className="relative flex-1 bg-white border border-[#e8e4dc]/50 flex flex-col group-hover:-translate-y-0.5 transition-transform duration-300 will-change-transform" style={{ clipPath: 'inset(0 round 1rem)' }}>
       <MarbleSpine colors={spineColors} id={recipe.id} />
       {showQR && <ShareQR recipe={recipe} language={language} copied={copied} onShare={handleShare} onClose={() => setShowQR(false)} />}
       {/* Header — color lives on the left spine (card border), so the header stays plain white. */}

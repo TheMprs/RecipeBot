@@ -117,25 +117,50 @@ function App() {
   useEffect(() => {
     if (!user) return
     let startX = null, startY = null, fromRightEdge = false
+
+    // A swipe that starts inside a horizontally-scrollable element (carousel,
+    // category pills) is a scroll, not a nav gesture — mobile-only conflict,
+    // desktop scrolls those with the wheel so it never showed in dev view.
+    const inHScroll = (el) => {
+      for (let n = el; n && n !== document.body; n = n.parentElement) {
+        if (n.scrollWidth > n.clientWidth + 5) {
+          const ox = getComputedStyle(n).overflowX
+          if (ox === 'auto' || ox === 'scroll') return true
+        }
+      }
+      return false
+    }
+
     const onStart = (e) => {
+      if (e.touches.length > 1 || inHScroll(e.target)) { startX = null; return }
       const t = e.touches[0]
       startX = t.clientX
       startY = t.clientY
-      fromRightEdge = t.clientX > window.innerWidth - 30
+      // 30-100px band from the right edge: outer 30px stays the browser's
+      // (iOS forward-swipe territory), so our gesture never fights the OS
+      fromRightEdge = t.clientX > window.innerWidth - 100 && t.clientX < window.innerWidth - 30
     }
     const onEnd = (e) => {
       if (startX === null) return
       const t = e.changedTouches[0]
       const dx = startX - t.clientX, dy = Math.abs(t.clientY - startY)
-      if (dy < 50) {
+      // real fingers swipe diagonally — demand a clearly horizontal gesture
+      if (dy < 50 && Math.abs(dx) > dy * 1.5) {
         if (viewMode === 'profile' && dx < -60) slideNav('home', 'left')        // swipe right → back to main
         else if (viewMode !== 'profile' && dx > 60 && fromRightEdge) slideNav('profile', 'right') // right-edge swipe left → profile
       }
       startX = null
     }
+    // browser gesture hijack (native scroll / edge nav) fires cancel, not end
+    const onCancel = () => { startX = null }
     window.addEventListener('touchstart', onStart, { passive: true })
     window.addEventListener('touchend', onEnd, { passive: true })
-    return () => { window.removeEventListener('touchstart', onStart); window.removeEventListener('touchend', onEnd) }
+    window.addEventListener('touchcancel', onCancel, { passive: true })
+    return () => {
+      window.removeEventListener('touchstart', onStart)
+      window.removeEventListener('touchend', onEnd)
+      window.removeEventListener('touchcancel', onCancel)
+    }
   }, [user, viewMode])
 
   // Online/offline tracking — refetch everything when the connection returns

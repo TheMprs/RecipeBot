@@ -9,6 +9,12 @@
   input, textarea, select { font-size: max(16px, 1em); }
 }
 
+/* Keep Android Chrome's back/forward edge-swipe from fighting our right-edge
+   nav gesture (iOS Safari's system gesture ignores this — can't be disabled). */
+body {
+  overscroll-behavior-x: none;
+}
+
 /* Hide all scrollbars globally */
 ::-webkit-scrollbar {
   display: none;
