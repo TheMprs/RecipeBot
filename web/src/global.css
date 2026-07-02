@@ -2,6 +2,13 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Pinch-zoom is enabled (a11y) — prevent iOS Safari's focus auto-zoom the right
+   way instead: it only triggers on fields with font-size < 16px, so floor every
+   field at 16px on phones (overrides text-sm etc.). */
+@media (max-width: 639px) {
+  input, textarea, select { font-size: max(16px, 1em); }
+}
+
 /* Hide all scrollbars globally */
 ::-webkit-scrollbar {
   display: none;

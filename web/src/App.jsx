@@ -8,8 +8,12 @@ import { RecipeForm } from './components/RecipeForm'
 import { UserProfile } from './components/UserProfile'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import Login from './components/Login'
-import { supabase } from './supabaseClient'
+import { supabase, supabaseUrl, supabaseKey } from './supabaseClient'
 import { swr, invalidate, clearCache, peekCache, currentUserIdSync } from './utils/cache'
+import { getToken } from './utils/auth'
+import { formatRecipe } from './utils/formatRecipe'
+import { useWheelScroll } from './utils/useWheelScroll'
+import { useOutsideClick } from './utils/useOutsideClick'
 
 // Cached own-recipes for the stored session, read synchronously so they paint
 // on the first render (no skeleton flash on reload).
@@ -31,8 +35,6 @@ import './global.css'
 
 // API configuration: uses environment variable in production, /api proxy in dev
 const API_BASE = import.meta.env.VITE_API_URL || '/api'
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
 function App() {
   const [user, setUser] = useState(null)
@@ -43,7 +45,6 @@ function App() {
   const [topLikedRecipes, setTopLikedRecipes] = useState([])
   const [recipeLikeCount, setRecipeLikeCount] = useState(0)
   const [recipeIsLiked, setRecipeIsLiked] = useState(false)
-  const [publicRecipes, setPublicRecipes] = useState([])
   const [language, setLanguage] = useState(() => localStorage.getItem('language') || 'he')
   const [viewMode, setViewMode] = useState(() => {
     const params = new URLSearchParams(window.location.search)
@@ -68,12 +69,8 @@ function App() {
   const [showUrlModal, setShowUrlModal] = useState(false)
   const [urlInput, setUrlInput] = useState('')
   const [isScrapingLoading, setIsScrapingLoading] = useState(false)
-  const [isImporting, setIsImporting] = useState(false)
-  const [importMessage, setImportMessage] = useState('')
   const [viewingProfile, setViewingProfile] = useState(null)
   const likedRecipesCarouselRef = useRef(null)
-  const [canScrollLeft, setCanScrollLeft] = useState(false)
-  const [canScrollRight, setCanScrollRight] = useState(true)
   const [hoveringCarousel, setHoveringCarousel] = useState(false)
   const [cookCounts, setCookCounts] = useState(seedCookCounts)
   const [carouselLoading, setCarouselLoading] = useState(true)
@@ -95,15 +92,7 @@ function App() {
   const isRtl = language === 'he'
 
   // Close the header nav menu on outside click
-  useEffect(() => {
-    if (!navMenuOpen) return
-    const handler = (e) => {
-      if (navMenuRef.current?.contains(e.target) || navPanelRef.current?.contains(e.target)) return
-      closeNavMenu()
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [navMenuOpen])
+  useOutsideClick([navMenuRef, navPanelRef], () => closeNavMenu(), navMenuOpen)
 
   // Mobile: trigger the slide-up exit, panel unmounts on animationend.
   // Desktop: no animation runs, so unmount immediately.
@@ -153,7 +142,7 @@ function App() {
   useEffect(() => {
     const goOnline = () => {
       setIsOffline(false)
-      if (user) { fetchRecipes(); fetchCookCounts(); fetchUserCategories(); } else { fetchPublicRecipes(); }
+      if (user) { fetchRecipes(); fetchCookCounts(); fetchUserCategories(); }
       fetchTopLikedRecipes()
     }
     const goOffline = () => { setIsOffline(true); setOfflineDismissed(false) }
@@ -262,11 +251,15 @@ function App() {
 
   useEffect(() => {
     if (!user) { setUserHandle(null); setCanScrape(false); return }
-    fetch(`${supabaseUrl}/rest/v1/users?id=eq.${user.id}&select=username,can_scrape`, {
-      headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` }
-    }).then(r => r.json()).then(d => {
-      if (d?.[0]?.username) setUserHandle(d[0].username)
-      setCanScrape(!!d?.[0]?.can_scrape)
+    // Own row — use the session token like every other own-data fetch
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session?.access_token) return
+      return fetch(`${supabaseUrl}/rest/v1/users?id=eq.${user.id}&select=username,can_scrape`, {
+        headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${session.access_token}` }
+      }).then(r => r.json()).then(d => {
+        if (d?.[0]?.username) setUserHandle(d[0].username)
+        setCanScrape(!!d?.[0]?.can_scrape)
+      })
     }).catch(() => {})
   }, [user])
 
@@ -308,14 +301,13 @@ function App() {
       // getSession lives inside the fetcher so the cached paint happens before
       // any await — no skeleton flash on reload.
       await swr(cacheKey, async () => {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session?.access_token) throw new Error('Not authenticated');
+        const token = await getToken();
         const response = await fetch(
           `${supabaseUrl}/rest/v1/recipes?user_id=eq.${user.id}&select=*,recipe_likes(recipe_id),recipe_categories(category_id,categories(name,color))`,
           {
             headers: {
               'apikey': supabaseKey,
-              'Authorization': `Bearer ${session.access_token}`,
+              'Authorization': `Bearer ${token}`,
               'Content-Type': 'application/json'
             }
           }
@@ -324,22 +316,7 @@ function App() {
         if (!response.ok) {
           throw new Error(`API error: ${response.status} ${JSON.stringify(data)}`);
         }
-        return (data || []).map(recipe => ({
-          id: recipe.id,
-          title: recipe.name,
-          description: recipe.description,
-          ingredients: recipe.ingredients,
-          instructions: recipe.instructions,
-          created_at: recipe.created_at,
-          category: recipe.recipe_categories?.[0]?.categories?.name || null,
-          categoryColor: recipe.recipe_categories?.[0]?.categories?.color || null,
-          categoryColors: recipe.recipe_categories?.map(rc => rc.categories?.color).filter(Boolean) || [],
-          caloriesPerServing: recipe.calories_per_serving,
-          visibility: recipe.visibility,
-          likeCount: recipe.recipe_likes?.length || 0,
-          user_id: recipe.user_id,
-          authorId: recipe.user_id,
-        }));
+        return (data || []).map(formatRecipe);
       }, (formattedRecipes) => {
         setRecipes(formattedRecipes);
         setOwnRecipesLoading(false); // got data (cached or fresh) — drop skeleton
@@ -355,45 +332,6 @@ function App() {
   };
 
   // Fetch public recipes for home page when not logged in
-  const fetchPublicRecipes = async () => {
-    try {
-      // Get all public recipes using REST API instead of JS client
-      const response = await fetch(
-        `${supabaseUrl}/rest/v1/recipes?visibility=eq.public&order=id.desc&limit=50&select=*,recipe_categories(categories(name,color))`,
-        {
-          headers: {
-            'apikey': supabaseKey,
-            'Authorization': `Bearer ${supabaseKey}`,
-            'Content-Type': 'application/json'
-          }
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error(`API error: ${response.status}`);
-      }
-
-      const data = await response.json();
-
-      const formattedRecipes = data.map(recipe => ({
-        id: recipe.id,
-        title: recipe.name,
-        category: recipe.recipe_categories?.[0]?.categories?.name || null,
-        categoryColor: recipe.recipe_categories?.[0]?.categories?.color || null,
-          categoryColors: recipe.recipe_categories?.map(rc => rc.categories?.color).filter(Boolean) || [],
-        caloriesPerServing: recipe.calories_per_serving,
-        description: recipe.description,
-        ingredients: recipe.ingredients,
-        instructions: recipe.instructions
-      }));
-
-      setPublicRecipes(formattedRecipes);
-    } catch (error) {
-      console.error('[Data] Failed to fetch public recipes:', error.message);
-      setPublicRecipes([]);
-    }
-  };
-
   const fetchCookCounts = async (force = false) => {
     if (!user) return
     const cacheKey = `cookcounts:${user.id}`
@@ -402,11 +340,10 @@ function App() {
       // ttl 10min — feeds the "Most Prepped" podium. Invalidated on mark-made
       // and cook-count edits.
       await swr(cacheKey, async () => {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session?.access_token) throw new Error('Not authenticated');
+        const token = await getToken();
         const res = await fetch(
           `${supabaseUrl}/rest/v1/cook_logs?user_id=eq.${user.id}&select=recipe_id`,
-          { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${session.access_token}` } }
+          { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${token}` } }
         );
         if (!res.ok) throw new Error(`API error: ${res.status}`);
         const data = await res.json();
@@ -421,13 +358,12 @@ function App() {
 
   const handleMarkMade = async (recipe) => {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.access_token) throw new Error('Not authenticated');
+      const token = await getToken();
       const res = await fetch(`${supabaseUrl}/rest/v1/cook_logs`, {
         method: 'POST',
         headers: {
           'apikey': supabaseKey,
-          'Authorization': `Bearer ${session.access_token}`,
+          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
           'Prefer': 'return=minimal'
         },
@@ -445,9 +381,8 @@ function App() {
   // request, -N deletes the N most recent ones
   const applyCookCountDelta = async (recipeId, delta) => {
     if (!delta) return
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.access_token) throw new Error('Not authenticated');
-    const headers = { 'apikey': supabaseKey, 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json' };
+    const token = await getToken();
+    const headers = { 'apikey': supabaseKey, 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' };
 
     if (delta > 0) {
       const rows = Array.from({ length: delta }, () => ({ user_id: user.id, recipe_id: recipeId }));
@@ -512,18 +447,8 @@ function App() {
         const recipe = recipesData.find(rd => rd.id === r.recipe_id)
         if (!recipe) return null
         return {
-          id: recipe.id,
-          title: recipe.name,
-          category: recipe.recipe_categories?.[0]?.categories?.name || null,
-          categoryColor: recipe.recipe_categories?.[0]?.categories?.color || null,
-          categoryColors: recipe.recipe_categories?.map(rc => rc.categories?.color).filter(Boolean) || [],
-          caloriesPerServing: recipe.calories_per_serving,
-          description: recipe.description,
-          ingredients: recipe.ingredients,
-          instructions: recipe.instructions,
-          created_at: recipe.created_at,
+          ...formatRecipe(recipe),
           likeCount: likeCountMap[r.recipe_id],
-          authorId: recipe.user_id,
           authorUsername: usernameMap[recipe.user_id] || null
         }
       }).filter(Boolean)
@@ -561,18 +486,17 @@ function App() {
     setRecipeIsLiked(!wasLiked)
     setRecipeLikeCount(c => wasLiked ? c - 1 : c + 1)
     try {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session?.access_token) throw new Error('Not authenticated')
+      const token = await getToken();
       if (wasLiked) {
         const res = await fetch(
           `${supabaseUrl}/rest/v1/recipe_likes?recipe_id=eq.${recipeId}&user_id=eq.${user.id}`,
-          { method: 'DELETE', headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${session.access_token}` } }
+          { method: 'DELETE', headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${token}` } }
         )
         if (!res.ok) throw new Error(await res.text())
       } else {
         const res = await fetch(`${supabaseUrl}/rest/v1/recipe_likes`, {
           method: 'POST',
-          headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+          headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
           body: JSON.stringify({ user_id: user.id, recipe_id: recipeId })
         })
         if (!res.ok) throw new Error(await res.text())
@@ -589,11 +513,10 @@ function App() {
   const handleDuplicateRecipe = async (recipe) => {
     if (!user) return
     try {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session?.access_token) throw new Error('Not authenticated')
+      const token = await getToken();
       const res = await fetch(`${supabaseUrl}/rest/v1/recipes`, {
         method: 'POST',
-        headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json', 'Prefer': 'return=representation' },
+        headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json', 'Prefer': 'return=representation' },
         body: JSON.stringify({
           user_id: user.id,
           name: recipe.title,
@@ -605,7 +528,7 @@ function App() {
       })
       if (!res.ok) throw new Error(await res.text())
       const [dup] = await res.json()
-      if (dup?.id) await manageRecipeCategory(dup.id, recipe.category, session.access_token)
+      if (dup?.id) await manageRecipeCategory(dup.id, recipe.category, token)
       fetchRecipes(true)
       handleNavigate('profile')
     } catch (err) {
@@ -623,11 +546,10 @@ function App() {
       // ttl 10min, same model as own recipes — getSession inside the fetcher so
       // the cached list paints before any await (no flash).
       await swr(cacheKey, async () => {
-        const { data: { session } } = await supabase.auth.getSession()
-        if (!session?.access_token) throw new Error('Not authenticated')
+        const token = await getToken();
         const res = await fetch(
           `${supabaseUrl}/rest/v1/categories?user_id=eq.${user.id}&order=created_at.asc`,
-          { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${session.access_token}` } }
+          { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${token}` } }
         )
         if (!res.ok) throw new Error(`API error: ${res.status}`)
         return (await res.json()) || []
@@ -645,11 +567,10 @@ function App() {
   const fetchRecipeCategories = async (recipeIds) => {
     if (!recipeIds.length) return
     try {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session?.access_token) return
+      const token = await getToken()
       const res = await fetch(
         `${supabaseUrl}/rest/v1/recipe_categories?recipe_id=in.(${recipeIds.join(',')})&select=recipe_id,category_id`,
-        { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${session.access_token}` } }
+        { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${token}` } }
       )
       if (!res.ok) return
       const data = await res.json()
@@ -673,11 +594,10 @@ function App() {
     // undefined = inline quick-create (no picker) → cycle palette; null = user chose "no color".
     const finalColor = color === undefined ? CATEGORY_PALETTE[userCategories.length % CATEGORY_PALETTE.length] : color
     try {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session?.access_token) throw new Error('Not authenticated')
+      const token = await getToken();
       const res = await fetch(`${supabaseUrl}/rest/v1/categories`, {
         method: 'POST',
-        headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json', 'Prefer': 'return=representation' },
+        headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json', 'Prefer': 'return=representation' },
         body: JSON.stringify({ user_id: user.id, name: name.trim(), color: finalColor })
       })
       if (!res.ok) throw new Error(await res.text())
@@ -700,11 +620,10 @@ function App() {
       return updated
     })
     try {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session?.access_token) throw new Error('Not authenticated')
+      const token = await getToken();
       const res = await fetch(`${supabaseUrl}/rest/v1/categories?id=eq.${categoryId}`, {
         method: 'DELETE',
-        headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${session.access_token}` }
+        headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${token}` }
       })
       if (!res.ok) throw new Error(await res.text())
       invalidate(`categories:${user.id}`)
@@ -723,11 +642,10 @@ function App() {
     }
     setUserCategories(prev => prev.map(c => c.id === categoryId ? { ...c, name: newName } : c))
     try {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session?.access_token) throw new Error('Not authenticated')
+      const token = await getToken();
       const res = await fetch(`${supabaseUrl}/rest/v1/categories?id=eq.${categoryId}`, {
         method: 'PATCH',
-        headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+        headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
         body: JSON.stringify({ name: newName.trim() })
       })
       if (!res.ok) throw new Error(await res.text())
@@ -742,11 +660,10 @@ function App() {
   const handleRecolorCategory = async (categoryId, color) => {
     setUserCategories(prev => prev.map(c => c.id === categoryId ? { ...c, color } : c))
     try {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session?.access_token) throw new Error('Not authenticated')
+      const token = await getToken();
       const res = await fetch(`${supabaseUrl}/rest/v1/categories?id=eq.${categoryId}`, {
         method: 'PATCH',
-        headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+        headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
         body: JSON.stringify({ color })
       })
       if (!res.ok) throw new Error(await res.text())
@@ -778,19 +695,18 @@ function App() {
       [recipeId]: isAdding ? [...current, categoryId] : current.filter(id => id !== categoryId)
     }))
     try {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session?.access_token) throw new Error('Not authenticated')
+      const token = await getToken();
       if (isAdding) {
         const res = await fetch(`${supabaseUrl}/rest/v1/recipe_categories`, {
           method: 'POST',
-          headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+          headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
           body: JSON.stringify({ recipe_id: recipeId, category_id: categoryId })
         })
         if (!res.ok) throw new Error(await res.text())
       } else {
         const res = await fetch(`${supabaseUrl}/rest/v1/recipe_categories?recipe_id=eq.${recipeId}&category_id=eq.${categoryId}`, {
           method: 'DELETE',
-          headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${session.access_token}` }
+          headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${token}` }
         })
         if (!res.ok) throw new Error(await res.text())
       }
@@ -817,20 +733,7 @@ function App() {
       .then(data => {
         if (!data || data.length === 0) { window.history.replaceState({}, '', window.location.pathname); setViewMode('home'); return; }
         const r = data[0];
-        setSelectedRecipe({
-          id: r.id,
-          title: String(r.name || 'Unnamed'),
-          description: r.description || '',
-          category: r.recipe_categories?.[0]?.categories?.name || null,
-          categoryColor: r.recipe_categories?.[0]?.categories?.color || null,
-          categoryColors: r.recipe_categories?.map(rc => rc.categories?.color).filter(Boolean) || [],
-          caloriesPerServing: r.calories_per_serving,
-          visibility: r.visibility,
-          ingredients: Array.isArray(r.ingredients) ? r.ingredients : [],
-          instructions: Array.isArray(r.instructions) ? r.instructions : [],
-          user_id: r.user_id,
-          authorId: r.user_id
-        });
+        setSelectedRecipe(formatRecipe(r));
         setViewMode('detail');
         window.history.replaceState({}, '', `?r=${r.id}`);
       })
@@ -843,8 +746,6 @@ function App() {
       fetchRecipes();
       fetchCookCounts();
       fetchUserCategories();
-    } else {
-      fetchPublicRecipes();
     }
     fetchTopLikedRecipes()
     
@@ -909,7 +810,7 @@ function App() {
       }
 
       // Otherwise fetch the other user's profile by handle
-      fetch(`${supabaseUrl}/rest/v1/users?username=eq.${profileId}&select=id,username,display_name,bio,avatar_url`, {
+      fetch(`${supabaseUrl}/rest/v1/users?username=eq.${encodeURIComponent(profileId)}&select=id,username,display_name,bio,avatar_url`, {
         headers: {
           'apikey': supabaseKey,
           'Authorization': `Bearer ${supabaseKey}`,
@@ -948,11 +849,6 @@ function App() {
       loadRecipeFromSupabase(`name=eq.${encodeURIComponent(recipeName)}`);
     }
   }, [user, loading])
-
-  // Check carousel scroll state when recipes load
-  useEffect(() => {
-    checkCarouselScroll()
-  }, [recipes])
 
   // Fetch like status + author username whenever the viewed recipe changes
   useEffect(() => {
@@ -997,41 +893,7 @@ function App() {
   }
 
   // Wheel → horizontal scroll, active only while hovering the carousel section
-  useEffect(() => {
-    if (!hoveringCarousel) return
-
-    let target = null
-    let rafId = null
-
-    const animate = () => {
-      const el = likedRecipesCarouselRef.current
-      if (!el) { rafId = null; return }
-      const diff = target - el.scrollLeft
-      if (Math.abs(diff) < 1) { el.scrollLeft = target; rafId = null; return }
-      el.scrollLeft += diff * 0.15
-      rafId = requestAnimationFrame(animate)
-    }
-
-    const onWheel = (e) => {
-      const el = likedRecipesCarouselRef.current
-      if (!el) return
-      e.preventDefault()
-      if (target === null) target = el.scrollLeft
-      const isRtl = getComputedStyle(el).direction === 'rtl'
-      const step = Math.sign(e.deltaY) * 120 * (isRtl ? -1 : 1)
-      const maxScroll = el.scrollWidth - el.clientWidth
-      target = isRtl
-        ? Math.min(0, Math.max(-maxScroll, target + step))
-        : Math.max(0, Math.min(maxScroll, target + step))
-      if (!rafId) rafId = requestAnimationFrame(animate)
-    }
-
-    window.addEventListener('wheel', onWheel, { passive: false })
-    return () => {
-      window.removeEventListener('wheel', onWheel)
-      if (rafId) cancelAnimationFrame(rafId)
-    }
-  }, [hoveringCarousel])
+  useWheelScroll(likedRecipesCarouselRef, hoveringCarousel)
 
   // Global search — debounced, queries users + public recipes
   useEffect(() => {
@@ -1065,11 +927,7 @@ function App() {
   }, [globalQuery])
 
   // Close search results on outside click
-  useEffect(() => {
-    const handler = (e) => { if (globalSearchRef.current && !globalSearchRef.current.contains(e.target)) setShowGlobalResults(false) }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [])
+  useOutsideClick(globalSearchRef, () => setShowGlobalResults(false))
 
   // 2. FETCH SPECIFIC RECIPE DETAILS WHEN CLICKED
   const handleSelectRecipe = (recipeObj) => {
@@ -1164,9 +1022,8 @@ function App() {
     setSaveError(null);
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.access_token) throw new Error('Not authenticated');
-      const userToken = session.access_token;
+      const token = await getToken();
+      const userToken = token;
 
       if (editing?.id) {
         const res = await fetch(
@@ -1282,25 +1139,6 @@ function App() {
     }
   }
 
-  const scrollCarousel = (direction) => {
-    if (likedRecipesCarouselRef.current) {
-      const container = likedRecipesCarouselRef.current;
-      const scrollAmount = 400; // Scroll by this many pixels
-      container.scrollBy({ left: direction === 'left' ? -scrollAmount : scrollAmount, behavior: 'smooth' });
-      
-      // Check scroll state after a delay to update arrow visibility
-      setTimeout(checkCarouselScroll, 300);
-    }
-  }
-
-  const checkCarouselScroll = () => {
-    if (likedRecipesCarouselRef.current) {
-      const container = likedRecipesCarouselRef.current;
-      setCanScrollLeft(container.scrollLeft > 0);
-      setCanScrollRight(container.scrollLeft < container.scrollWidth - container.clientWidth - 10);
-    }
-  }
-
   // Fire the actual network DELETE (after the undo grace period, or on flush).
   const performDeleteNow = async (recipe, token) => {
     try {
@@ -1367,11 +1205,9 @@ function App() {
       });
     });
     if (!confirmed) return;
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.access_token) {
-      setSaveError({ message: language === 'en' ? 'Not authenticated' : 'לא מחובר' });
-      return;
-    }
+    let token;
+    try { token = await getToken(); }
+    catch { setSaveError({ message: language === 'en' ? 'Not authenticated' : 'לא מחובר' }); return; }
     // Deferred delete: drop it from the list now, fire the network DELETE after a
     // grace period so the user can undo. Any earlier pending delete commits first.
     flushPendingDelete();
@@ -1380,9 +1216,9 @@ function App() {
     const timeoutId = setTimeout(() => {
       pendingDeleteRef.current = null;
       setPendingDelete(null);
-      performDeleteNow(recipe, session.access_token);
+      performDeleteNow(recipe, token);
     }, 5000);
-    pendingDeleteRef.current = { recipe, timeoutId, token: session.access_token };
+    pendingDeleteRef.current = { recipe, timeoutId, token: token };
     setPendingDelete(recipe);
   }
 
@@ -1395,12 +1231,11 @@ function App() {
 
     setIsScrapingLoading(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.access_token) throw new Error('Not authenticated');
+      const token = await getToken();
 
       const res = await fetch(`${API_BASE}/recipes/scrape`, {
         method: 'POST',
-        headers: { 'Content-Type': 'text/plain', 'Authorization': `Bearer ${session.access_token}` },
+        headers: { 'Content-Type': 'text/plain', 'Authorization': `Bearer ${token}` },
         body: urlInput
       });
 
@@ -1660,7 +1495,6 @@ function App() {
                 <div className="relative w-full">
                   <div
                     ref={likedRecipesCarouselRef}
-                    onScroll={checkCarouselScroll}
                     className="carousel-scroll flex gap-4 sm:gap-6 overflow-x-auto py-2 pb-3"
                     style={{ WebkitOverflowScrolling: 'touch' }}
                   >

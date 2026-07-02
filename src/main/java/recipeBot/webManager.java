@@ -87,13 +87,17 @@ public class webManager {
         String userId = requireUser(ctx);
         if (userId == null) return;
 
-        JsonObject body = gson.fromJson(ctx.body(), JsonObject.class);
-        if (body == null || !body.has("token")) {
+        // Malformed JSON or a non-string token is a client error, not a 500.
+        String token;
+        try {
+            JsonObject body = gson.fromJson(ctx.body(), JsonObject.class);
+            token = body.get("token").getAsString();
+        } catch (Exception e) {
             ctx.status(400).result("Missing token");
             return;
         }
 
-        Long chatId = tokenStore.consume(body.get("token").getAsString());
+        Long chatId = tokenStore.consume(token);
         if (chatId == null) {
             ctx.status(400).result("Invalid or expired link token");
             return;
@@ -124,8 +128,9 @@ public class webManager {
                 ctx.status(e.status).result(e.getMessage());
             }
         } catch (Exception e) {
+            // Log the detail server-side; never echo internal exception text to the client.
             e.printStackTrace();
-            ctx.status(500).result("Error: " + e.getMessage());
+            ctx.status(500).result("Internal error");
         }
     }
 

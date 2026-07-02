@@ -3,8 +3,12 @@ import { RecipeCard, RecipeCardSkeleton } from './RecipeCard';
 import { ConfirmDialog } from './ConfirmDialog';
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { supabase } from '../supabaseClient';
-import { swr } from '../utils/cache';
+import { supabase, supabaseUrl, supabaseKey } from '../supabaseClient';
+import { swr, peekCache, writeCache } from '../utils/cache';
+import { getToken } from '../utils/auth';
+import { formatRecipe } from '../utils/formatRecipe';
+import { useWheelScroll } from '../utils/useWheelScroll';
+import { useOutsideClick } from '../utils/useOutsideClick';
 import { CATEGORY_PALETTE, CHECKERBOARD } from '../utils/categoryColor';
 
 // Virtual category sentinel — recipes with no category assignments live here. ponytail: no DB row, pure client filter.
@@ -37,13 +41,8 @@ export function UserProfile({
   const isRtl = language === 'he';
   const [viewingRecipes, setViewingRecipes] = useState([]);
   const [recipesLoading, setRecipesLoading] = useState(false);
-  const [ownProfile, setOwnProfile] = useState(() => {
-    if (!user?.id) return null;
-    try {
-      const cached = localStorage.getItem(`profile_${user.id}`);
-      return cached ? JSON.parse(cached) : null;
-    } catch { return null; }
-  });
+  // cache.js key (not a raw localStorage one) so clearCache() wipes it on logout
+  const [ownProfile, setOwnProfile] = useState(() => user?.id ? peekCache(`profile-own:${user.id}`) : null);
   const [showEditProfile, setShowEditProfile] = useState(false);
   const [editDisplayName, setEditDisplayName] = useState('');
   const [editHandle, setEditHandle] = useState('');
@@ -114,70 +113,12 @@ export function UserProfile({
   const categoryScrollRef = useRef(null);
   const [hoveringCategoryPills, setHoveringCategoryPills] = useState(false);
 
-  useEffect(() => {
-    if (!hoveringCategoryPills) return;
-
-    let target = null;
-    let rafId = null;
-
-    const animate = () => {
-      const el = categoryScrollRef.current;
-      if (!el) { rafId = null; return; }
-      const diff = target - el.scrollLeft;
-      if (Math.abs(diff) < 1) { el.scrollLeft = target; rafId = null; return; }
-      el.scrollLeft += diff * 0.15;
-      rafId = requestAnimationFrame(animate);
-    };
-
-    const onWheel = (e) => {
-      const el = categoryScrollRef.current;
-      if (!el) return;
-      e.preventDefault();
-      if (target === null) target = el.scrollLeft;
-      const rtl = getComputedStyle(el).direction === 'rtl';
-      const step = Math.sign(e.deltaY) * 120 * (rtl ? -1 : 1);
-      const maxScroll = el.scrollWidth - el.clientWidth;
-      target = rtl
-        ? Math.min(0, Math.max(-maxScroll, target + step))
-        : Math.max(0, Math.min(maxScroll, target + step));
-      if (!rafId) rafId = requestAnimationFrame(animate);
-    };
-
-    window.addEventListener('wheel', onWheel, { passive: false });
-    return () => {
-      window.removeEventListener('wheel', onWheel);
-      if (rafId) cancelAnimationFrame(rafId);
-    };
-  }, [hoveringCategoryPills]);
-
-  useEffect(() => {
-    const handler = (e) => { if (filterMenuRef.current && !filterMenuRef.current.contains(e.target)) setIsFilterMenuOpen(false) }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [])
+  useWheelScroll(categoryScrollRef, hoveringCategoryPills);
+  useOutsideClick(filterMenuRef, () => setIsFilterMenuOpen(false));
   
-  const fetchLikeCounts = async (ids) => {
-    if (!ids.length) return;
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-    const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-    try {
-      const res = await fetch(
-        `${supabaseUrl}/rest/v1/recipe_likes?recipe_id=in.(${ids.join(',')})&select=recipe_id`,
-        { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` } }
-      );
-      if (!res.ok) return;
-      const data = await res.json();
-      const counts = {};
-      for (const row of data) counts[row.recipe_id] = (counts[row.recipe_id] || 0) + 1;
-      setLikeCounts(counts);
-    } catch {}
-  };
-
   // Fetch viewing profile's public recipes
   useEffect(() => {
     if (viewingProfile) {
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
       setRecipesLoading(true);
       // ttl 10min: revisiting a profile reuses the cached list (and its count)
@@ -191,18 +132,7 @@ export function UserProfile({
           }
         });
         const data = await res.json();
-        return (data || []).map(recipe => ({
-          id: recipe.id,
-          title: recipe.name,
-          category: recipe.recipe_categories?.[0]?.categories?.name || null,
-          categoryColor: recipe.recipe_categories?.[0]?.categories?.color || null,
-          categoryColors: recipe.recipe_categories?.map(rc => rc.categories?.color).filter(Boolean) || [],
-          description: recipe.description,
-          ingredients: recipe.ingredients,
-          instructions: recipe.instructions,
-          created_at: recipe.created_at,
-          likeCount: recipe.recipe_likes?.length || 0
-        }));
+        return (data || []).map(formatRecipe);
       }, (formatted) => {
         setViewingRecipes(formatted);
         setRecipesLoading(false);
@@ -226,8 +156,6 @@ export function UserProfile({
 
   useEffect(() => {
     if (!viewingProfile && user) {
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
       fetch(`${supabaseUrl}/rest/v1/users?id=eq.${user.id}&select=username,display_name,bio,avatar_url`, {
         headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` }
       })
@@ -235,7 +163,7 @@ export function UserProfile({
         .then(data => {
           if (data?.[0]) {
             setOwnProfile(data[0]);
-            localStorage.setItem(`profile_${user.id}`, JSON.stringify(data[0]));
+            writeCache(`profile-own:${user.id}`, data[0]);
           }
         })
         .catch(() => {});
@@ -252,15 +180,12 @@ export function UserProfile({
   const handleSaveProfile = async () => {
     setIsSaving(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.access_token) throw new Error('Not authenticated');
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      const token = await getToken();
       const res = await fetch(`${supabaseUrl}/rest/v1/users?id=eq.${user.id}`, {
         method: 'PATCH',
         headers: {
           'apikey': supabaseKey,
-          'Authorization': `Bearer ${session.access_token}`,
+          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
           'Prefer': 'return=minimal'
         },
@@ -269,10 +194,10 @@ export function UserProfile({
       if (!res.ok) throw new Error(`${res.status}`);
       const updated = { ...ownProfile, display_name: editDisplayName.trim(), username: editHandle.trim(), bio: editBio.trim() };
       setOwnProfile(updated);
-      localStorage.setItem(`profile_${user.id}`, JSON.stringify(updated));
+      writeCache(`profile-own:${user.id}`, updated);
       if (onHandleChange) onHandleChange(editHandle.trim());
       setShowEditProfile(false);
-    } catch (err) {
+    } catch {
       if (onError) onError(language === 'en' ? 'Failed to save profile' : 'שמירת הפרופיל נכשלה');
     } finally {
       setIsSaving(false);
@@ -294,16 +219,15 @@ export function UserProfile({
     });
     if (!confirmed) return;
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.access_token) throw new Error('Not authenticated');
+      const token = await getToken();
       const res = await fetch(`${apiBase}/account`, {
         method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${session.access_token}` }
+        headers: { 'Authorization': `Bearer ${token}` }
       });
       if (!res.ok) throw new Error(await res.text());
       await supabase.auth.signOut();
       if (onLogout) onLogout();
-    } catch (err) {
+    } catch {
       if (onError) onError(language === 'en' ? 'Failed to delete account' : 'מחיקת החשבון נכשלה');
     }
   };
@@ -673,7 +597,7 @@ export function UserProfile({
                       <input
                         type="text"
                         value={editDisplayName}
-                        onChange={e => setEditDisplayName(e.target.value.replace(/[^A-Za-z0-9 '.\-]/g, ''))}
+                        onChange={e => setEditDisplayName(e.target.value.replace(/[^A-Za-z0-9 '.-]/g, ''))}
                         maxLength={64}
                         placeholder={language === 'en' ? 'Your name' : 'השם שלך'}
                         dir="ltr"

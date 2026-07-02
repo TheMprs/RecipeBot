@@ -63,9 +63,13 @@ public class ScrapeService {
             System.err.println("[Scrape] fetch failed for user " + userId + ": " + e);
             throw new ScrapeException(400, "Couldn't read a recipe from that URL.");
         }
-        if (recipe == null || recipe.getName() == null) {
+        // Gemini can return partial JSON (name only) — null arrays would NPE in the
+        // bot's preview/toString, so an incomplete recipe counts as a failed extraction.
+        if (recipe == null || recipe.getName() == null
+                || recipe.getIngredients() == null || recipe.getInstructions() == null) {
             throw new ScrapeException(400, "Failed to extract recipe from the URL content.");
         }
+        if (recipe.getDescription() == null) recipe.setDescription("");
         return recipe;
     }
 

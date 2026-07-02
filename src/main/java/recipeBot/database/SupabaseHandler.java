@@ -128,7 +128,7 @@ public class SupabaseHandler {
         return fetchList(base("/recipes?id=in.(" + String.join(",", encoded) + ")&select=*").GET().build());
     }
 
-    public void linkRecipeCategory(String recipeId, String categoryId) {
+    public boolean linkRecipeCategory(String recipeId, String categoryId) {
         JsonObject body = new JsonObject();
         body.addProperty("recipe_id", recipeId);
         body.addProperty("category_id", categoryId);
@@ -140,21 +140,26 @@ public class SupabaseHandler {
             HttpResponse<String> res = client.send(req, HttpResponse.BodyHandlers.ofString());
             if (res.statusCode() >= 400) {
                 System.err.println("[Supabase] linkRecipeCategory failed: " + res.statusCode() + " " + res.body());
+                return false;
             }
+            return true;
         } catch (Exception e) {
             e.printStackTrace();
+            return false;
         }
     }
 
-    // Replaces a recipe's category links; null categoryId clears them
-    public void setRecipeCategory(String recipeId, String categoryId) {
+    // Replaces a recipe's category links; null categoryId clears them. True on success.
+    public boolean setRecipeCategory(String recipeId, String categoryId) {
         HttpRequest req = base("/recipe_categories?recipe_id=eq." + encode(recipeId)).DELETE().build();
         try {
-            client.send(req, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> res = client.send(req, HttpResponse.BodyHandlers.ofString());
+            if (res.statusCode() >= 400) return false;
         } catch (Exception e) {
             e.printStackTrace();
+            return false;
         }
-        if (categoryId != null) linkRecipeCategory(recipeId, categoryId);
+        return categoryId == null || linkRecipeCategory(recipeId, categoryId);
     }
 
     public boolean deleteRecipeById(String id, String userId) {
@@ -171,44 +176,45 @@ public class SupabaseHandler {
         }
     }
 
-    public void updateRecipe(String recipeId, String userId, String entry, String newValue) {
+    public boolean updateRecipe(String recipeId, String userId, String entry, String newValue) {
         Set<String> allowed = Set.of("name", "description");
         if (!allowed.contains(entry)) throw new IllegalArgumentException("Invalid field: " + entry);
 
         JsonObject body = new JsonObject();
         body.addProperty(entry, newValue);
-        patchRecipe(recipeId, userId, body);
+        return patchRecipe(recipeId, userId, body);
     }
 
     // Sets an array column (ingredients/instructions) directly — no string round-trip,
     // so items containing ';' or other delimiters survive intact.
-    public void updateRecipeArray(String recipeId, String userId, String entry, String[] values) {
+    public boolean updateRecipeArray(String recipeId, String userId, String entry, String[] values) {
         Set<String> allowed = Set.of("ingredients", "instructions");
         if (!allowed.contains(entry)) throw new IllegalArgumentException("Invalid field: " + entry);
 
         JsonObject body = new JsonObject();
         body.add(entry, toJsonArray(values));
-        patchRecipe(recipeId, userId, body);
+        return patchRecipe(recipeId, userId, body);
     }
 
     // Sets visibility ("public"/"private") on an existing recipe.
-    public void updateRecipeVisibility(String recipeId, String userId, String visibility) {
+    public boolean updateRecipeVisibility(String recipeId, String userId, String visibility) {
         JsonObject body = new JsonObject();
         body.addProperty("visibility", visibility);
-        patchRecipe(recipeId, userId, body);
+        return patchRecipe(recipeId, userId, body);
     }
 
     // Sets calories_per_serving (same column the web form writes). null clears it.
-    public void updateRecipeCalories(String recipeId, String userId, Integer calories) {
+    public boolean updateRecipeCalories(String recipeId, String userId, Integer calories) {
         JsonObject body = new JsonObject();
         if (calories == null) body.add("calories_per_serving", com.google.gson.JsonNull.INSTANCE);
         else body.addProperty("calories_per_serving", calories);
-        patchRecipe(recipeId, userId, body);
+        return patchRecipe(recipeId, userId, body);
     }
 
     // The user_id filter enforces ownership at the write itself (service key bypasses RLS),
     // so a wrong/missing owner patches zero rows instead of someone else's recipe.
-    private void patchRecipe(String recipeId, String userId, JsonObject body) {
+    // True on success — callers relay failures instead of claiming success.
+    private boolean patchRecipe(String recipeId, String userId, JsonObject body) {
         HttpRequest req = base("/recipes?id=eq." + encode(recipeId) + "&user_id=eq." + encode(userId))
                 .method("PATCH", HttpRequest.BodyPublishers.ofString(gson.toJson(body)))
                 .build();
@@ -216,9 +222,12 @@ public class SupabaseHandler {
             HttpResponse<String> res = client.send(req, HttpResponse.BodyHandlers.ofString());
             if (res.statusCode() >= 400) {
                 System.err.println("[Supabase] updateRecipe failed: " + res.statusCode() + " " + res.body());
+                return false;
             }
+            return true;
         } catch (Exception e) {
             e.printStackTrace();
+            return false;
         }
     }
 

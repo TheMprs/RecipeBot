@@ -42,3 +42,6 @@ skills-lock.json
 
 ### Database ###
 data/
+
+### Graphify (generated knowledge graph) ###
+graphify-out/

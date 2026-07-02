@@ -205,15 +205,18 @@ public class Bot extends TelegramLongPollingBot {
         if (data.startsWith("SETVIS_")) {
             String[] parts = data.split("_", 3);
             String vis = parts[1].toLowerCase();
+            // Callback data is client-forgeable — only the two real values pass.
+            if (!vis.equals("public") && !vis.equals("private")) return;
             String recipeId = parts[2];
             Recipe recipe = db.getRecipeById(recipeId);
             if (recipe == null || !recipe.isOwnedBy(userId)) {
                 replaceMessageWithText(id, callbackQuery.getMessage().getMessageId(), "Recipe not found.");
                 return;
             }
-            db.updateRecipeVisibility(recipeId, userId, vis);
+            boolean ok = db.updateRecipeVisibility(recipeId, userId, vis);
             replaceMessageWithText(id, callbackQuery.getMessage().getMessageId(),
-                    vis.equals("public") ? "Recipe is now public 🌎" : "Recipe is now private 🔒");
+                    !ok ? "Update failed, please try again."
+                        : vis.equals("public") ? "Recipe is now public 🌎" : "Recipe is now private 🔒");
             return;
         }
 
@@ -224,8 +227,9 @@ public class Bot extends TelegramLongPollingBot {
                 replaceMessageWithText(id, callbackQuery.getMessage().getMessageId(), "Recipe not found.");
                 return;
             }
-            db.updateRecipeVisibility(recipeId, userId, "public");
-            replaceMessageWithText(id, callbackQuery.getMessage().getMessageId(), "Recipe is now public 🌎");
+            boolean ok = db.updateRecipeVisibility(recipeId, userId, "public");
+            replaceMessageWithText(id, callbackQuery.getMessage().getMessageId(),
+                    ok ? "Recipe is now public 🌎" : "Update failed, please try again.");
             return;
         }
 
@@ -324,11 +328,11 @@ public class Bot extends TelegramLongPollingBot {
                         "Insert recipe description:");
                 userState.put(id, State.WAITING_FOR_DESCRIPTION); // move to next step in recipe addition process
             } else if (userState.get(id) == State.EDITING_CATEGORY) {
-                db.setRecipeCategory(recipe.getId(), none ? null : categoryId);
+                boolean ok = db.setRecipeCategory(recipe.getId(), none ? null : categoryId);
                 userState.remove(id);
                 tempRecipes.remove(id);
                 replaceMessageWithText(id, callbackQuery.getMessage().getMessageId(),
-                        "Recipe category updated successfully!");
+                        ok ? "Recipe category updated successfully!" : "Update failed, please try again.");
             }
             return;
         }
@@ -509,15 +513,15 @@ public class Bot extends TelegramLongPollingBot {
 
         if (state == State.EDITING_NAME) {
             Recipe recipeToEdit = tempRecipes.get(id);
-            db.updateRecipe(recipeToEdit.getId(), userId, "name", message.getText());
-            sendText(id, "Recipe name updated successfully!");
+            finishEdit(id, db.updateRecipe(recipeToEdit.getId(), userId, "name", message.getText()),
+                    "Recipe name updated successfully!");
             return;
         }
 
         if (state == State.EDITING_DESCRIPTION) {
             Recipe recipeToEdit = tempRecipes.get(id);
-            db.updateRecipe(recipeToEdit.getId(), userId, "description", message.getText());
-            sendText(id, "Recipe description updated successfully!");
+            finishEdit(id, db.updateRecipe(recipeToEdit.getId(), userId, "description", message.getText()),
+                    "Recipe description updated successfully!");
             return;
         }
 
@@ -539,10 +543,8 @@ public class Bot extends TelegramLongPollingBot {
             try {
                 int cal = Integer.parseInt(message.getText().trim());
                 if (cal < 0) throw new NumberFormatException();
-                db.updateRecipeCalories(recipeToEdit.getId(), userId, cal);
-                userState.remove(id);
-                tempRecipes.remove(id);
-                sendText(id, "Calories per serving updated!");
+                finishEdit(id, db.updateRecipeCalories(recipeToEdit.getId(), userId, cal),
+                        "Calories per serving updated!");
             } catch (NumberFormatException e) {
                 sendTextWithCancel(id, "Please send a whole number, e.g. 250:");
             }
@@ -551,15 +553,15 @@ public class Bot extends TelegramLongPollingBot {
 
         if (state == State.EDITING_INGREDIENTS) {
             Recipe recipeToEdit = tempRecipes.get(id);
-            db.updateRecipeArray(recipeToEdit.getId(), userId, "ingredients", splitSteps(message.getText()));
-            sendText(id, "Recipe ingredients updated successfully!");
+            finishEdit(id, db.updateRecipeArray(recipeToEdit.getId(), userId, "ingredients", splitSteps(message.getText())),
+                    "Recipe ingredients updated successfully!");
             return;
         }
 
         if (state == State.EDITING_INSTRUCTIONS) {
             Recipe recipeToEdit = tempRecipes.get(id);
-            db.updateRecipeArray(recipeToEdit.getId(), userId, "instructions", splitSteps(message.getText()));
-            sendText(id, "Recipe instructions updated successfully!");
+            finishEdit(id, db.updateRecipeArray(recipeToEdit.getId(), userId, "instructions", splitSteps(message.getText())),
+                    "Recipe instructions updated successfully!");
             return;
         }
 
@@ -665,6 +667,14 @@ public class Bot extends TelegramLongPollingBot {
             if (!s.isEmpty()) out.add(s);
         }
         return out.toArray(new String[0]);
+    }
+
+    // Ends an edit flow: clears the state (so the next message isn't swallowed as
+    // another edit) and reports the real outcome instead of assuming success.
+    private void finishEdit(Long id, boolean ok, String successMsg) {
+        userState.remove(id);
+        tempRecipes.remove(id);
+        sendText(id, ok ? successMsg : "Update failed, please try again.");
     }
 
     private String buildRecipeList(String userId) {
