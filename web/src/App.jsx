@@ -651,6 +651,11 @@ function App() {
       setSaveError({ message: language === 'en' ? `"${name.trim()}" is a reserved name` : `"${name.trim()}" הוא שם שמור` })
       return null
     }
+    // Friendly ceiling before insert (the DB row-limit trigger is the hard gate).
+    if (userCategories.length >= 99) {
+      setSaveError({ message: language === 'en' ? "You've reached the maximum of 99 categories." : 'הגעת למקסימום של 99 קטגוריות.' })
+      return null
+    }
     // undefined = inline quick-create (no picker) → cycle palette; null = user chose "no color".
     const finalColor = color === undefined ? CATEGORY_PALETTE[userCategories.length % CATEGORY_PALETTE.length] : color
     try {
@@ -1051,6 +1056,12 @@ function App() {
   const handleAddRecipe = async (newRecipe) => {
     if (!user) {
       alert('Please log in first');
+      return;
+    }
+
+    // Friendly ceiling before we try to insert (the DB row-limit trigger is the hard gate).
+    if (!editingRecipe?.id && recipes.length >= 999) {
+      setSaveError({ message: language === 'en' ? "You've reached the maximum of 999 recipes." : 'הגעת למקסימום של 999 מתכונים.' });
       return;
     }
 

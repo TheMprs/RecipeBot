@@ -28,8 +28,10 @@ public class SupabaseHandler {
 
     // *** PUBLIC METHODS ***
 
-    // Inserts the recipe attributed to the given user; sets the recipe's id on success
-    public void addRecipe(Recipe recipe, String userId) {
+    // Inserts the recipe attributed to the given user; sets the recipe's id on success.
+    // Returns false if the DB rejected it (length CHECKs, per-user row-limit trigger, etc.)
+    // so callers don't claim success on a silent failure.
+    public boolean addRecipe(Recipe recipe, String userId) {
         JsonObject body = buildBody(recipe, userId);
 
         HttpRequest req = base("/recipes")
@@ -44,12 +46,52 @@ public class SupabaseHandler {
                 if (arr.size() > 0) {
                     recipe.setId(arr.get(0).getAsJsonObject().get("id").getAsString());
                 }
-            } else {
-                System.err.println("[Supabase] addRecipe failed: " + res.statusCode() + " " + res.body());
+                return true;
+            }
+            System.err.println("[Supabase] addRecipe failed: " + res.statusCode() + " " + res.body());
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return false;
+    }
+
+    // recipe_id -> row count, for a table with a recipe_id column (cook_logs / recipe_likes).
+    // One query for the whole list; grouped client-side. Empty ids -> empty map.
+    public Map<String, Integer> countByRecipe(String table, List<String> recipeIds) {
+        Map<String, Integer> counts = new HashMap<>();
+        if (recipeIds == null || recipeIds.isEmpty()) return counts;
+        List<String> enc = new ArrayList<>();
+        for (String r : recipeIds) enc.add(encode(r));
+        HttpRequest req = base("/" + table + "?recipe_id=in.(" + String.join(",", enc) + ")&select=recipe_id").GET().build();
+        try {
+            HttpResponse<String> res = client.send(req, HttpResponse.BodyHandlers.ofString());
+            JsonArray arr = gson.fromJson(res.body(), JsonArray.class);
+            for (JsonElement el : arr) {
+                counts.merge(el.getAsJsonObject().get("recipe_id").getAsString(), 1, Integer::sum);
             }
         } catch (Exception e) {
             e.printStackTrace();
         }
+        return counts;
+    }
+
+    // Exact row count for a user on a table with a user_id column (recipes/categories).
+    // Used for friendly "limit reached" messages; -1 on error so callers fail open
+    // (the DB row-limit trigger is the real enforcement).
+    public int countByUser(String table, String userId) {
+        HttpRequest req = base("/" + table + "?user_id=eq." + encode(userId) + "&select=id")
+                .header("Prefer", "count=exact")
+                .method("HEAD", HttpRequest.BodyPublishers.noBody())
+                .build();
+        try {
+            HttpResponse<String> res = client.send(req, HttpResponse.BodyHandlers.ofString());
+            String cr = res.headers().firstValue("content-range").orElse("");
+            int slash = cr.indexOf('/');
+            if (slash >= 0) return Integer.parseInt(cr.substring(slash + 1).trim());
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return -1;
     }
 
     public Recipe getRecipeById(String id) {
@@ -98,6 +140,98 @@ public class SupabaseHandler {
             e.printStackTrace();
         }
         return false;
+    }
+
+    // id -> color hex (or null) for the user's categories; drives the emoji swatch.
+    public Map<String, String> getUserCategoryColors(String userId) {
+        Map<String, String> colors = new LinkedHashMap<>();
+        HttpRequest req = base("/categories?user_id=eq." + encode(userId) + "&select=id,color&order=created_at").GET().build();
+        try {
+            HttpResponse<String> res = client.send(req, HttpResponse.BodyHandlers.ofString());
+            JsonArray arr = gson.fromJson(res.body(), JsonArray.class);
+            for (JsonElement el : arr) {
+                JsonObject o = el.getAsJsonObject();
+                colors.put(o.get("id").getAsString(),
+                        o.has("color") && !o.get("color").isJsonNull() ? o.get("color").getAsString() : null);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return colors;
+    }
+
+    public boolean renameCategory(String categoryId, String userId, String newName) {
+        JsonObject body = new JsonObject();
+        body.addProperty("name", newName);
+        return patchCategory(categoryId, userId, body);
+    }
+
+    // color == null clears it (falls back to the name-hash palette on the web).
+    public boolean setCategoryColor(String categoryId, String userId, String color) {
+        JsonObject body = new JsonObject();
+        if (color == null) body.add("color", com.google.gson.JsonNull.INSTANCE);
+        else body.addProperty("color", color);
+        return patchCategory(categoryId, userId, body);
+    }
+
+    // Ownership enforced at the query (service key bypasses RLS).
+    private boolean patchCategory(String categoryId, String userId, JsonObject body) {
+        HttpRequest req = base("/categories?id=eq." + encode(categoryId) + "&user_id=eq." + encode(userId))
+                .method("PATCH", HttpRequest.BodyPublishers.ofString(gson.toJson(body)))
+                .build();
+        try {
+            HttpResponse<String> res = client.send(req, HttpResponse.BodyHandlers.ofString());
+            if (res.statusCode() >= 400) {
+                System.err.println("[Supabase] patchCategory failed: " + res.statusCode() + " " + res.body());
+                return false;
+            }
+            return true;
+        } catch (Exception e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
+
+    // Deletes a category (and its recipe links first, so no FK is left dangling).
+    public boolean deleteCategory(String categoryId, String userId) {
+        try {
+            client.send(base("/recipe_categories?category_id=eq." + encode(categoryId)).DELETE().build(),
+                    HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> res = client.send(
+                    base("/categories?id=eq." + encode(categoryId) + "&user_id=eq." + encode(userId)).DELETE().build(),
+                    HttpResponse.BodyHandlers.ofString());
+            return res.statusCode() == 204 || res.statusCode() == 200;
+        } catch (Exception e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
+
+    // Category ids currently linked to a recipe — for the multi-select toggle menu.
+    public Set<String> getRecipeCategoryIds(String recipeId) {
+        Set<String> ids = new LinkedHashSet<>();
+        HttpRequest req = base("/recipe_categories?recipe_id=eq." + encode(recipeId) + "&select=category_id").GET().build();
+        try {
+            HttpResponse<String> res = client.send(req, HttpResponse.BodyHandlers.ofString());
+            JsonArray arr = gson.fromJson(res.body(), JsonArray.class);
+            for (JsonElement el : arr) ids.add(el.getAsJsonObject().get("category_id").getAsString());
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return ids;
+    }
+
+    // Removes a single recipe↔category link (multi-select untoggle). True on success.
+    public boolean unlinkRecipeCategory(String recipeId, String categoryId) {
+        HttpRequest req = base("/recipe_categories?recipe_id=eq." + encode(recipeId)
+                + "&category_id=eq." + encode(categoryId)).DELETE().build();
+        try {
+            HttpResponse<String> res = client.send(req, HttpResponse.BodyHandlers.ofString());
+            return res.statusCode() == 204 || res.statusCode() == 200;
+        } catch (Exception e) {
+            e.printStackTrace();
+            return false;
+        }
     }
 
     public String getCategoryName(String categoryId) {
@@ -151,19 +285,6 @@ public class SupabaseHandler {
             e.printStackTrace();
             return false;
         }
-    }
-
-    // Replaces a recipe's category links; null categoryId clears them. True on success.
-    public boolean setRecipeCategory(String recipeId, String categoryId) {
-        HttpRequest req = base("/recipe_categories?recipe_id=eq." + encode(recipeId)).DELETE().build();
-        try {
-            HttpResponse<String> res = client.send(req, HttpResponse.BodyHandlers.ofString());
-            if (res.statusCode() >= 400) return false;
-        } catch (Exception e) {
-            e.printStackTrace();
-            return false;
-        }
-        return categoryId == null || linkRecipeCategory(recipeId, categoryId);
     }
 
     public boolean deleteRecipeById(String id, String userId) {
@@ -365,7 +486,7 @@ public class SupabaseHandler {
         body.addProperty("description", recipe.getDescription() != null ? recipe.getDescription() : "");
         body.add("ingredients", toJsonArray(recipe.getIngredients()));
         body.add("instructions", toJsonArray(recipe.getInstructions()));
-        body.addProperty("visibility", recipe.getVisibility() != null ? recipe.getVisibility() : "private");
+        body.addProperty("visibility", recipe.getVisibility() != null ? recipe.getVisibility() : "public");
         body.addProperty("user_id", userId);
         return body;
     }

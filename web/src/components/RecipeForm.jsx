@@ -55,9 +55,12 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
   const [countEditing, setCountEditing] = useState(false)
   const [countDraft, setCountDraft] = useState('')
 
+  // Cap the prepped count: each unit of increase inserts one cook_logs row on save,
+  // so an unbounded value (e.g. a typed 1000000) would freeze the client and mass-insert.
+  const MAX_COOK = 999
   const commitCountDraft = () => {
     const n = parseInt(countDraft, 10)
-    if (!isNaN(n) && n >= 0) setLocalCookCount(n)
+    if (!isNaN(n) && n >= 0) setLocalCookCount(Math.min(n, MAX_COOK))
     setCountEditing(false)
   }
 
@@ -361,9 +364,10 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
             <input
               type="number"
               min="0"
+              max="100000"
               inputMode="numeric"
               value={calories}
-              onChange={e => setCalories(e.target.value)}
+              onChange={e => { const v = e.target.value; if (v === '') return setCalories(''); const n = parseInt(v, 10); if (!isNaN(n)) setCalories(String(Math.min(Math.max(n, 0), 100000))) }}
               placeholder="—"
               className="no-spinner w-28 text-center font-semibold bg-[#faf9f7] border border-[#e8e4dc] rounded-2xl px-3 py-3 text-[#3d3429] placeholder:text-[#7a7265] focus:outline-none focus:ring-2 focus:ring-[#cf711f]/20 focus:border-[#cf711f] transition-all"
             />
@@ -389,6 +393,7 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
                     min="0"
                     inputMode="numeric"
                     value={countDraft}
+                    maxLength={3}
                     onChange={e => setCountDraft(e.target.value)}
                     onBlur={commitCountDraft}
                     onKeyDown={e => {
@@ -408,8 +413,9 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
                 )}
                 <button
                   type="button"
-                  onClick={() => setLocalCookCount(c => c + 1)}
-                  className="w-9 h-9 rounded-xl text-lg font-semibold text-[#7a7265] hover:text-[#cf711f] hover:bg-white transition-colors"
+                  onClick={() => setLocalCookCount(c => Math.min(c + 1, MAX_COOK))}
+                  disabled={localCookCount >= MAX_COOK}
+                  className="w-9 h-9 rounded-xl text-lg font-semibold text-[#7a7265] hover:text-[#cf711f] hover:bg-white disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
                 >
                   +
                 </button>

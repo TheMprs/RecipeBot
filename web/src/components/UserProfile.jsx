@@ -94,6 +94,7 @@ export function UserProfile({
   const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showRecipeSettings, setShowRecipeSettings] = useState(false);
+  const [handleErr, setHandleErr] = useState(null); // inline handle validation error in the edit form
 
   // Open the settings modal when the header menu requests it
   useEffect(() => {
@@ -178,7 +179,13 @@ export function UserProfile({
   const closeSettings = () => { setShowSettings(false); setShowEditProfile(false); setShowRecipeSettings(false); };
 
   const handleSaveProfile = async () => {
+    // Match the signup modal: handle must be 3+ chars before we hit the DB.
+    if (editHandle.trim().length < 3) {
+      setHandleErr(language === 'en' ? 'At least 3 characters' : 'לפחות 3 תווים');
+      return;
+    }
     setIsSaving(true);
+    setHandleErr(null);
     try {
       const token = await getToken();
       const res = await fetch(`${supabaseUrl}/rest/v1/users?id=eq.${user.id}`, {
@@ -191,6 +198,12 @@ export function UserProfile({
         },
         body: JSON.stringify({ display_name: editDisplayName.trim(), username: editHandle.trim(), bio: editBio.trim() })
       });
+      // 409 = unique-index conflict on lower(username) → the handle is taken.
+      if (res.status === 409) {
+        setHandleErr(language === 'en' ? 'That handle is already taken' : 'שם המשתמש הזה תפוס');
+        setIsSaving(false);
+        return;
+      }
       if (!res.ok) throw new Error(`${res.status}`);
       const updated = { ...ownProfile, display_name: editDisplayName.trim(), username: editHandle.trim(), bio: editBio.trim() };
       setOwnProfile(updated);
@@ -263,7 +276,7 @@ export function UserProfile({
         {!viewingProfile && (
           <button
             onClick={() => setShowSettings(true)}
-            className={`absolute top-4 ${isRtl ? 'left-4' : 'right-4'} p-2 text-[#7a7265] hover:text-[#3d3429] hover:bg-[#f5f3ef] rounded-xl transition-colors`}
+            className={`hidden sm:block absolute top-4 ${isRtl ? 'left-4' : 'right-4'} p-2 text-[#7a7265] hover:text-[#3d3429] hover:bg-[#f5f3ef] rounded-xl transition-colors`}
           >
             <Settings className="w-5 h-5" />
           </button>
@@ -294,7 +307,7 @@ export function UserProfile({
           {/* Profile Info */}
           <div className="flex-1 flex flex-col justify-center sm:justify-between">
             <div className="flex flex-col items-start sm:flex-row sm:items-baseline sm:gap-2 mb-4 sm:mb-0" style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
-              <h1 className="text-3xl sm:text-4xl font-bold text-[#3d3429] mb-1 sm:mb-0 break-all whitespace-normal text-start">{displayName}</h1>
+              <h1 className="text-2xl sm:text-4xl font-bold text-[#3d3429] mb-1 sm:mb-0 break-words line-clamp-2 text-start" title={displayName}>{displayName}</h1>
               {handle && <p className="text-base sm:text-lg text-[#7a7265]"><span dir="ltr">@{handle}</span></p>}
             </div>
 
@@ -616,14 +629,16 @@ export function UserProfile({
                         <input
                           type="text"
                           value={editHandle}
-                          onChange={e => setEditHandle(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
+                          onChange={e => { setEditHandle(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '')); if (handleErr) setHandleErr(null); }}
                           maxLength={32}
                           placeholder="yourhandle"
                           dir="ltr"
-                          className="w-full pl-8 pr-4 py-2.5 bg-[#faf9f7] border border-[#e8e4dc] rounded-2xl text-[#3d3429] focus:outline-none focus:ring-2 focus:ring-[#cf711f]/20 focus:border-[#cf711f] text-sm transition-all text-start"
+                          className={`w-full pl-8 pr-4 py-2.5 bg-[#faf9f7] border rounded-2xl text-[#3d3429] focus:outline-none focus:ring-2 text-sm transition-all text-start ${handleErr ? 'border-red-400 focus:ring-red-200' : 'border-[#e8e4dc] focus:ring-[#cf711f]/20 focus:border-[#cf711f]'}`}
                         />
                       </div>
-                      <p className="text-xs text-[#7a7265] mt-1">{language === 'en' ? 'Letters, numbers and underscores only' : 'אותיות, מספרים וקווים תחתונים בלבד'}</p>
+                      {handleErr
+                        ? <p className="text-xs text-red-500 mt-1">{handleErr}</p>
+                        : <p className="text-xs text-[#7a7265] mt-1">{language === 'en' ? 'Letters, numbers and underscores only' : 'אותיות, מספרים וקווים תחתונים בלבד'}</p>}
                     </div>
                     <div>
                       <div className="flex items-center justify-between mb-1.5">
@@ -860,6 +875,7 @@ export function UserProfile({
                         setEditDisplayName(ownProfile?.display_name || '');
                         setEditHandle(ownProfile?.username || '');
                         setEditBio(ownProfile?.bio || '');
+                        setHandleErr(null);
                         setShowEditProfile(true);
                       }}
                       className="group w-full flex items-center gap-3 px-3 py-3 rounded-2xl bg-[#faf9f7] border border-[#e8e4dc] hover:border-[#cf711f]/40 hover:bg-[#f5f3ef] transition-all"

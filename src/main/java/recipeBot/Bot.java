@@ -24,6 +24,7 @@ import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public class Bot extends TelegramLongPollingBot {
     private final SupabaseHandler db;
@@ -36,6 +37,12 @@ public class Bot extends TelegramLongPollingBot {
     private Map<Long, Recipe> tempRecipes = new HashMap<>();
     private Map<Long, Integer> lastSentMsg = new HashMap<>();
     private Map<Long, String> pendingCategoryId = new HashMap<>(); // category picked during manual add, linked after insert
+    private Map<Long, String> renamingCategoryId = new HashMap<>(); // category being renamed via /editcategories
+
+    // Per-user ceilings — mirror the web caps and the DB row-limit trigger (the real gate).
+    private static final int MAX_RECIPES = 999;
+    private static final int MAX_CATEGORIES = 99;
+    private static final int MAX_CALORIES = 100000;
 
     public Bot(SupabaseHandler dbHandler, boolean debug, LinkTokenStore tokenStore, ScrapeService scrapeService) {
         this.db = dbHandler;
@@ -51,6 +58,7 @@ public class Bot extends TelegramLongPollingBot {
                 new BotCommand("list", "All your recipes"),
                 new BotCommand("listcategories", "Browse recipes by category"),
                 new BotCommand("newcategory", "Create a new category"),
+                new BotCommand("editcategories", "Rename, recolor or delete categories"),
                 new BotCommand("help", "What this bot can do")
         );
         try {
@@ -154,11 +162,13 @@ public class Bot extends TelegramLongPollingBot {
                             "Enter new name for " + recipeName + ":");
                     break;
                 case "CATEGORY":
-                    if (sendCategoryMenu(id, "the new category for " + recipeName, userId)) {
-                        userState.put(id, State.EDITING_CATEGORY);
-                    } else {
+                    if (db.getUserCategories(userId).isEmpty()) {
                         replaceMessageWithText(id, callbackQuery.getMessage().getMessageId(),
-                                "You have no categories yet — create them on the website first.");
+                                "You have no categories yet — make some with /newcategory.");
+                    } else {
+                        // Multi-select toggle menu (edits this message in place) — no longer
+                        // wipes the recipe's other categories the way the old single-pick did.
+                        sendMultiCategoryMenu(id, recipe.getId(), userId, callbackQuery.getMessage().getMessageId());
                     }
                     break;
                 case "DESCRIPTION":
@@ -270,14 +280,26 @@ public class Bot extends TelegramLongPollingBot {
             }
             recipe.setVisibility(data.equals("VIS_PUBLIC") ? "public" : "private");
 
-            db.addRecipe(recipe, userId);
+            if (db.countByUser("recipes", userId) >= MAX_RECIPES) {
+                userState.remove(id);
+                tempRecipes.remove(id);
+                replaceMessageWithText(id, callbackQuery.getMessage().getMessageId(),
+                        "You've reached the maximum of " + MAX_RECIPES + " recipes. Delete some to add more.");
+                return;
+            }
+            boolean added = db.addRecipe(recipe, userId);
+            userState.remove(id);
+            tempRecipes.remove(id);
+            if (!added) {
+                replaceMessageWithText(id, callbackQuery.getMessage().getMessageId(),
+                        "Couldn't save the recipe — please try again.");
+                return;
+            }
             // link the picked category (junction table, same as the web app)
             String categoryId = pendingCategoryId.remove(id);
             if (categoryId != null && recipe.getId() != null) {
                 db.linkRecipeCategory(recipe.getId(), categoryId);
             }
-            userState.remove(id);
-            tempRecipes.remove(id);
 
             replaceMessageWithText(id, callbackQuery.getMessage().getMessageId(), "Recipe added successfully!");
             sendRecipePreview(id, recipe, true);
@@ -321,19 +343,93 @@ public class Bot extends TelegramLongPollingBot {
                 return;
             }
 
+            // PICKCAT is now only the single pick during recipe *creation*; editing an
+            // existing recipe's categories goes through the multi-select TOGGLECAT flow.
             if (userState.get(id) == State.WAITING_FOR_CATEGORY) {
                 recipe.setCategory(categoryName);
                 if (!none) pendingCategoryId.put(id, categoryId);
                 replaceMessageWithTextAndAddCancel(id, callbackQuery.getMessage().getMessageId(),
                         "Insert recipe description:");
                 userState.put(id, State.WAITING_FOR_DESCRIPTION); // move to next step in recipe addition process
-            } else if (userState.get(id) == State.EDITING_CATEGORY) {
-                boolean ok = db.setRecipeCategory(recipe.getId(), none ? null : categoryId);
-                userState.remove(id);
-                tempRecipes.remove(id);
-                replaceMessageWithText(id, callbackQuery.getMessage().getMessageId(),
-                        ok ? "Recipe category updated successfully!" : "Update failed, please try again.");
             }
+            return;
+        }
+
+        // Multi-select category editing: toggle one link, then re-render the menu in place.
+        if (data.startsWith("TOGGLECAT_")) {
+            String[] parts = data.split("_", 3); // TOGGLECAT_<recipeId>_<categoryId>
+            String recipeId = parts[1], categoryId = parts[2];
+            Recipe recipe = db.getRecipeById(recipeId);
+            if (recipe == null || !recipe.isOwnedBy(userId) || !db.getUserCategories(userId).containsKey(categoryId)) {
+                replaceMessageWithText(id, callbackQuery.getMessage().getMessageId(), "Not found.");
+                return;
+            }
+            if (db.getRecipeCategoryIds(recipeId).contains(categoryId)) db.unlinkRecipeCategory(recipeId, categoryId);
+            else db.linkRecipeCategory(recipeId, categoryId);
+            sendMultiCategoryMenu(id, recipeId, userId, callbackQuery.getMessage().getMessageId());
+            return;
+        }
+        if (data.startsWith("CATDONE_")) {
+            replaceMessageWithText(id, callbackQuery.getMessage().getMessageId(), "Categories updated ✅");
+            return;
+        }
+
+        // --- /editcategories flow: pick a category, then rename / recolor / delete ---
+        Integer cbMsgId = callbackQuery.getMessage().getMessageId();
+        if (data.startsWith("EDITCAT_")) {
+            String catId = data.substring(8);
+            if (!db.getUserCategories(userId).containsKey(catId)) { replaceMessageWithText(id, cbMsgId, "Category not found."); return; }
+            sendCategoryActionsMenu(id, catId, cbMsgId);
+            return;
+        }
+        if (data.startsWith("CATRENAME_")) {
+            String catId = data.substring(10);
+            if (!db.getUserCategories(userId).containsKey(catId)) { replaceMessageWithText(id, cbMsgId, "Category not found."); return; }
+            renamingCategoryId.put(id, catId);
+            userState.put(id, State.RENAMING_CATEGORY);
+            replaceMessageWithTextAndAddCancel(id, cbMsgId, "Send the new name for this category:");
+            return;
+        }
+        if (data.startsWith("CATCOLOR_")) {
+            String catId = data.substring(9);
+            if (!db.getUserCategories(userId).containsKey(catId)) { replaceMessageWithText(id, cbMsgId, "Category not found."); return; }
+            sendColorPicker(id, catId, cbMsgId);
+            return;
+        }
+        if (data.startsWith("CATSETCOLOR_")) {
+            String[] parts = data.split("_", 3); // CATSETCOLOR_<catId>_<hex|NONE>
+            String catId = parts[1], hex = parts[2];
+            if (!db.getUserCategories(userId).containsKey(catId)) { replaceMessageWithText(id, cbMsgId, "Category not found."); return; }
+            String color = hex.equals("NONE") ? null : "#" + hex;
+            boolean ok = db.setCategoryColor(catId, userId, color);
+            replaceMessageWithText(id, cbMsgId, ok ? "Color updated " + BotFormat.colorEmoji(color) : "Update failed, please try again.");
+            return;
+        }
+        if (data.startsWith("CATDELYES_")) {
+            String catId = data.substring(10);
+            boolean ok = db.deleteCategory(catId, userId);
+            replaceMessageWithText(id, cbMsgId, ok ? "Category deleted." : "Delete failed, please try again.");
+            return;
+        }
+        if (data.startsWith("CATDEL_")) {
+            String catId = data.substring(7);
+            if (!db.getUserCategories(userId).containsKey(catId)) { replaceMessageWithText(id, cbMsgId, "Category not found."); return; }
+            EditMessageText edit = new EditMessageText();
+            edit.setChatId(id.toString());
+            edit.setMessageId(cbMsgId);
+            edit.setText("Delete <b>" + esc(db.getCategoryName(catId)) + "</b>? It'll be removed from all recipes.");
+            edit.setParseMode("HTML");
+            InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
+            List<InlineKeyboardButton> row = new LinkedList<>();
+            row.add(createButton("🗑 Delete", "CATDELYES_" + catId));
+            row.add(createButton("Cancel", "CATCANCEL"));
+            markup.setKeyboard(List.of(row));
+            edit.setReplyMarkup(markup);
+            try { execute(edit); } catch (TelegramApiException e) { throw new RuntimeException(e); }
+            return;
+        }
+        if (data.equals("CATCANCEL")) {
+            replaceMessageWithText(id, cbMsgId, "Cancelled.");
             return;
         }
 
@@ -420,6 +516,11 @@ public class Bot extends TelegramLongPollingBot {
             return;
         }
 
+        if (text.equalsIgnoreCase("/editcategories")) {
+            sendEditCategoriesMenu(chatId, userId);
+            return;
+        }
+
         // code to add new recipe
         if (text.equals("/recipe")) {
             sendAddRecipeMenu(chatId);
@@ -491,10 +592,18 @@ public class Bot extends TelegramLongPollingBot {
             Recipe importedRecipe = null;
             try {
                 // ScrapeService gates permission + rate limits, then fetches — same path as the web.
-                importedRecipe = scrapeService.scrape(userId, url);
-                importedRecipe.setVisibility("private"); // imports default to private; user can flip below
-                db.addRecipe(importedRecipe, userId);
-                result = "Recipe imported successfully!";
+                if (db.countByUser("recipes", userId) >= MAX_RECIPES) {
+                    result = "You've reached the maximum of " + MAX_RECIPES + " recipes. Delete some to add more.";
+                } else {
+                    importedRecipe = scrapeService.scrape(userId, url);
+                    importedRecipe.setVisibility("private"); // imports default to private; user can flip below
+                    if (db.addRecipe(importedRecipe, userId)) {
+                        result = "Recipe imported successfully!";
+                    } else {
+                        importedRecipe = null;
+                        result = "Couldn't save the imported recipe — please try again.";
+                    }
+                }
             } catch (ScrapeService.ScrapeException e) {
                 result = e.getMessage();
             }
@@ -530,6 +639,8 @@ public class Bot extends TelegramLongPollingBot {
             userState.remove(id);
             if (name.isEmpty()) {
                 sendText(id, "Category name can't be empty.");
+            } else if (db.countByUser("categories", userId) >= MAX_CATEGORIES) {
+                sendText(id, "You've reached the maximum of " + MAX_CATEGORIES + " categories.");
             } else if (db.createCategory(userId, name)) {
                 sendText(id, "Category \"" + esc(name) + "\" created!");
             } else {
@@ -538,15 +649,31 @@ public class Bot extends TelegramLongPollingBot {
             return;
         }
 
+        if (state == State.RENAMING_CATEGORY) {
+            String catId = renamingCategoryId.remove(id);
+            userState.remove(id);
+            String newName = message.getText().trim();
+            if (catId == null) {
+                sendText(id, "That edit expired — try /editcategories again.");
+            } else if (newName.isEmpty()) {
+                sendText(id, "Category name can't be empty.");
+            } else {
+                sendText(id, db.renameCategory(catId, userId, newName)
+                        ? "Renamed to \"" + esc(newName) + "\"."
+                        : "Rename failed — that name may already exist.");
+            }
+            return;
+        }
+
         if (state == State.EDITING_CALORIES) {
             Recipe recipeToEdit = tempRecipes.get(id);
             try {
                 int cal = Integer.parseInt(message.getText().trim());
-                if (cal < 0) throw new NumberFormatException();
+                if (cal < 0 || cal > MAX_CALORIES) throw new NumberFormatException();
                 finishEdit(id, db.updateRecipeCalories(recipeToEdit.getId(), userId, cal),
                         "Calories per serving updated!");
             } catch (NumberFormatException e) {
-                sendTextWithCancel(id, "Please send a whole number, e.g. 250:");
+                sendTextWithCancel(id, "Please send a whole number between 0 and " + MAX_CALORIES + ", e.g. 250:");
             }
             return;
         }
@@ -660,13 +787,9 @@ public class Bot extends TelegramLongPollingBot {
         return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
     }
 
+    // One item per line — see BotFormat.splitLines (unit-tested seam).
     private static String[] splitSteps(String text) {
-        java.util.List<String> out = new java.util.ArrayList<>();
-        for (String p : text.split("\\s*\\n\\s*|(?<=[.!?])\\s+")) {
-            String s = p.trim();
-            if (!s.isEmpty()) out.add(s);
-        }
-        return out.toArray(new String[0]);
+        return BotFormat.splitLines(text);
     }
 
     // Ends an edit flow: clears the state (so the next message isn't swallowed as
@@ -681,11 +804,18 @@ public class Bot extends TelegramLongPollingBot {
         List<Recipe> recipes = db.getAllRecipes(userId);
         if (recipes.isEmpty()) return "No recipes found. Add some with /recipe!";
 
+        List<String> ids = new ArrayList<>();
+        for (Recipe r : recipes) ids.add(r.getId());
+        Map<String, Integer> cooks = db.countByRecipe("cook_logs", ids);
+        Map<String, Integer> likes = db.countByRecipe("recipe_likes", ids);
+
         StringBuilder sb = new StringBuilder("<b><u>Recipes:</u></b>\n");
         String botName = getBotUsername().replace("@", "");
         for (Recipe recipe : recipes) {
             String recipeLink = "https://t.me/" + botName + "?start=show_" + recipe.getId();
-            sb.append("<a href=\"" + recipeLink + "\">" + esc(recipe.getName()) + "</a>\n");
+            sb.append("<a href=\"" + recipeLink + "\">" + esc(recipe.getName()) + "</a>")
+              .append(BotFormat.countSuffix(cooks.getOrDefault(recipe.getId(), 0), likes.getOrDefault(recipe.getId(), 0)))
+              .append("\n");
         }
         return sb.toString();
     }
@@ -903,7 +1033,7 @@ public class Bot extends TelegramLongPollingBot {
         message.setText("Select a category for " + recipeName + ":");
 
         InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
-        markup.setKeyboard(buildCategoryRows(categories, "PICKCAT_", createButton("✖️ None", "PICKCAT_NONE")));
+        markup.setKeyboard(buildCategoryRows(categories, db.getUserCategoryColors(userId), "PICKCAT_", createButton("✖️ None", "PICKCAT_NONE")));
         message.setReplyMarkup(markup);
 
         try {
@@ -913,6 +1043,97 @@ public class Bot extends TelegramLongPollingBot {
             throw new RuntimeException(e);
         }
         return true;
+    }
+
+    // Multi-select category editor for an existing recipe: each category shows ✅ when
+    // linked (else its colour swatch); tapping toggles just that link. Edits in place.
+    private void sendMultiCategoryMenu(Long id, String recipeId, String userId, Integer editMsgId) {
+        Recipe recipe = db.getRecipeById(recipeId);
+        if (recipe == null) return;
+        Map<String, String> categories = db.getUserCategories(userId);
+        Map<String, String> colors = db.getUserCategoryColors(userId);
+        Set<String> linked = db.getRecipeCategoryIds(recipeId);
+
+        List<List<InlineKeyboardButton>> rows = new LinkedList<>();
+        List<InlineKeyboardButton> row = new LinkedList<>();
+        for (Map.Entry<String, String> cat : categories.entrySet()) {
+            boolean on = linked.contains(cat.getKey());
+            String label = (on ? "✅" : BotFormat.colorEmoji(colors.get(cat.getKey()))) + " " + cat.getValue();
+            row.add(createButton(label, "TOGGLECAT_" + recipeId + "_" + cat.getKey()));
+            if (row.size() == 2) { rows.add(row); row = new LinkedList<>(); }
+        }
+        if (!row.isEmpty()) rows.add(row);
+        rows.add(List.of(createButton("✅ Done", "CATDONE_" + recipeId)));
+
+        InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
+        markup.setKeyboard(rows);
+        EditMessageText edit = new EditMessageText();
+        edit.setChatId(id.toString());
+        edit.setMessageId(editMsgId);
+        edit.setText("Tap to add/remove categories for <b>" + esc(recipe.getName()) + "</b>:");
+        edit.setParseMode("HTML");
+        edit.setReplyMarkup(markup);
+        try { execute(edit); lastSentMsg.put(id, editMsgId); }
+        catch (TelegramApiException e) { throw new RuntimeException(e); }
+    }
+
+    // /editcategories entry: list the user's categories to pick one to edit.
+    private void sendEditCategoriesMenu(Long id, String userId) {
+        Map<String, String> categories = db.getUserCategories(userId);
+        if (categories.isEmpty()) {
+            sendText(id, "You have no categories yet — make some with /newcategory.");
+            return;
+        }
+        SendMessage message = new SendMessage();
+        message.setChatId(id.toString());
+        message.setText("Pick a category to edit:");
+        InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
+        markup.setKeyboard(buildCategoryRows(categories, db.getUserCategoryColors(userId), "EDITCAT_", null));
+        message.setReplyMarkup(markup);
+        try {
+            Message sent = execute(message);
+            lastSentMsg.put(id, sent.getMessageId());
+        } catch (TelegramApiException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    // Rename / recolor / delete actions for one category (edits the picker message).
+    private void sendCategoryActionsMenu(Long id, String catId, Integer editMsgId) {
+        EditMessageText edit = new EditMessageText();
+        edit.setChatId(id.toString());
+        edit.setMessageId(editMsgId);
+        edit.setText("Editing <b>" + esc(db.getCategoryName(catId)) + "</b>:");
+        edit.setParseMode("HTML");
+        InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
+        List<InlineKeyboardButton> row1 = new LinkedList<>();
+        row1.add(createButton("✏️ Rename", "CATRENAME_" + catId));
+        row1.add(createButton("🎨 Color", "CATCOLOR_" + catId));
+        markup.setKeyboard(List.of(row1, List.of(createButton("🗑 Delete", "CATDEL_" + catId))));
+        edit.setReplyMarkup(markup);
+        try { execute(edit); lastSentMsg.put(id, editMsgId); }
+        catch (TelegramApiException e) { throw new RuntimeException(e); }
+    }
+
+    // Palette swatches + a "None" (clear) option; sets the category colour on tap.
+    private void sendColorPicker(Long id, String catId, Integer editMsgId) {
+        List<List<InlineKeyboardButton>> rows = new LinkedList<>();
+        List<InlineKeyboardButton> row = new LinkedList<>();
+        for (String hex : BotFormat.paletteHexes()) {
+            row.add(createButton(BotFormat.colorEmoji("#" + hex), "CATSETCOLOR_" + catId + "_" + hex));
+            if (row.size() == 4) { rows.add(row); row = new LinkedList<>(); }
+        }
+        if (!row.isEmpty()) rows.add(row);
+        rows.add(List.of(createButton("⚪ None", "CATSETCOLOR_" + catId + "_NONE")));
+        EditMessageText edit = new EditMessageText();
+        edit.setChatId(id.toString());
+        edit.setMessageId(editMsgId);
+        edit.setText("Pick a color:");
+        InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
+        markup.setKeyboard(rows);
+        edit.setReplyMarkup(markup);
+        try { execute(edit); lastSentMsg.put(id, editMsgId); }
+        catch (TelegramApiException e) { throw new RuntimeException(e); }
     }
 
     private void sendBrowseCategoriesMenu(Long id, String userId) {
@@ -927,7 +1148,7 @@ public class Bot extends TelegramLongPollingBot {
         message.setText("Pick a category:");
 
         InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
-        markup.setKeyboard(buildCategoryRows(categories, "SHOWCAT_", null));
+        markup.setKeyboard(buildCategoryRows(categories, db.getUserCategoryColors(userId), "SHOWCAT_", null));
         message.setReplyMarkup(markup);
 
         try {
@@ -938,14 +1159,17 @@ public class Bot extends TelegramLongPollingBot {
         }
     }
 
-    // Lays out category buttons two per row, with an optional extra button on its own row
+    // Lays out category buttons two per row, each prefixed with its colour swatch,
+    // with an optional extra button on its own row. `colors` = id -> hex (nullable).
     private List<List<InlineKeyboardButton>> buildCategoryRows(Map<String, String> categories,
+                                                               Map<String, String> colors,
                                                                String callbackPrefix,
                                                                InlineKeyboardButton extraButton) {
         List<List<InlineKeyboardButton>> rows = new LinkedList<>();
         List<InlineKeyboardButton> row = new LinkedList<>();
         for (Map.Entry<String, String> cat : categories.entrySet()) {
-            row.add(createButton(cat.getValue(), callbackPrefix + cat.getKey()));
+            String swatch = BotFormat.colorEmoji(colors == null ? null : colors.get(cat.getKey()));
+            row.add(createButton(swatch + " " + cat.getValue(), callbackPrefix + cat.getKey()));
             if (row.size() == 2) {
                 rows.add(row);
                 row = new LinkedList<>();
