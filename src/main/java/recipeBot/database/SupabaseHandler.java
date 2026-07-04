@@ -112,7 +112,7 @@ public class SupabaseHandler {
         return null;
     }
 
-    public List<Recipe> getRecipesByCategoryId(String categoryId) {
+    public List<Recipe> getRecipesByCategoryId(String categoryId, String userId) {
         List<String> recipeIds = new ArrayList<>();
         HttpRequest req = base("/recipe_categories?category_id=eq." + encode(categoryId) + "&select=recipe_id").GET().build();
         try {
@@ -125,7 +125,11 @@ public class SupabaseHandler {
         if (recipeIds.isEmpty()) return new ArrayList<>();
         List<String> encoded = new ArrayList<>();
         for (String rid : recipeIds) encoded.add(encode(rid));
-        return fetchList(base("/recipes?id=in.(" + String.join(",", encoded) + ")&select=*").GET().build());
+        // Filter to the caller's own recipes: the service key bypasses RLS, so a junction
+        // row pointing at someone else's recipe (e.g. one injected via the web) must not
+        // leak that recipe's content through a category browse.
+        return fetchList(base("/recipes?id=in.(" + String.join(",", encoded)
+                + ")&user_id=eq." + encode(userId) + "&select=*").GET().build());
     }
 
     public boolean linkRecipeCategory(String recipeId, String categoryId) {
@@ -328,7 +332,12 @@ public class SupabaseHandler {
                     .DELETE()
                     .build();
             HttpResponse<String> res = client.send(req, HttpResponse.BodyHandlers.ofString());
-            return res.statusCode() == 200 || res.statusCode() == 204;
+            if (res.statusCode() != 200 && res.statusCode() != 204) {
+                System.err.println("[Supabase] deleteAccount: auth admin delete failed: "
+                        + res.statusCode() + " " + res.body());
+                return false;
+            }
+            return true;
         } catch (Exception e) {
             e.printStackTrace();
             return false;

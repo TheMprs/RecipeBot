@@ -225,7 +225,9 @@ export function UserProfile({
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (!res.ok) throw new Error(await res.text());
-      await supabase.auth.signOut();
+      // local scope: the auth user is already deleted server-side, a global
+      // sign-out would 403 on the orphaned token
+      await supabase.auth.signOut({ scope: 'local' });
       if (onLogout) onLogout();
     } catch {
       if (onError) onError(language === 'en' ? 'Failed to delete account' : 'מחיקת החשבון נכשלה');

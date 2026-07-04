@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { ArrowLeft, ArrowRight, Users, ChefHat, Check, Pencil, Trash2, RotateCcw, UtensilsCrossed, Share2, Heart, Copy, Bookmark, Plus, Flame } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Users, ChefHat, Check, Pencil, Trash2, RotateCcw, UtensilsCrossed, Share2, Heart, Copy, Bookmark, Plus, Flame, Lock, Globe } from 'lucide-react'
 import { buildShareText } from '../utils/shareRecipe'
 import { MarbleSpine } from './MarbleSpine'
 import { playSizzle } from '../utils/sizzle'
@@ -257,6 +257,18 @@ export function RecipeDetail({ recipe, language = 'en', apiBase = '/api', onBack
               )}
               <h1 className="text-2xl sm:text-3xl font-bold text-[#3d3429] text-balance">
                 {recipe.title}
+                {recipe.visibility && (
+                  <span
+                    className="inline-block align-middle ms-2 -translate-y-0.5 text-[#a39b8d]"
+                    title={recipe.visibility === 'public'
+                      ? (language === 'en' ? 'Public' : 'ציבורי')
+                      : (language === 'en' ? 'Private' : 'פרטי')}
+                  >
+                    {recipe.visibility === 'public'
+                      ? <Globe className="w-[15px] h-[15px]" />
+                      : <Lock className="w-[15px] h-[15px]" />}
+                  </span>
+                )}
               </h1>
               {recipe.authorUsername && (
                 <button
@@ -283,8 +295,8 @@ export function RecipeDetail({ recipe, language = 'en', apiBase = '/api', onBack
                   className={`flex flex-col items-center gap-1 px-3 py-2 rounded-2xl border transition-all duration-200 ${marked ? 'bg-green-50 border-green-200 text-green-500' : 'bg-[#faf9f7] border-[#e8e4dc] text-[#7a7265] hover:border-[#e67e22]/50 hover:text-[#e67e22]'}`}
                 >
                   <ChefHat className="w-5 h-5" />
-                  <span className="flex items-center justify-center h-3 text-xs font-medium leading-none">
-                    {marked ? <Check className="w-3 h-3" strokeWidth={3} /> : cookCount > 0 ? `${cookCount}×` : '—'}
+                  <span dir="ltr" className="flex items-center justify-center h-3 text-xs font-medium leading-none">
+                    {marked ? <Check className="w-3 h-3" strokeWidth={3} /> : cookCount > 0 ? `×${cookCount}` : '—'}
                   </span>
                 </button>
               )}

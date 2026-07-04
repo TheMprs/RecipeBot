@@ -346,7 +346,7 @@ public class Bot extends TelegramLongPollingBot {
                 return;
             }
             String categoryName = db.getCategoryName(categoryId);
-            List<Recipe> recipes = db.getRecipesByCategoryId(categoryId);
+            List<Recipe> recipes = db.getRecipesByCategoryId(categoryId, userId);
             if (recipes.isEmpty()) {
                 replaceMessageWithText(id, callbackQuery.getMessage().getMessageId(),
                         "No recipes in " + esc(categoryName) + " yet.");

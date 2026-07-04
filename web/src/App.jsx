@@ -1,6 +1,6 @@
 ﻿import { useState, useEffect, useRef } from 'react'
 import { createPortal, flushSync } from 'react-dom'
-import { BookOpen, Plus, Search, Filter, X, Link as LinkIcon, User as UserIcon, ChevronLeft, ChevronRight, Heart, RotateCcw, Pencil, Menu, Settings, LogOut, Check, Trash2, Sparkles } from 'lucide-react'
+import { BookOpen, Plus, Search, Filter, X, Link as LinkIcon, User as UserIcon, ChevronLeft, ChevronRight, Heart, RotateCcw, Pencil, Menu, Settings, LogOut, Check, Trash2, Sparkles, AtSign } from 'lucide-react'
 import { RecipeCard, RecipeCardSkeleton } from './components/RecipeCard'
 import { CATEGORY_PALETTE } from './utils/categoryColor'
 import { RecipeDetail } from './components/RecipeDetail'
@@ -39,6 +39,10 @@ const API_BASE = import.meta.env.VITE_API_URL || '/api'
 function App() {
   const [user, setUser] = useState(null)
   const [userHandle, setUserHandle] = useState(null)
+  const [needsHandle, setNeedsHandle] = useState(false) // new user must pick a handle before the users row exists
+  const [newHandle, setNewHandle] = useState('')
+  const [handleError, setHandleError] = useState(null)
+  const [creatingProfile, setCreatingProfile] = useState(false)
   const [canScrape, setCanScrape] = useState(false)
   const [loading, setLoading] = useState(true)
   const [recipes, setRecipes] = useState(seedOwnRecipes)
@@ -113,10 +117,11 @@ function App() {
     transition.finished.finally(() => { delete document.documentElement.dataset.swipe })
   }
 
-  // Mobile left-swipe navigation: right-edge → profile (from home), anywhere → home (from profile)
+  // Mobile swipe navigation: swipe left → profile, swipe right → home; works
+  // from anywhere on the page except the outer 30px OS-gesture edges
   useEffect(() => {
     if (!user) return
-    let startX = null, startY = null, fromRightEdge = false
+    let startX = null, startY = null, notOsEdge = false
 
     // A swipe that starts inside a horizontally-scrollable element (carousel,
     // category pills) is a scroll, not a nav gesture — mobile-only conflict,
@@ -136,9 +141,9 @@ function App() {
       const t = e.touches[0]
       startX = t.clientX
       startY = t.clientY
-      // 30-100px band from the right edge: outer 30px stays the browser's
-      // (iOS forward-swipe territory), so our gesture never fights the OS
-      fromRightEdge = t.clientX > window.innerWidth - 100 && t.clientX < window.innerWidth - 30
+      // anywhere on the page except the outer 30px edges — those stay the
+      // browser's (iOS back/forward-swipe territory) so we never fight the OS
+      notOsEdge = t.clientX > 30 && t.clientX < window.innerWidth - 30
     }
     const onEnd = (e) => {
       if (startX === null) return
@@ -147,7 +152,7 @@ function App() {
       // real fingers swipe diagonally — demand a clearly horizontal gesture
       if (dy < 50 && Math.abs(dx) > dy * 1.5) {
         if (viewMode === 'profile' && dx < -60) slideNav('home', 'left')        // swipe right → back to main
-        else if (viewMode !== 'profile' && dx > 60 && fromRightEdge) slideNav('profile', 'right') // right-edge swipe left → profile
+        else if (viewMode !== 'profile' && dx > 60 && notOsEdge) slideNav('profile', 'right') // swipe left → profile
       }
       startX = null
     }
@@ -237,18 +242,10 @@ function App() {
 
             const existingProfiles = await checkRes.json();
             
-            // If no profile exists, create one — use UUID as default username (always unique)
+            // No profile yet: don't create the row here — prompt for a handle first,
+            // the row is only inserted once a valid one is chosen (see submitHandle)
             if (!existingProfiles || existingProfiles.length === 0) {
-              const createRes = await fetch(`${supabaseUrl}/rest/v1/users`, {
-                method: 'POST',
-                headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  id: user.id, username: user.id,
-                  display_name: user.user_metadata?.full_name || '',
-                  bio: null, avatar_url: user.user_metadata?.avatar_url || null,
-                })
-              })
-              if (!createRes.ok) console.error('[Auth] Failed to create profile:', await createRes.text())
+              setNeedsHandle(true)
             } else if (user.user_metadata?.avatar_url) {
               // Refresh avatar URL on every login in case Google rotated it
               fetch(`${supabaseUrl}/rest/v1/users?id=eq.${user.id}`, {
@@ -287,6 +284,44 @@ function App() {
       })
     }).catch(() => {})
   }, [user])
+
+  // First-time signup: create the users row only once a valid handle is chosen
+  const submitHandle = async () => {
+    const uname = newHandle.trim()
+    if (uname.length < 3) {
+      setHandleError('At least 3 characters')
+      return
+    }
+    setCreatingProfile(true)
+    setHandleError(null)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) throw new Error('no session')
+      const res = await fetch(`${supabaseUrl}/rest/v1/users`, {
+        method: 'POST',
+        headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: session.user.id, username: uname,
+          display_name: session.user.user_metadata?.full_name || '',
+          bio: null, avatar_url: session.user.user_metadata?.avatar_url || null,
+        })
+      })
+      if (res.ok) {
+        setUserHandle(uname)
+        setNeedsHandle(false)
+        setNewHandle('')
+      } else if (res.status === 409) {
+        setHandleError('That handle is already taken')
+      } else {
+        console.error('[Auth] Failed to create profile:', await res.text())
+        setHandleError('Something went wrong — try again')
+      }
+    } catch (error) {
+      console.error('[Auth] Failed to create profile:', error.message)
+      setHandleError('Something went wrong — try again')
+    }
+    setCreatingProfile(false)
+  }
 
   const handleLogout = async () => {
     try {
@@ -548,7 +583,7 @@ function App() {
           description: recipe.description,
           ingredients: recipe.ingredients,
           instructions: recipe.instructions,
-          visibility: localStorage.getItem('defaultRecipeVisibility') || 'private'
+          visibility: recipe.visibility || localStorage.getItem('defaultRecipeVisibility') || 'public'
         })
       })
       if (!res.ok) throw new Error(await res.text())
@@ -971,6 +1006,7 @@ function App() {
       ingredients: formatArray(recipeObj.ingredients),
       instructions: formatArray(recipeObj.instructions),
       caloriesPerServing: recipeObj.caloriesPerServing ?? recipeObj.calories_per_serving ?? null,
+      visibility: recipeObj.visibility,
       user_id: recipeObj.user_id || recipeObj.authorId,
       authorId: recipeObj.authorId || recipeObj.user_id,
       authorUsername: recipeObj.authorUsername || null
@@ -1036,6 +1072,7 @@ function App() {
         category: primaryCat?.name || null,
         categoryColor: primaryCat?.color || null,
         caloriesPerServing: newRecipe.caloriesPerServing,
+        visibility: newRecipe.visibility,
       } : prev)
     }
     setShowRecipeForm(false);
@@ -1091,7 +1128,7 @@ function App() {
               ingredients: newRecipe.ingredients,
               instructions: newRecipe.instructions,
               calories_per_serving: newRecipe.caloriesPerServing,
-              visibility: newRecipe.visibility || localStorage.getItem('defaultRecipeVisibility') || 'private'
+              visibility: newRecipe.visibility || localStorage.getItem('defaultRecipeVisibility') || 'public'
             })
           }
         );
@@ -1989,6 +2026,69 @@ function App() {
               >
                 {language === 'en' ? 'Awesome' : 'מעולה'}
               </button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* First-signup handle picker — blocking: the users row doesn't exist until this succeeds.
+          Styled to match the Login card (gradient header + white body). English only. */}
+      {user && needsHandle && (
+        <>
+          <div className="fixed inset-0 z-[90] backdrop-blur-sm bg-black/30" />
+          <div className="fixed inset-0 z-[95] flex items-center justify-center p-4">
+            <div className="bg-white rounded-3xl shadow-2xl w-96 max-w-[90vw] overflow-hidden" dir="ltr">
+              {/* Warm branded header */}
+              <div className="relative bg-gradient-to-br from-[#e67e22] to-[#cf711f] px-8 pt-9 pb-12 text-center">
+                <div className="w-16 h-16 rounded-2xl bg-white/15 backdrop-blur flex items-center justify-center mx-auto mb-4 ring-1 ring-white/25">
+                  <AtSign className="w-8 h-8 text-white" />
+                </div>
+                <h2 className="text-2xl font-bold text-white">Pick your handle</h2>
+                <p className="text-white/85 text-sm mt-1">Your unique @name on RecipeBook</p>
+              </div>
+
+              <div className="px-8 pt-8 pb-8 -mt-5 bg-white rounded-t-3xl relative">
+                <p className="text-sm text-[#3d3429] mb-5 text-center">
+                  It appears on your profile and recipes — lowercase letters, numbers and underscores.
+                </p>
+
+                <div className="relative mb-2">
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[#7a7265]">@</span>
+                  <input
+                    type="text"
+                    value={newHandle}
+                    maxLength={30}
+                    onChange={e => { setNewHandle(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '')); setHandleError(null) }}
+                    onKeyDown={e => { if (e.key === 'Enter') submitHandle() }}
+                    placeholder="yourhandle"
+                    autoFocus
+                    className="w-full pl-9 pr-4 p-3.5 border border-[#e8e4dc] rounded-2xl text-[#3d3429] focus:outline-none focus:border-[#e67e22] transition-colors"
+                  />
+                </div>
+
+                {handleError && (
+                  <div className="mb-3 p-3 bg-red-50 border border-red-200 rounded-xl">
+                    <p className="text-red-700 text-sm text-center">{handleError}</p>
+                  </div>
+                )}
+
+                <button
+                  onClick={submitHandle}
+                  disabled={creatingProfile || newHandle.trim().length < 3}
+                  className="relative w-full bg-[#e67e22] text-white p-3.5 rounded-2xl hover:bg-[#cf711f] disabled:opacity-50 disabled:cursor-not-allowed font-semibold transition-all shadow-sm hover:shadow-md mt-3"
+                >
+                  <span className={creatingProfile ? 'invisible' : ''}>Confirm</span>
+                  <span className={`absolute inset-0 flex items-center justify-center gap-3 ${creatingProfile ? '' : 'invisible'}`}>
+                    <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    <span>Saving...</span>
+                  </span>
+                </button>
+
+                <p className="flex items-center justify-center gap-1.5 text-center text-xs text-[#7a7265] mt-4">
+                  <Heart className="w-3 h-3 text-[#e67e22]" />
+                  You can change it anytime in settings
+                </p>
+              </div>
             </div>
           </div>
         </>

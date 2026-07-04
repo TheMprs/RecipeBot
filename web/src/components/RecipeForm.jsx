@@ -1,5 +1,5 @@
 ﻿import { useState, useEffect, useRef } from 'react'
-import { ArrowLeft, LinkIcon, ChevronDown, Check, Plus, ChefHat, Globe, Lock, Type, AlignLeft, Tag, Flame, Hash, List, ListOrdered } from 'lucide-react'
+import { LinkIcon, ChevronDown, Check, Plus, ChefHat, Globe, Lock, Type, AlignLeft, Tag, Flame, Hash, List, ListOrdered, X } from 'lucide-react'
 import { categoryColor } from '../utils/categoryColor'
 
 const FieldLabel = ({ icon: Icon, children, hint, trailing }) => (
@@ -14,22 +14,26 @@ const FieldLabel = ({ icon: Icon, children, hint, trailing }) => (
   </div>
 )
 
-// Split a free-typed blob (ingredients or instructions) into items: break on line breaks
-// AND sentence endings (. ! ?) followed by whitespace. The lookbehind keeps the punctuation
-// on each item, and requiring whitespace after the dot leaves decimals like "1.5" intact.
-const splitSteps = (text) =>
-  text.split(/\s*\n\s*|(?<=[.!?])\s+/).map(s => s.trim()).filter(Boolean)
+// Items are entered one line at a time via the add button; pasted multi-line
+// text still splits on line breaks so a copied list lands as separate items.
+const splitLines = (text) => text.split('\n').map(s => s.trim()).filter(Boolean)
 
 export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, language = 'en', userCategories = [], currentCategoryIds = [], onCreateCategory, cookCount = 0 }) {
   const isRtl = language === 'he'
 
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
-  const [ingredientsText, setIngredientsText] = useState('')
-  const [instructionsText, setInstructionsText] = useState('')
+  const [ingredients, setIngredients] = useState([])
+  const [instructions, setInstructions] = useState([])
+  const [ingredientDraft, setIngredientDraft] = useState('')
+  const [instructionDraft, setInstructionDraft] = useState('')
+  // In-place edit of an existing list item: {i, text} or null. Commit on blur/Enter;
+  // emptying the text drops the item, like the cook-count stepper's inline edit.
+  const [editIng, setEditIng] = useState(null)
+  const [editInst, setEditInst] = useState(null)
   const [selectedCatIds, setSelectedCatIds] = useState(currentCategoryIds)
   const [calories, setCalories] = useState('')
-  const [visibility, setVisibility] = useState(() => localStorage.getItem('defaultRecipeVisibility') || 'private')
+  const [visibility, setVisibility] = useState(() => localStorage.getItem('defaultRecipeVisibility') || 'public')
   const [errors, setErrors] = useState({})
   const [showNewCatInput, setShowNewCatInput] = useState(false)
   const [newCatName, setNewCatName] = useState('')
@@ -61,35 +65,109 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
     if (editingRecipe) {
       setTitle(editingRecipe.title)
       setDescription(editingRecipe.description)
-      setIngredientsText(editingRecipe.ingredients.join('\n'))
-      setInstructionsText(editingRecipe.instructions.join('\n'))
+      setIngredients(editingRecipe.ingredients)
+      setInstructions(editingRecipe.instructions)
       setCalories(editingRecipe.caloriesPerServing != null ? String(editingRecipe.caloriesPerServing) : '')
       if (editingRecipe.visibility) setVisibility(editingRecipe.visibility)
     }
   }, [editingRecipe])
 
-  const ingredientCount = splitSteps(ingredientsText).length
-  const instructionCount = splitSteps(instructionsText).length
   const selectedCats = userCategories.filter(c => selectedCatIds.includes(c.id))
   const toggleCat = (id) => setSelectedCatIds(ids => ids.includes(id) ? ids.filter(x => x !== id) : [...ids, id])
 
+  // Add the draft line(s) to the list; multi-line pastes become one item per line
+  const addIngredient = () => {
+    const items = splitLines(ingredientDraft)
+    if (!items.length) return
+    setIngredients(list => [...list, ...items])
+    setIngredientDraft('')
+    if (errors.ingredients) setErrors(p => ({ ...p, ingredients: null }))
+  }
+  // Step reordering — pointer-based drag (works with touch too, unlike HTML5 DnD).
+  // Ref drives the logic, state only drives the highlight style.
+  const dragIdxRef = useRef(null)
+  const [dragIdx, setDragIdx] = useState(null)
+  const startStepDrag = (e, i) => {
+    e.preventDefault()
+    dragIdxRef.current = i
+    setDragIdx(i)
+    const move = (ev) => {
+      const prev = dragIdxRef.current
+      if (prev == null) return
+      // Target = "insert before this row", the first row whose vertical midpoint is
+      // below the pointer (or past the end). Measuring each row's real rect makes it
+      // stable across very different heights — no swap-on-edge oscillation.
+      const rows = [...document.querySelectorAll('[data-step-idx]')]
+      let target = rows.length
+      for (let k = 0; k < rows.length; k++) {
+        const r = rows[k].getBoundingClientRect()
+        if (ev.clientY < r.top + r.height / 2) { target = k; break }
+      }
+      // Removing the dragged item first shifts every later index down one, so a
+      // downward move must insert one slot earlier than the pre-removal target.
+      const insertAt = target > prev ? target - 1 : target
+      if (insertAt === prev) return
+      dragIdxRef.current = insertAt
+      setDragIdx(insertAt)
+      setInstructions(list => { const c = [...list]; const [m] = c.splice(prev, 1); c.splice(insertAt, 0, m); return c })
+    }
+    const up = () => {
+      dragIdxRef.current = null
+      setDragIdx(null)
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+      window.removeEventListener('pointercancel', up)
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+    window.addEventListener('pointercancel', up)
+  }
+
+  const addInstruction = () => {
+    const items = splitLines(instructionDraft)
+    if (!items.length) return
+    setInstructions(list => [...list, ...items])
+    setInstructionDraft('')
+    if (errors.instructions) setErrors(p => ({ ...p, instructions: null }))
+  }
+
+  // Write an edited item back into its list; empty text removes it.
+  const commitEditIng = () => {
+    if (!editIng) return
+    const text = editIng.text.trim()
+    setIngredients(list => text ? list.map((v, j) => j === editIng.i ? text : v) : list.filter((_, j) => j !== editIng.i))
+    setEditIng(null)
+  }
+  const commitEditInst = () => {
+    if (!editInst) return
+    const text = editInst.text.trim()
+    setInstructions(list => text ? list.map((v, j) => j === editInst.i ? text : v) : list.filter((_, j) => j !== editInst.i))
+    setEditInst(null)
+  }
+
   const handleSubmit = (e) => {
     e.preventDefault()
-    const ingredients = splitSteps(ingredientsText)
-    const instructions = splitSteps(instructionsText)
+    const ingredients2 = ingredients
+    const instructions2 = instructions
 
     const required = language === 'en' ? 'Required field' : 'שדה חובה'
+    const tooMany = language === 'en' ? 'Maximum 100 items' : 'עד 100 פריטים'
+    const unsaved = language === 'en' ? 'Unsaved line — add it or clear it first' : 'שורה לא שמורה — הוסף או נקה אותה קודם'
     const newErrors = {}
     if (!title.trim()) newErrors.title = required
-    if (ingredients.length === 0) newErrors.ingredients = required
-    if (instructions.length === 0) newErrors.instructions = required
+    if (ingredientDraft.trim()) newErrors.ingredients = unsaved
+    else if (ingredients2.length === 0) newErrors.ingredients = required
+    else if (ingredients2.length > 100) newErrors.ingredients = tooMany
+    if (instructionDraft.trim()) newErrors.instructions = unsaved
+    else if (instructions2.length === 0) newErrors.instructions = required
+    else if (instructions2.length > 100) newErrors.instructions = tooMany
     if (Object.keys(newErrors).length) {
       setErrors(newErrors)
       document.querySelector('[data-invalid="true"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
       return
     }
 
-    onSave({ title, description, ingredients, instructions, categoryIds: selectedCatIds, caloriesPerServing: calories === '' ? null : parseInt(calories, 10), visibility, cookCountDelta: localCookCount - cookCount })
+    onSave({ title, description, ingredients: ingredients2, instructions: instructions2, categoryIds: selectedCatIds, caloriesPerServing: calories === '' ? null : parseInt(calories, 10), visibility, cookCountDelta: localCookCount - cookCount })
   }
 
   return (
@@ -103,9 +181,9 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
           <div className="pointer-events-none absolute -bottom-20 -left-10 w-52 h-52 rounded-full bg-black/10 blur-2xl" />
           <div className="relative flex items-center justify-between">
             <button onClick={onBack}
-              className="flex items-center gap-2 text-white/85 hover:text-white transition-colors">
-              <ArrowLeft className="w-5 h-5" />
-              <span className="font-medium">Back</span>
+              title={language === 'en' ? 'Close' : 'סגור'}
+              className="flex items-center justify-center w-9 h-9 rounded-full text-white/85 hover:text-white hover:bg-white/15 transition-colors">
+              <X className="w-5 h-5" />
             </button>
             <div className="absolute left-1/2 -translate-x-1/2 translate-y-5 w-11 h-11 sm:w-14 sm:h-14 rounded-2xl bg-white/15 backdrop-blur flex items-center justify-center ring-1 ring-white/25">
               <ChefHat className="w-6 h-6 sm:w-8 sm:h-8 text-white" />
@@ -141,6 +219,7 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
               <input
                 type="text"
                 value={title}
+                maxLength={200}
                 onChange={e => { setTitle(e.target.value); if (errors.title) setErrors(p => ({ ...p, title: null })) }}
                 placeholder={language === 'en' ? "e.g., Grandma's Apple Pie" : 'למשל, חלה של יובל'}
                 data-invalid={!!errors.title}
@@ -169,6 +248,7 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
             <FieldLabel icon={AlignLeft}>{language === 'en' ? 'Description' : 'תיאור'}</FieldLabel>
             <textarea
               value={description}
+              maxLength={5000}
               onChange={e => setDescription(e.target.value)}
               placeholder={language === 'en' ? 'A brief description of your recipe...' : 'תיאור קצר של המתכון...'}
               rows={3}
@@ -227,6 +307,7 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
                         size={1}
                         style={{ direction: isRtl ? 'rtl' : 'ltr' }}
                         value={newCatName}
+                        maxLength={50}
                         onChange={e => setNewCatName(e.target.value)}
                         onKeyDown={async e => {
                           if (e.key === 'Enter') {
@@ -337,50 +418,156 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
           )}
           </div>
 
-          {/* Ingredients */}
+          {/* Ingredients — one line at a time */}
           <div>
-            <FieldLabel icon={List} hint={language === 'en' ? 'Separate ingredients with new lines or with a period.' : 'הפרד בין הרכיבים בשורות חדשות או בנקודה.'}>
+            <FieldLabel icon={List} trailing={ingredients.length > 0 && (
+              <span className="text-xs font-medium text-[#a39b8d]">
+                {ingredients.length} {language === 'en' ? (ingredients.length === 1 ? 'item' : 'items') : 'פריטים'}
+              </span>
+            )}>
               {language === 'en' ? 'Ingredients' : 'רכיבים'}</FieldLabel>
+            {ingredients.length > 0 && (
+              <ul className="mb-2 space-y-1.5">
+                {ingredients.map((item, i) => (
+                  <li key={i} className="flex items-center gap-2 px-4 py-2 bg-[#faf9f7] border border-[#e8e4dc] rounded-2xl">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#e67e22] flex-shrink-0" />
+                    {editIng?.i === i ? (
+                      <input
+                        autoFocus
+                        type="text"
+                        maxLength={500}
+                        value={editIng.text}
+                        onChange={e => setEditIng({ i, text: e.target.value })}
+                        onBlur={commitEditIng}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') { e.preventDefault(); commitEditIng() }
+                          if (e.key === 'Escape') setEditIng(null)
+                        }}
+                        className="flex-1 min-w-0 text-sm text-[#3d3429] bg-transparent focus:outline-none"
+                      />
+                    ) : (
+                      <button type="button" onClick={() => setEditIng({ i, text: item })}
+                        className="flex-1 min-w-0 text-start text-sm text-[#3d3429] break-words hover:text-[#cf711f] transition-colors">
+                        {item}
+                      </button>
+                    )}
+                    <button type="button" onClick={() => setIngredients(list => list.filter((_, j) => j !== i))}
+                      className="flex-shrink-0 text-[#a39b8d] hover:text-red-500 transition-colors" title={language === 'en' ? 'Remove' : 'הסר'}>
+                      <X className="w-4 h-4" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
             <div className="relative">
-              <textarea
-                value={ingredientsText}
-                onChange={e => { setIngredientsText(e.target.value); if (errors.ingredients) setErrors(p => ({ ...p, ingredients: null })) }}
-                placeholder={language === 'en' ? '2 cups flour \n1 cup sugar \n3 eggs \n1/2 cup butter'
-                                              : '2 כוסות קמח \n1 כוס סוכר \n3 ביצים \n1/2 כוס שמן'}
-                rows={6}
+              <input
+                type="text"
+                value={ingredientDraft}
+                maxLength={500}
+                onChange={e => { setIngredientDraft(e.target.value); if (errors.ingredients) setErrors(p => ({ ...p, ingredients: null })) }}
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addIngredient() } }}
+                placeholder={language === 'en' ? 'e.g., 2 cups flour' : 'למשל, 2 כוסות קמח'}
                 data-invalid={!!errors.ingredients}
-                className={`w-full px-4 py-3 pb-7 bg-[#faf9f7] border rounded-2xl text-[#3d3429] placeholder:text-[#7a7265] focus:outline-none transition-all resize-none ${errors.ingredients ? 'border-red-400 ring-2 ring-red-200' : 'border-[#e8e4dc] focus:ring-2 focus:ring-[#cf711f]/20 focus:border-[#cf711f]'}`}
+                className={`w-full px-4 py-3 pe-14 bg-[#faf9f7] border rounded-2xl text-[#3d3429] placeholder:text-[#7a7265] focus:outline-none transition-all ${errors.ingredients ? 'border-red-400 ring-2 ring-red-200' : 'border-[#e8e4dc] focus:ring-2 focus:ring-[#cf711f]/20 focus:border-[#cf711f]'}`}
               />
-              {ingredientCount > 0 && (
-                <span className={`absolute bottom-3.5 ${isRtl ? 'left-3' : 'right-3'} text-xs font-medium text-[#a39b8d] bg-[#faf9f7]/90 px-1 rounded pointer-events-none`}>
-                  {ingredientCount} {language === 'en' ? (ingredientCount === 1 ? 'item' : 'items') : 'פריטים'}
-                </span>
+              {ingredientDraft && (
+                <button type="button"
+                  onClick={() => { setIngredientDraft(''); if (errors.ingredients) setErrors(p => ({ ...p, ingredients: null })) }}
+                  className={`absolute top-1/2 -translate-y-1/2 ${isRtl ? 'left-3' : 'right-3'} text-xs font-medium text-[#a39b8d] hover:text-red-500 transition-colors`}>
+                  {language === 'en' ? 'Clear' : 'נקה'}
+                </button>
               )}
             </div>
+            <button
+              type="button"
+              onClick={addIngredient}
+              disabled={!ingredientDraft.trim()}
+              className="mt-2 flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-[#cf711f] bg-[#e67e22]/10 hover:bg-[#e67e22]/15 rounded-2xl border border-[#e67e22]/30 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              {language === 'en' ? 'Add ingredient' : 'הוסף רכיב'}
+            </button>
             {errors.ingredients && <p className="text-xs text-red-500 mt-1.5 ps-[14px]">{errors.ingredients}</p>}
           </div>
 
-          {/* Instructions */}
+          {/* Instructions — one line at a time */}
           <div>
-            <FieldLabel icon={ListOrdered} hint={language === 'en' ? 'Separate steps with new lines or with a period.' : 'הפרד בין השלבים בשורות חדשות או בנקודה.'}>
+            <FieldLabel icon={ListOrdered} trailing={instructions.length > 0 && (
+              <span className="text-xs font-medium text-[#a39b8d]">
+                {instructions.length} {language === 'en' ? (instructions.length === 1 ? 'step' : 'steps') : 'שלבים'}
+              </span>
+            )}>
               {language === 'en' ? 'Instructions' : 'הוראות'}</FieldLabel>
+            {instructions.length > 0 && (
+              <ol className="mb-2 space-y-1.5">
+                {instructions.map((item, i) => (
+                  <li key={i} data-step-idx={i}
+                    className={`flex items-center gap-2.5 px-4 py-2 bg-[#faf9f7] border rounded-2xl transition-shadow ${dragIdx === i ? 'border-[#e67e22] shadow-md select-none' : 'border-[#e8e4dc]'}`}>
+                    <button type="button" onPointerDown={e => startStepDrag(e, i)}
+                      style={{ touchAction: 'none' }}
+                      className="flex-shrink-0 cursor-grab active:cursor-grabbing text-[#a39b8d] hover:text-[#cf711f] transition-colors"
+                      title={language === 'en' ? 'Drag to reorder' : 'גרור לשינוי סדר'}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                        <path d="M5 6h14M5 12h14M5 18h14" />
+                      </svg>
+                    </button>
+                    <span className="flex-shrink-0 w-6 h-6 rounded-full bg-[#e67e22]/10 text-[#cf711f] text-xs font-semibold flex items-center justify-center">{i + 1}</span>
+                    {editInst?.i === i ? (
+                      <input
+                        autoFocus
+                        type="text"
+                        maxLength={2000}
+                        value={editInst.text}
+                        onChange={e => setEditInst({ i, text: e.target.value })}
+                        onBlur={commitEditInst}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') { e.preventDefault(); commitEditInst() }
+                          if (e.key === 'Escape') setEditInst(null)
+                        }}
+                        className="flex-1 min-w-0 text-sm text-[#3d3429] bg-transparent focus:outline-none"
+                      />
+                    ) : (
+                      <button type="button" onClick={() => setEditInst({ i, text: item })}
+                        className="flex-1 min-w-0 text-start text-sm text-[#3d3429] break-words hover:text-[#cf711f] transition-colors">
+                        {item}
+                      </button>
+                    )}
+                    <button type="button" onClick={() => setInstructions(list => list.filter((_, j) => j !== i))}
+                      className="flex-shrink-0 text-[#a39b8d] hover:text-red-500 transition-colors" title={language === 'en' ? 'Remove' : 'הסר'}>
+                      <X className="w-4 h-4" />
+                    </button>
+                  </li>
+                ))}
+              </ol>
+            )}
             <div className="relative">
-              <textarea
-                value={instructionsText}
-                onChange={e => { setInstructionsText(e.target.value); if (errors.instructions) setErrors(p => ({ ...p, instructions: null })) }}
-                placeholder={language === 'en' ?
-                        'Preheat oven to 350F\nMix dry ingredients in a bowl\nAdd wet ingredients and stir\nPour into pan and bake for 30 minutes'
-                      : 'מחמים תנור ל180 מעלות\nמערבבים את הרכיבים היבשים בקערה\nמוסיפים את הרכיבים הרטובים ומערבבים\nיוצקים לתבנית ואופים במשך 30 דקות'}
-                rows={8}
+              <input
+                type="text"
+                value={instructionDraft}
+                maxLength={2000}
+                onChange={e => { setInstructionDraft(e.target.value); if (errors.instructions) setErrors(p => ({ ...p, instructions: null })) }}
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addInstruction() } }}
+                placeholder={language === 'en' ? 'e.g., Preheat oven to 350F' : 'למשל, מחמים תנור ל-180 מעלות'}
                 data-invalid={!!errors.instructions}
-                className={`w-full px-4 py-3 pb-7 bg-[#faf9f7] border rounded-2xl text-[#3d3429] placeholder:text-[#7a7265] focus:outline-none transition-all resize-none ${errors.instructions ? 'border-red-400 ring-2 ring-red-200' : 'border-[#e8e4dc] focus:ring-2 focus:ring-[#cf711f]/20 focus:border-[#cf711f]'}`}
+                className={`w-full px-4 py-3 pe-14 bg-[#faf9f7] border rounded-2xl text-[#3d3429] placeholder:text-[#7a7265] focus:outline-none transition-all ${errors.instructions ? 'border-red-400 ring-2 ring-red-200' : 'border-[#e8e4dc] focus:ring-2 focus:ring-[#cf711f]/20 focus:border-[#cf711f]'}`}
               />
-              {instructionCount > 0 && (
-                <span className={`absolute bottom-3.5 ${isRtl ? 'left-3' : 'right-3'} text-xs font-medium text-[#a39b8d] bg-[#faf9f7]/90 px-1 rounded pointer-events-none`}>
-                  {instructionCount} {language === 'en' ? (instructionCount === 1 ? 'step' : 'steps') : 'שלבים'}
-                </span>
+              {instructionDraft && (
+                <button type="button"
+                  onClick={() => { setInstructionDraft(''); if (errors.instructions) setErrors(p => ({ ...p, instructions: null })) }}
+                  className={`absolute top-1/2 -translate-y-1/2 ${isRtl ? 'left-3' : 'right-3'} text-xs font-medium text-[#a39b8d] hover:text-red-500 transition-colors`}>
+                  {language === 'en' ? 'Clear' : 'נקה'}
+                </button>
               )}
             </div>
+            <button
+              type="button"
+              onClick={addInstruction}
+              disabled={!instructionDraft.trim()}
+              className="mt-2 flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-[#cf711f] bg-[#e67e22]/10 hover:bg-[#e67e22]/15 rounded-2xl border border-[#e67e22]/30 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              {language === 'en' ? 'Add step' : 'הוסף שלב'}
+            </button>
             {errors.instructions && <p className="text-xs text-red-500 mt-1.5 ps-[14px]">{errors.instructions}</p>}
           </div>
         </div>
