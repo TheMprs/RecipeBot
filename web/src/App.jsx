@@ -297,15 +297,19 @@ function App() {
     try {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session?.access_token) throw new Error('no session')
-      const res = await fetch(`${supabaseUrl}/rest/v1/users`, {
+      const insert = (displayName) => fetch(`${supabaseUrl}/rest/v1/users`, {
         method: 'POST',
         headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          id: session.user.id, username: uname,
-          display_name: session.user.user_metadata?.full_name || '',
+          id: session.user.id, username: uname, display_name: displayName,
           bio: null, avatar_url: session.user.user_metadata?.avatar_url || null,
         })
       })
+      // display_name is the raw Google name; if it violates the English CHECK (or any
+      // other non-conflict error), retry once with the handle as the name so signup
+      // never dead-ends. A 409 is the handle being taken — don't retry that.
+      let res = await insert(session.user.user_metadata?.full_name || '')
+      if (!res.ok && res.status !== 409) res = await insert(uname)
       if (res.ok) {
         setUserHandle(uname)
         setNeedsHandle(false)
@@ -1413,7 +1417,7 @@ function App() {
                   </button>
                   {/* Desktop: plain anchored dropdown (same style as the recipe-form category menu) */}
                   {navMenuOpen && (
-                    <div className="hidden sm:block absolute right-0 mt-2 w-48 bg-white border border-[#e8e4dc] rounded-2xl shadow-lg overflow-hidden z-50"
+                    <div className={`hidden sm:block absolute ${isRtl ? 'right-0' : 'left-0'} mt-2 w-48 bg-white border border-[#e8e4dc] rounded-2xl shadow-lg overflow-hidden z-50`}
                       style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
                       {navItems}
                     </div>

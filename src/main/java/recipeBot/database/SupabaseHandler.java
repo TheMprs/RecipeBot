@@ -55,6 +55,57 @@ public class SupabaseHandler {
         return false;
     }
 
+    // Logs one "prepped" event for the user's recipe. True on success.
+    public boolean addCookLog(String userId, String recipeId) {
+        JsonObject body = new JsonObject();
+        body.addProperty("user_id", userId);
+        body.addProperty("recipe_id", recipeId);
+        HttpRequest req = base("/cook_logs").POST(HttpRequest.BodyPublishers.ofString(gson.toJson(body))).build();
+        try {
+            return client.send(req, HttpResponse.BodyHandlers.ofString()).statusCode() == 201;
+        } catch (Exception e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
+
+    public boolean isLiked(String userId, String recipeId) {
+        HttpRequest req = base("/recipe_likes?user_id=eq." + encode(userId) + "&recipe_id=eq." + encode(recipeId) + "&select=recipe_id").GET().build();
+        try {
+            JsonArray arr = gson.fromJson(client.send(req, HttpResponse.BodyHandlers.ofString()).body(), JsonArray.class);
+            return arr != null && arr.size() > 0;
+        } catch (Exception e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
+
+    // Like the recipe (idempotent — the unique(user_id,recipe_id) makes re-likes a no-op).
+    public boolean addLike(String userId, String recipeId) {
+        JsonObject body = new JsonObject();
+        body.addProperty("user_id", userId);
+        body.addProperty("recipe_id", recipeId);
+        HttpRequest req = base("/recipe_likes").header("Prefer", "resolution=merge-duplicates")
+                .POST(HttpRequest.BodyPublishers.ofString(gson.toJson(body))).build();
+        try {
+            return client.send(req, HttpResponse.BodyHandlers.ofString()).statusCode() < 400;
+        } catch (Exception e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
+
+    public boolean removeLike(String userId, String recipeId) {
+        HttpRequest req = base("/recipe_likes?user_id=eq." + encode(userId) + "&recipe_id=eq." + encode(recipeId)).DELETE().build();
+        try {
+            int sc = client.send(req, HttpResponse.BodyHandlers.ofString()).statusCode();
+            return sc == 204 || sc == 200;
+        } catch (Exception e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
+
     // recipe_id -> row count, for a table with a recipe_id column (cook_logs / recipe_likes).
     // One query for the whole list; grouped client-side. Empty ids -> empty map.
     public Map<String, Integer> countByRecipe(String table, List<String> recipeIds) {

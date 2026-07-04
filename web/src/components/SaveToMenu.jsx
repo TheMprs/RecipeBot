@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { Check, Bookmark, Plus } from 'lucide-react'
+import { categoryColor } from '../utils/categoryColor'
 
 const BRAND = '#e67e22'
 
@@ -49,7 +50,10 @@ export function SaveToMenu({ language, accent = BRAND, recipe, userCategories = 
     originalRef.current = currentRecipeCategories
     setSelected(currentRecipeCategories)
     const r = btnRef.current.getBoundingClientRect()
-    setPos({ x: Math.min(r.left, window.innerWidth - 216), y: r.bottom + 8 })
+    // Hebrew anchors to the right edge, English to the left edge (of the trigger).
+    setPos(language === 'he'
+      ? { right: Math.min(Math.max(window.innerWidth - r.right, 8), window.innerWidth - 216), y: r.bottom + 8 }
+      : { left: Math.min(r.left, window.innerWidth - 216), y: r.bottom + 8 })
   }
 
   const saved = currentRecipeCategories.length > 0
@@ -80,7 +84,7 @@ export function SaveToMenu({ language, accent = BRAND, recipe, userCategories = 
         <div
           ref={menuRef}
           onClick={e => e.stopPropagation()}
-          style={{ position: 'fixed', top: pos.y, left: pos.x }}
+          style={{ position: 'fixed', top: pos.y, left: pos.left, right: pos.right }}
           className="z-50 bg-white border border-[#e8e4dc] rounded-2xl shadow-lg overflow-hidden min-w-[200px]"
         >
           {userCategories.length === 0 && !onCreateCategory && (
@@ -88,20 +92,17 @@ export function SaveToMenu({ language, accent = BRAND, recipe, userCategories = 
           )}
           {userCategories.map(cat => {
             const isSaved = selected.includes(cat.id)
-            const dot = cat.color || BRAND
             return (
               <button
                 key={cat.id}
                 onClick={() => setSelected(s => s.includes(cat.id) ? s.filter(id => id !== cat.id) : [...s, cat.id])}
-                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors hover:bg-[#faf9f7] text-start"
+                className={`w-full flex items-center justify-between gap-2 px-4 py-2.5 text-sm text-start transition-colors ${isSaved ? 'bg-[#e67e22]/10 text-[#e67e22] font-medium' : 'text-[#3d3429] hover:bg-[#f5f3ef]'}`}
               >
-                <div
-                  className="w-4 h-4 rounded flex-shrink-0 flex items-center justify-center border-2 transition-colors"
-                  style={{ backgroundColor: isSaved ? dot : 'transparent', borderColor: isSaved ? dot : '#e8e4dc' }}
-                >
-                  {isSaved && <Check className="w-2.5 h-2.5 text-white" />}
-                </div>
-                <span className="text-[#3d3429]">{cat.name}</span>
+                <span className="flex items-center gap-2 min-w-0">
+                  <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: cat.color || categoryColor(cat.name) }} />
+                  <span className="truncate">{cat.name}</span>
+                </span>
+                <span className="w-4 flex-shrink-0">{isSaved && <Check className="w-4 h-4" />}</span>
               </button>
             )
           })}

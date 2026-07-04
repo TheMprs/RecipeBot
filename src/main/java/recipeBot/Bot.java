@@ -433,6 +433,25 @@ public class Bot extends TelegramLongPollingBot {
             return;
         }
 
+        // Prepped log (own recipe) and like toggle (any recipe) — refresh the keyboard in place.
+        if (data.startsWith("PREPPED_")) {
+            String recipeId = data.substring(8);
+            Recipe recipe = db.getRecipeById(recipeId);
+            if (recipe == null || !recipe.isOwnedBy(userId)) return;
+            db.addCookLog(userId, recipeId);
+            refreshPreviewMarkup(id, cbMsgId, recipe, true, userId);
+            return;
+        }
+        if (data.startsWith("LIKE_")) {
+            String recipeId = data.substring(5);
+            Recipe recipe = db.getRecipeById(recipeId);
+            if (recipe == null) return;
+            if (db.isLiked(userId, recipeId)) db.removeLike(userId, recipeId);
+            else db.addLike(userId, recipeId);
+            refreshPreviewMarkup(id, cbMsgId, recipe, recipe.isOwnedBy(userId), userId);
+            return;
+        }
+
         // handles browsing all recipes in a category
         if (data.startsWith("SHOWCAT_")) {
             String categoryId = data.substring(8);
@@ -820,6 +839,55 @@ public class Bot extends TelegramLongPollingBot {
         return sb.toString();
     }
 
+    // Builds the preview keyboard: owner gets Delete/Edit + a "Made it" prepped button;
+    // everyone gets Share + a Like toggle. Counts are live so the label reflects state.
+    private InlineKeyboardMarkup buildPreviewMarkup(Recipe recipe, boolean ownerButtons, String userId) {
+        String recipeId = recipe.getId();
+        List<List<InlineKeyboardButton>> rows = new ArrayList<>();
+
+        List<InlineKeyboardButton> row1 = new ArrayList<>();
+        if (ownerButtons) {
+            row1.add(createButton("🗑 Delete", "DELETE_" + recipeId));
+            row1.add(createButton("✏️ Edit", "EDIT_" + recipeId));
+        }
+        InlineKeyboardButton shareBtn = new InlineKeyboardButton();
+        shareBtn.setText("📤 Share");
+        try {
+            String rawWebUrl = "https://babrecipebook.vercel.app/?r=" + recipeId;
+            String encodedWebUrl = java.net.URLEncoder.encode(rawWebUrl, java.nio.charset.StandardCharsets.UTF_8.name());
+            String textToShare = java.net.URLEncoder.encode(recipe.toString(), java.nio.charset.StandardCharsets.UTF_8.name()).replace("+", "%20");
+            shareBtn.setUrl("https://t.me/share/url?url=" + encodedWebUrl + "&text=" + textToShare);
+        } catch (Exception e) {
+            shareBtn.setCallbackData("SHARE_" + recipeId);
+        }
+        row1.add(shareBtn);
+        rows.add(row1);
+
+        // Engagement row: prepped log (owner only) + like toggle (everyone).
+        List<InlineKeyboardButton> row2 = new ArrayList<>();
+        if (ownerButtons) {
+            int cooks = db.countByRecipe("cook_logs", List.of(recipeId)).getOrDefault(recipeId, 0);
+            row2.add(createButton("🍳 Made it" + (cooks > 0 ? " (" + cooks + ")" : ""), "PREPPED_" + recipeId));
+        }
+        int likes = db.countByRecipe("recipe_likes", List.of(recipeId)).getOrDefault(recipeId, 0);
+        boolean liked = userId != null && db.isLiked(userId, recipeId);
+        row2.add(createButton((liked ? "❤️" : "🤍") + (likes > 0 ? " " + likes : ""), "LIKE_" + recipeId));
+        rows.add(row2);
+
+        InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
+        markup.setKeyboard(rows);
+        return markup;
+    }
+
+    // Re-renders just the preview keyboard (updated counts/like state) after a tap.
+    private void refreshPreviewMarkup(Long id, Integer msgId, Recipe recipe, boolean ownerButtons, String userId) {
+        EditMessageReplyMarkup edit = new EditMessageReplyMarkup();
+        edit.setChatId(id.toString());
+        edit.setMessageId(msgId);
+        edit.setReplyMarkup(buildPreviewMarkup(recipe, ownerButtons, userId));
+        try { execute(edit); } catch (TelegramApiException e) { /* stale/identical markup — ignore */ }
+    }
+
     private void sendRecipePreview(Long id, Recipe recipe, boolean ownerButtons) {
         StringBuilder sb = new StringBuilder();
         sb.append("<b><u>" + esc(recipe.getName()) + "</u></b>\n");
@@ -835,44 +903,11 @@ public class Bot extends TelegramLongPollingBot {
             sb.append(i + 1 + ". " + esc(recipe.getInstructions()[i]) + "\n");
         }
 
-        // create inline keyboard with delete button
-        InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
-        List<List<InlineKeyboardButton>> rows = new ArrayList<>();
-        List<InlineKeyboardButton> row1 = new ArrayList<>();
-
-        String recipeId = recipe.getId();
-
-        if (ownerButtons) {
-            InlineKeyboardButton delBtn = new InlineKeyboardButton();
-            delBtn.setText("🗑 Delete");
-            delBtn.setCallbackData("DELETE_" + recipeId);
-            row1.add(delBtn);
-
-            InlineKeyboardButton editBtn = new InlineKeyboardButton();
-            editBtn.setText("✏️ Edit");
-            editBtn.setCallbackData("EDIT_" + recipeId);
-            row1.add(editBtn);
-        }
-
-        InlineKeyboardButton shareBtn = new InlineKeyboardButton();
-        shareBtn.setText("📤 Share");
-        try {
-            String rawWebUrl = "https://babrecipebook.vercel.app/?r=" + recipeId;
-            String encodedWebUrl = java.net.URLEncoder.encode(rawWebUrl, java.nio.charset.StandardCharsets.UTF_8.name());
-            String textToShare = java.net.URLEncoder.encode(recipe.toString(), java.nio.charset.StandardCharsets.UTF_8.name()).replace("+", "%20");
-            shareBtn.setUrl("https://t.me/share/url?url=" + encodedWebUrl + "&text=" + textToShare);
-        } catch (Exception e) {
-            shareBtn.setCallbackData("SHARE_" + recipeId);
-        }
-        row1.add(shareBtn);
-        rows.add(row1);
-        markup.setKeyboard(rows);
-
         SendMessage msg = new SendMessage();
         msg.setChatId(id.toString());
         msg.setText(sb.toString());
         msg.setParseMode("HTML");
-        msg.setReplyMarkup(markup);
+        msg.setReplyMarkup(buildPreviewMarkup(recipe, ownerButtons, db.getLinkedUserId(id)));
 
         try {
             Message sentMessage = execute(msg);

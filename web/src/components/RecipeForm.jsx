@@ -191,15 +191,17 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
             <div className="absolute left-1/2 -translate-x-1/2 translate-y-5 w-11 h-11 sm:w-14 sm:h-14 rounded-2xl bg-white/15 backdrop-blur flex items-center justify-center ring-1 ring-white/25">
               <ChefHat className="w-6 h-6 sm:w-8 sm:h-8 text-white" />
             </div>
-            <button
-              type="button"
-              onClick={onOpenUrlModal}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-full bg-white/15 hover:bg-white/25 text-white ring-1 ring-white/25 backdrop-blur transition-colors ${isRtl ? 'flex-row-reverse' : ''}`}
-              title="Import recipe from link"
-            >
-              <LinkIcon className="w-4 h-4" />
-              <span className="font-semibold text-sm">{language === 'en' ? 'Import from link' : 'יבוא מקישור'}</span>
-            </button>
+            {editingRecipe?.id ? <span /> : (
+              <button
+                type="button"
+                onClick={onOpenUrlModal}
+                className={`flex items-center gap-2 px-3.5 py-2 rounded-full bg-white/15 hover:bg-white/25 text-white ring-1 ring-white/25 backdrop-blur transition-colors ${isRtl ? 'flex-row-reverse' : ''}`}
+                title="Import recipe from link"
+              >
+                <LinkIcon className="w-4 h-4" />
+                <span className="hidden sm:inline font-semibold text-sm">{language === 'en' ? 'Import from link' : 'יבוא מקישור'}</span>
+              </button>
+            )}
           </div>
           <h1 className="relative text-center text-2xl font-bold tracking-tight text-white mt-10">
             {editingRecipe?.id ? (language === 'en' ? 'Edit Recipe' : 'עריכת מתכון')
@@ -280,9 +282,9 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
                 <ChevronDown className={`w-4 h-4 text-[#cf711f] flex-shrink-0 transition-transform duration-200 ${catOpen ? 'rotate-180' : ''}`} />
               </button>
               {catOpen && (
-                <div ref={catMenuRef} style={{ direction: isRtl ? 'ltr' : 'rtl' }} className="absolute z-20 mt-2 right-0 min-w-full w-max max-w-[80vw] bg-white border border-[#e8e4dc] rounded-2xl shadow-lg max-h-60 overflow-y-auto overflow-x-hidden">
+                <div ref={catMenuRef} style={{ direction: isRtl ? 'ltr' : 'rtl' }} className={`absolute z-20 mt-2 ${isRtl ? 'right-0' : 'left-0'} min-w-full w-max max-w-[80vw] bg-white border border-[#e8e4dc] rounded-2xl shadow-lg max-h-60 overflow-y-auto overflow-x-hidden`}>
                   {userCategories.length === 0 && !showNewCatInput && (
-                    <p className="px-3 py-2.5 text-sm text-[#a39b8d] text-center">{language === 'en' ? 'No categories yet' : 'אין קטגוריות עדיין'}</p>
+                    <p className="px-4 py-2.5 text-sm text-[#a39b8d] text-center">{language === 'en' ? 'No categories yet' : 'אין קטגוריות עדיין'}</p>
                   )}
                   {userCategories.map(c => {
                     const selected = selectedCatIds.includes(c.id)
@@ -292,7 +294,7 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
                         type="button"
                         style={{ direction: isRtl ? 'rtl' : 'ltr' }}
                         onClick={() => toggleCat(c.id)}
-                        className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 text-sm text-start transition-colors ${selected ? 'bg-[#e67e22]/10 text-[#cf711f] font-medium' : 'text-[#3d3429] hover:bg-[#faf9f7]'}`}
+                        className={`w-full flex items-center justify-between gap-2 px-4 py-2.5 text-sm text-start transition-colors ${selected ? 'bg-[#e67e22]/10 text-[#e67e22] font-medium' : 'text-[#3d3429] hover:bg-[#f5f3ef]'}`}
                       >
                         <span className="flex items-center gap-2 min-w-0">
                           <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: c.color || categoryColor(c.name) }} />
@@ -303,7 +305,7 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
                     )
                   })}
                   {onCreateCategory && (showNewCatInput ? (
-                    <div style={{ direction: isRtl ? 'rtl' : 'ltr' }} className="flex flex-col gap-2 sm:flex-row sm:items-center px-3 py-2 border-t border-[#e8e4dc]/60">
+                    <div style={{ direction: isRtl ? 'rtl' : 'ltr' }} className="flex flex-col gap-2 sm:flex-row sm:items-center px-4 py-2 border-t border-[#e8e4dc]/60">
                       <input
                         autoFocus
                         type="text"

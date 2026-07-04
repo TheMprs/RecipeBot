@@ -1,7 +1,7 @@
-﻿import { User, BookOpen, Search, Filter, X, Settings, Plus, ChevronLeft, ChevronRight, LogOut, Pencil, Trash2, Check, Globe, Lock } from 'lucide-react';
+﻿import { User, BookOpen, Search, Filter, X, Settings, Plus, ChevronLeft, ChevronRight, LogOut, Pencil, Trash2, Check, Globe, Lock, LayoutGrid } from 'lucide-react';
 import { RecipeCard, RecipeCardSkeleton } from './RecipeCard';
 import { ConfirmDialog } from './ConfirmDialog';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase, supabaseUrl, supabaseKey } from '../supabaseClient';
 import { swr, peekCache, writeCache } from '../utils/cache';
@@ -92,6 +92,7 @@ export function UserProfile({
   const [sortBy, setSortBy] = useState('most-prepped');
   const [sortOrder, setSortOrder] = useState('desc');
   const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false);
+  const [visibilityFilter, setVisibilityFilter] = useState('all'); // 'all' | 'public' | 'private' — own profile only
   const [showSettings, setShowSettings] = useState(false);
   const [showRecipeSettings, setShowRecipeSettings] = useState(false);
   const [handleErr, setHandleErr] = useState(null); // inline handle validation error in the edit form
@@ -111,6 +112,8 @@ export function UserProfile({
   const [confirmDialog, setConfirmDialog] = useState(null);
   const newCategoryInputRef = useRef(null);
   const filterMenuRef = useRef(null);
+  const gridRef = useRef(null);
+  const didHideGhost = useRef(false); // Telegram-archive reveal: hide the ghost card above the fold once, on mobile
   const categoryScrollRef = useRef(null);
   const [hoveringCategoryPills, setHoveringCategoryPills] = useState(false);
 
@@ -259,7 +262,8 @@ export function UserProfile({
           ) || recipe.category === selectedCategoryName
         )
       );
-      return matchesSearch && matchesCategory;
+      const matchesVisibility = visibilityFilter === 'all' || recipe.visibility === visibilityFilter;
+      return matchesSearch && matchesCategory && matchesVisibility;
     })
     .sort((a, b) => {
       let cmp = 0;
@@ -268,7 +272,23 @@ export function UserProfile({
       else cmp = new Date(b.created_at) - new Date(a.created_at);
       return sortOrder === 'asc' ? -cmp : cmp;
     });
-  
+
+  // Telegram-archive reveal (mobile): on first load, scroll the grid down past the
+  // Add-recipe ghost card so it starts hidden above the fold; scrolling up reveals it.
+  // Runs once; desktop keeps the card visible as the first tile.
+  useLayoutEffect(() => {
+    if (didHideGhost.current) return;
+    const el = gridRef.current;
+    if (!el || window.innerWidth >= 640) return;      // desktop: always show
+    if (!isOwnProfile || !onAddRecipe) return;
+    if (filteredRecipes.length === 0) return;          // nothing to scroll under
+    const ghost = el.firstElementChild;                // the ghost card
+    if (ghost && el.scrollHeight > el.clientHeight) {
+      el.scrollTop = ghost.offsetHeight + 16;          // 16 = grid gap
+      didHideGhost.current = true;
+    }
+  }, [filteredRecipes.length, isOwnProfile, onAddRecipe]);
+
   return (
     <div>
       {/* Profile Header */}
@@ -276,18 +296,19 @@ export function UserProfile({
         {!viewingProfile && (
           <button
             onClick={() => setShowSettings(true)}
-            className={`hidden sm:block absolute top-4 ${isRtl ? 'left-4' : 'right-4'} p-2 text-[#7a7265] hover:text-[#3d3429] hover:bg-[#f5f3ef] rounded-xl transition-colors`}
+            className="hidden sm:block absolute top-4 right-4 p-2 text-[#7a7265] hover:text-[#3d3429] hover:bg-[#f5f3ef] rounded-xl transition-colors"
           >
             <Settings className="w-5 h-5" />
           </button>
         )}
-        <div className="flex flex-row items-center sm:items-stretch gap-4 sm:gap-6" style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
+        {/* Header stays LTR in both languages — name/handle are English-only */}
+        <div className="flex flex-row items-center sm:items-stretch gap-4 sm:gap-6" style={{ direction: 'ltr' }}>
           {/* Avatar */}
           <div className="flex-shrink-0">
             <button
               type="button"
               onClick={() => avatarUrl && setShowAvatarFull(true)}
-              className={`block w-28 sm:w-36 h-28 sm:h-36 rounded-full overflow-hidden bg-[#e67e22]/10 flex items-center justify-center ${avatarUrl ? 'cursor-pointer' : 'cursor-default'}`}
+              className={`block w-28 sm:w-32 h-28 sm:h-32 rounded-full overflow-hidden bg-[#e67e22]/10 flex items-center justify-center ${avatarUrl ? 'cursor-pointer' : 'cursor-default'}`}
             >
               {avatarUrl ? (
                 <img
@@ -305,43 +326,57 @@ export function UserProfile({
           </div>
 
           {/* Profile Info */}
-          <div className="flex-1 flex flex-col justify-center sm:justify-between">
-            <div className="flex flex-col items-start sm:flex-row sm:items-baseline sm:gap-2 mb-4 sm:mb-0" style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
-              <h1 className="text-2xl sm:text-4xl font-bold text-[#3d3429] mb-1 sm:mb-0 break-words line-clamp-2 text-start" title={displayName}>{displayName}</h1>
-              {handle && <p className="text-base sm:text-lg text-[#7a7265]"><span dir="ltr">@{handle}</span></p>}
+          <div className="flex-1 min-w-0 flex flex-col justify-center sm:justify-between">
+            <div className="mb-1 sm:mb-0">
+              <h1 className="text-2xl sm:text-4xl font-bold text-[#3d3429] pb-1 break-words line-clamp-2 text-start leading-tight" title={displayName}>{displayName}</h1>
+              {/* Mobile: handle sits under the name; on desktop it's on the bio line below */}
+              {handle ? <p className="sm:hidden text-sm text-[#7a7265]"><span dir="ltr">@{handle}</span></p> : null}
             </div>
 
-            {profileData?.bio ? (
-              <p className="text-sm text-[#3d3429] whitespace-pre-line mb-4 sm:mb-0 text-start">{profileData.bio}</p>
-            ) : isOwnProfile ? (
-              <p className="text-sm italic text-[#a8a29a] mb-4 sm:mb-0 text-start">
-                {language === 'en' ? 'add bio in settings' : 'הוסף תיאור בהגדרות'}
+            {(handle || profileData?.bio || isOwnProfile) ? (
+              <p className="hidden sm:block text-sm whitespace-pre-line break-words sm:mb-0 text-start">
+                {handle ? <span className="text-[#7a7265]" dir="ltr">@{handle}</span> : null}
+                {handle && (profileData?.bio || isOwnProfile) ? <span className="text-[#7a7265]"> | </span> : null}
+                {profileData?.bio
+                  ? <span className="text-[#3d3429]">{profileData.bio}</span>
+                  : isOwnProfile
+                    ? <span className="italic text-[#a8a29a]">{language === 'en' ? 'add bio in settings' : 'הוסף תיאור בהגדרות'}</span>
+                    : null}
               </p>
             ) : null}
 
             {/* Stats */}
-            <div className="flex justify-start gap-5 sm:gap-7 mt-4 sm:mt-0">
+            <div className="flex justify-start gap-5 sm:gap-7 mt-1.5 sm:mt-0">
               <div className="text-center">
-                <div className="text-lg sm:text-2xl font-bold text-[#e67e22]">{displayRecipes.length}</div>
-                <div className={`${isRtl ? 'text-xs' : 'text-[10px]'} text-[#7a7265] uppercase tracking-wide`}>
-                  {language === 'en' ? 'Recipes' : 'מתכונים'}
+                <div className="text-lg sm:text-2xl font-bold text-[#e67e22] leading-none">{displayRecipes.length}</div>
+                <div className={`${isRtl ? 'text-xs' : 'text-[11px]'} text-[#7a7265] mt-1`}>
+                  {language === 'en' ? 'recipes' : 'מתכונים'}
                 </div>
               </div>
               <div className="text-center">
-                <div className="text-lg sm:text-2xl font-bold text-[#e67e22]">0</div>
-                <div className={`${isRtl ? 'text-xs' : 'text-[10px]'} text-[#7a7265] uppercase tracking-wide`}>
-                  {language === 'en' ? 'Followers' : 'עוקבים'}
+                <div className="text-lg sm:text-2xl font-bold text-[#e67e22] leading-none">0</div>
+                <div className={`${isRtl ? 'text-xs' : 'text-[11px]'} text-[#7a7265] mt-1`}>
+                  {language === 'en' ? 'followers' : 'עוקבים'}
                 </div>
               </div>
               <div className="text-center">
-                <div className="text-lg sm:text-2xl font-bold text-[#e67e22]">0</div>
-                <div className={`${isRtl ? 'text-xs' : 'text-[10px]'} text-[#7a7265] uppercase tracking-wide`}>
-                  {language === 'en' ? 'Following' : 'נעקבים'}
+                <div className="text-lg sm:text-2xl font-bold text-[#e67e22] leading-none">0</div>
+                <div className={`${isRtl ? 'text-xs' : 'text-[11px]'} text-[#7a7265] mt-1`}>
+                  {language === 'en' ? 'following' : 'נעקבים'}
                 </div>
               </div>
             </div>
           </div>
         </div>
+
+        {/* Mobile: bio spans the full card width below the identity block */}
+        {(profileData?.bio || isOwnProfile) ? (
+          <p className="sm:hidden text-sm whitespace-pre-line break-words mt-3 pt-3 border-t border-[#f0ece5] text-start" style={{ direction: 'ltr' }}>
+            {profileData?.bio
+              ? <span className="text-[#3d3429]">{profileData.bio}</span>
+              : <span className="italic text-[#a8a29a]">{language === 'en' ? 'add bio in settings' : 'הוסף תיאור בהגדרות'}</span>}
+          </p>
+        ) : null}
       </div>
 
       {/* Category pills — own profile only */}
@@ -364,16 +399,16 @@ export function UserProfile({
             <>
               <button
                 onClick={() => setSelectedCategoryName(null)}
-                className={`flex-shrink-0 px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
-                  !selectedCategoryName ? 'bg-[#e67e22] text-white' : 'bg-white border border-[#e8e4dc] text-[#7a7265] hover:border-[#e67e22]/40'
+                className={`flex-shrink-0 px-3 py-1.5 rounded-full text-sm font-medium transition-colors border ${
+                  !selectedCategoryName ? 'bg-[#e67e22] text-white border-transparent' : 'bg-white border-[#e8e4dc] text-[#7a7265] hover:border-[#e67e22]/40'
                 }`}
               >
                 {language === 'en' ? 'All' : 'הכל'}
               </button>
               <button
                 onClick={() => setSelectedCategoryName(selectedCategoryName === UNCATEGORIZED ? null : UNCATEGORIZED)}
-                className={`flex-shrink-0 px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
-                  selectedCategoryName === UNCATEGORIZED ? 'bg-[#e67e22] text-white' : 'bg-white border border-[#e8e4dc] text-[#7a7265] hover:border-[#e67e22]/40'
+                className={`flex-shrink-0 px-3 py-1.5 rounded-full text-sm font-medium transition-colors border ${
+                  selectedCategoryName === UNCATEGORIZED ? 'bg-[#e67e22] text-white border-transparent' : 'bg-white border-[#e8e4dc] text-[#7a7265] hover:border-[#e67e22]/40'
                 }`}
               >
                 {language === 'en' ? 'Uncategorized' : 'ללא קטגוריה'}
@@ -446,17 +481,14 @@ export function UserProfile({
             <button
               onClick={() => setIsFilterMenuOpen(!isFilterMenuOpen)}
               className={`flex items-center gap-1.5 py-1.5 px-3 rounded-xl transition-colors ${
-                sortBy !== 'most-prepped' ? 'bg-[#e67e22]/10 text-[#e67e22] font-semibold' : 'bg-[#f5f3ef] text-[#7a7265] hover:bg-[#e8e4dc]'
+                sortBy !== 'most-prepped' || visibilityFilter !== 'all' ? 'bg-[#e67e22]/10 text-[#e67e22] font-semibold' : 'bg-[#f5f3ef] text-[#7a7265] hover:bg-[#e8e4dc]'
               }`}
             >
               <Filter className="w-3.5 h-3.5" />
               <span className="hidden sm:inline text-xs font-medium">{language === 'en' ? 'Sort' : 'מיון'}</span>
             </button>
             {isFilterMenuOpen && (
-                <div className={`absolute top-full mt-3 z-20 bg-white rounded-2xl border border-[#e8e4dc] shadow-lg overflow-hidden min-w-[180px] ${language === 'he' ? 'left-0' : 'right-0'}`}>
-                  <div className="px-4 py-2 text-xs font-semibold text-[#7a7265] uppercase tracking-wide border-b border-[#f5f3ef]">
-                    {language === 'en' ? 'Sort by' : 'מיון לפי'}
-                  </div>
+                <div className={`absolute top-full mt-2 z-20 bg-white rounded-2xl border border-[#e8e4dc] shadow-lg overflow-hidden min-w-[150px] ${language === 'he' ? 'left-0' : 'right-0'}`}>
                   {[
                     { value: 'most-prepped', en: 'Most prepped', he: 'הוכן הכי הרבה' },
                     { value: 'date', en: 'Date added', he: 'תאריך הוספה' },
@@ -485,6 +517,30 @@ export function UserProfile({
                       </button>
                     );
                   })}
+                  {isOwnProfile ? (
+                    <div className={`flex items-center justify-center gap-1 px-4 py-2.5 border-t border-[#f5f3ef] ${isRtl ? 'flex-row-reverse' : ''}`}>
+                      {[
+                        { value: 'all', icon: LayoutGrid, en: 'All', he: 'הכל' },
+                        { value: 'public', icon: Globe, en: 'Public', he: 'ציבורי' },
+                        { value: 'private', icon: Lock, en: 'Private', he: 'פרטי' },
+                      ].map(opt => {
+                        const Icon = opt.icon;
+                        const isActive = visibilityFilter === opt.value;
+                        return (
+                          <button
+                            key={opt.value}
+                            onClick={() => setVisibilityFilter(opt.value)}
+                            title={language === 'en' ? opt.en : opt.he}
+                            className={`p-1.5 rounded-lg transition-colors ${
+                              isActive ? 'bg-[#e67e22] text-white' : 'text-[#7a7265] hover:bg-[#f5f3ef]'
+                            }`}
+                          >
+                            <Icon className="w-4 h-4" />
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : null}
                 </div>
             )}
           </div>
@@ -499,8 +555,9 @@ export function UserProfile({
       ) : (filteredRecipes.length > 0 || isOwnProfile) ? (
         // Cap the visible area to ~2.4 rows so the 3rd row peeks at the bottom — a visual hint
         // that there's more to scroll. px-2/-mx-2 keeps card hover shadows from being clipped.
-        <div style={{ direction: isRtl ? 'rtl' : 'ltr' }} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-4 max-h-[23.5rem] overflow-y-auto px-2 -mx-2">
-          {/* Add-recipe ghost card — own profile only, opens the recipe form */}
+        <div ref={gridRef} style={{ direction: isRtl ? 'rtl' : 'ltr' }} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-4 max-h-[23.5rem] overflow-y-auto px-2 -mx-2">
+          {/* Add-recipe ghost card — own profile only. Telegram-archive style on mobile:
+              starts scrolled off the top (hidden), revealed by scrolling up to the top. Always visible on desktop. */}
           {isOwnProfile && onAddRecipe && (
             <button
               onClick={onAddRecipe}
