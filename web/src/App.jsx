@@ -1395,11 +1395,27 @@ function App() {
   return (
     <>
       {loading ? (
-        <div className="min-h-screen flex items-center justify-center bg-[#f5f3ef]">
-          <div className="flex flex-col items-center gap-3 animate-pulse">
-            <div className="w-10 h-10 rounded-full bg-[#e8e4dc]" />
-            <div className="h-3 w-24 rounded bg-[#e8e4dc]" />
-          </div>
+        <div className="min-h-screen flex flex-col items-center justify-center bg-[#f5f3ef]">
+          {/* Simmering pan on a stove flame — same saucepan as the offline banner */}
+          <svg width="110" height="100" viewBox="0 0 200 182" fill="none" aria-hidden="true">
+            <g className="splash-steam">
+              <path d="M72 62 C 66 50, 78 44, 72 30" />
+              <path d="M100 60 C 94 48, 106 42, 100 26" />
+              <path d="M128 62 C 122 50, 134 44, 128 30" />
+            </g>
+            <g>
+              <rect x="58" y="96" width="84" height="42" rx="10" fill="#3d3429" />
+              <ellipse cx="100" cy="96" rx="42" ry="7" fill="#3d3429" />
+              <rect x="140" y="90" width="44" height="9" rx="4.5" fill="#3d3429" />
+            </g>
+            <g className="splash-flames">
+              <line x1="70" y1="152" x2="70" y2="166" />
+              <line x1="90" y1="154" x2="90" y2="170" />
+              <line x1="110" y1="154" x2="110" y2="170" />
+              <line x1="130" y1="152" x2="130" y2="166" />
+            </g>
+          </svg>
+          <p className="mt-4 text-[0.95rem] font-semibold text-[#3d3429] tracking-tight">Yuval's Recipe Book</p>
         </div>
       ) : (
     <div className="min-h-screen bg-[#f5f3ef]">
