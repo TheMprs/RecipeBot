@@ -1380,6 +1380,18 @@ function App() {
     </>
   )
 
+  // Segmented EN/HE switch — rendered twice in the footer (mobile action row / desktop bottom bar)
+  const langToggle = (
+    <div className="inline-flex bg-white border border-[#e8e4dc] rounded-xl overflow-hidden" dir="ltr">
+      {['en', 'he'].map(l => (
+        <button key={l} onClick={() => { localStorage.setItem('language', l); setLanguage(l); }}
+          className={`px-3 py-1.5 text-xs font-medium transition-colors ${language === l ? 'bg-[#f0e7dc] text-[#3d3429]' : 'text-[#7a7265] hover:text-[#3d3429]'}`}>
+          {l.toUpperCase()}
+        </button>
+      ))}
+    </div>
+  )
+
   return (
     <>
       {loading ? (
@@ -1901,17 +1913,42 @@ function App() {
         </>
       )}
 
-      {/* Footer - Credits and Language */}
-      <footer className="border-t border-[#e8e4dc] bg-[#faf9f7] mt-12">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8">
-          <div className="flex flex-col items-center justify-center text-center">
-            <p className="text-sm text-[#7a7265]">© 2026 Yuval's Recipe Book.</p>
-            <button
-              onClick={() => { const next = language === 'en' ? 'he' : 'en'; localStorage.setItem('language', next); setLanguage(next); }}
-              className="text-sm text-[#7a7265] hover:text-[#cf711f] transition-colors"
-            >
-              Language: <span className="cursor-pointer underline text-[#3d3429]">{language === 'en' ? 'en' : 'he'}</span>
-            </button>
+      {/* Footer — brand line, Telegram chip, legal links, language toggle */}
+      <footer className="border-t border-[#e8e4dc] bg-[#faf9f7] mt-12" style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-7">
+          <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-xl bg-[#e67e22] flex items-center justify-center flex-shrink-0">
+                <BookOpen className="w-4 h-4 text-white" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-[#3d3429]">Yuval's Recipe Book</p>
+                <p className="text-xs text-[#7a7265]">
+                  {language === 'en'
+                    ? 'Save recipes, log what you cook, share the keepers.'
+                    : 'שמרו מתכונים, תעדו מה בישלתם ושתפו את המוצלחים.'}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <a href="https://t.me/Yuvals_Recipe_Book_bot" target="_blank" rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 px-3.5 py-2 bg-white border border-[#e8e4dc] rounded-xl text-xs font-medium text-[#3d3429] hover:border-[#e67e22]/50 transition-colors">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="#2AABEE" className="flex-shrink-0" aria-hidden="true">
+                  <path d="M12 0C5.37 0 0 5.37 0 12s5.37 12 12 12 12-5.37 12-12S18.63 0 12 0zm5.56 8.16-1.97 9.28c-.15.66-.54.82-1.09.51l-3-2.21-1.45 1.39c-.16.16-.29.29-.6.29l.21-3.05 5.56-5.02c.24-.21-.05-.33-.37-.12l-6.87 4.33-2.96-.93c-.64-.2-.66-.64.14-.95l11.57-4.46c.53-.19 1 .13.83.94z" />
+                </svg>
+                {language === 'en' ? 'Add recipes from Telegram' : 'הוסיפו מתכונים דרך טלגרם'}
+              </a>
+              <div className="sm:hidden">{langToggle}</div>
+            </div>
+          </div>
+          <div className="mt-5 pt-4 border-t border-[#e8e4dc] flex items-center justify-center sm:justify-between gap-4 flex-wrap">
+            <div className="flex items-center gap-4 text-xs text-[#a39b8d]">
+              <span>© 2026 Yuval's Recipe Book</span>
+              {/* TODO: point to the privacy policy / terms pages once they exist */}
+              <a className="hover:text-[#7a7265] transition-colors cursor-pointer">{language === 'en' ? 'Privacy' : 'פרטיות'}</a>
+              <a className="hover:text-[#7a7265] transition-colors cursor-pointer">{language === 'en' ? 'Terms' : 'תנאים'}</a>
+            </div>
+            <div className="hidden sm:block">{langToggle}</div>
           </div>
         </div>
       </footer>
