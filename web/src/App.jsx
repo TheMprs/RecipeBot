@@ -1759,7 +1759,7 @@ function App() {
                     {/* Signature dish hero — deep-cream card with a breathing ember glow */}
                     <button
                       onClick={() => handleSelectRecipe(top)}
-                      className="sig-hero w-full text-start rounded-3xl transition-all duration-300 hover:-translate-y-0.5"
+                      className="sig-hero w-full text-start rounded-3xl transition-all duration-300 hover:-translate-y-0.5 will-change-transform"
                     >
                       <div className="relative z-10 flex flex-wrap items-end justify-between gap-5 p-6 sm:px-7">
                         {/* mobile: the count is absolute in the top corner, so keep the text clear of it */}
@@ -1796,7 +1796,7 @@ function App() {
                       <div className="flex flex-col sm:flex-row gap-2.5 mt-3">
                         {runners.map((r, i) => (
                           <button key={r.id} onClick={() => handleSelectRecipe(r)}
-                            className="flex-1 flex items-center gap-2.5 bg-white border border-[#e8e4dc] rounded-2xl px-4 py-2.5 hover:border-[#e67e22]/50 hover:-translate-y-px transition-all text-start">
+                            className="flex-1 flex items-center gap-2.5 bg-white border border-[#e8e4dc] rounded-2xl px-4 py-2.5 hover:border-[#e67e22]/50 hover:-translate-y-px transition-all text-start will-change-transform">
                             <span className="text-[0.7rem] font-bold text-[#cbc0ae]">#{i + 2}</span>
                             <span className="flex-1 text-sm font-semibold text-[#3d3429] truncate">{r.title}</span>
                             <span dir="ltr" className="text-sm font-bold text-[#cf711f] tabular-nums">×{cookCounts[r.id]}</span>
