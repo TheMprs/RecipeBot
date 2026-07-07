@@ -552,15 +552,32 @@ export function UserProfile({
         <div style={{ direction: isRtl ? 'rtl' : 'ltr' }} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
           {[...Array(6)].map((_, i) => <RecipeCardSkeleton key={i} />)}
         </div>
-      ) : (filteredRecipes.length > 0 || (isOwnProfile && displayRecipes.length === 0 && !searchQuery)) ? (
-        <>
-        {/* First run — book is truly empty: copy above the (lone) ghost card, Telegram chip below */}
-        {isOwnProfile && displayRecipes.length === 0 && (
-          <div className="text-center mb-5">
-            <p className="font-bold text-ink">{language === 'en' ? 'Your recipe book is empty' : 'ספר המתכונים שלך ריק'}</p>
-            <p className="mt-1 text-sm text-muted">{language === 'en' ? 'Add a recipe here, or through the bot on Telegram.' : 'הוסף מתכון כאן, או דרך הבוט בטלגרם.'}</p>
+      ) : (isOwnProfile && onAddRecipe && displayRecipes.length === 0) ? (
+        // First run — book is truly empty: centered block, ghost card promoted so it's the obvious action
+        <div className="text-center py-6">
+          <p className="font-bold text-ink">{language === 'en' ? 'Your recipe book is empty' : 'ספר המתכונים שלך ריק'}</p>
+          <p className="mt-1 text-sm text-muted">{language === 'en' ? 'Add a recipe here, or through the bot on Telegram.' : 'הוסף מתכון כאן, או דרך הבוט בטלגרם.'}</p>
+          <button
+            onClick={onAddRecipe}
+            className="mt-5 w-full max-w-[16rem] mx-auto min-h-[8.5rem] rounded-2xl border-2 border-dashed border-brand/50 flex flex-col items-center justify-center gap-2 text-brand-dark hover:bg-brand/5 transition-colors"
+          >
+            <span className="w-11 h-11 rounded-full bg-brand/10 flex items-center justify-center">
+              <Plus className="w-6 h-6" />
+            </span>
+            <span className="text-sm font-medium">{language === 'en' ? 'Add recipe' : 'הוסף מתכון'}</span>
+          </button>
+          <div className="mt-5">
+            <a href="https://t.me/Yuvals_Recipe_Book_bot" target="_blank" rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 px-3.5 py-2 bg-white border border-border rounded-full text-xs font-medium text-ink hover:border-brand/50 transition-colors">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="#2AABEE" className="flex-shrink-0" aria-hidden="true">
+                <path d="M12 0C5.37 0 0 5.37 0 12s5.37 12 12 12 12-5.37 12-12S18.63 0 12 0zm5.56 8.16-1.97 9.28c-.15.66-.54.82-1.09.51l-3-2.21-1.45 1.39c-.16.16-.29.29-.6.29l.21-3.05 5.56-5.02c.24-.21-.05-.33-.37-.12l-6.87 4.33-2.96-.93c-.64-.2-.66-.64.14-.95l11.57-4.46c.53-.19 1 .13.83.94z" />
+              </svg>
+              @Yuvals_Recipe_Book_bot
+            </a>
           </div>
-        )}
+        </div>
+      ) : filteredRecipes.length > 0 ? (
+        <>
         {/* Cap the visible area to ~2.4 rows so the 3rd row peeks at the bottom — a visual hint
             that there's more to scroll. px-2/-mx-2 keeps card hover shadows from being clipped. */}
         <div ref={gridRef} style={{ direction: isRtl ? 'rtl' : 'ltr' }} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-4 max-h-[23.5rem] overflow-y-auto px-2 -mx-2">
@@ -592,17 +609,6 @@ export function UserProfile({
             />
           ))}
         </div>
-        {isOwnProfile && displayRecipes.length === 0 && (
-          <div className="text-center mt-5">
-            <a href="https://t.me/Yuvals_Recipe_Book_bot" target="_blank" rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 px-3.5 py-2 bg-white border border-border rounded-full text-xs font-medium text-ink hover:border-brand/50 transition-colors">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="#2AABEE" className="flex-shrink-0" aria-hidden="true">
-                <path d="M12 0C5.37 0 0 5.37 0 12s5.37 12 12 12 12-5.37 12-12S18.63 0 12 0zm5.56 8.16-1.97 9.28c-.15.66-.54.82-1.09.51l-3-2.21-1.45 1.39c-.16.16-.29.29-.6.29l.21-3.05 5.56-5.02c.24-.21-.05-.33-.37-.12l-6.87 4.33-2.96-.93c-.64-.2-.66-.64.14-.95l11.57-4.46c.53-.19 1 .13.83.94z" />
-              </svg>
-              @Yuvals_Recipe_Book_bot
-            </a>
-          </div>
-        )}
         </>
       ) : searchQuery ? (
         <div className="text-center py-16">
