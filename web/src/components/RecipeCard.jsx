@@ -5,7 +5,7 @@ import { MarbleSpine } from './MarbleSpine'
 import { ShareQR } from './ShareQR'
 import { SaveToMenu } from './SaveToMenu'
 
-export function RecipeCardSkeleton() {
+export function RecipeCardSkeleton({ feed = false }) {
   return (
     <div className="w-full bg-white rounded-2xl overflow-hidden border border-[#e8e4dc]/50 flex flex-col animate-pulse">
       <div className="px-5 pt-5 pb-1 border-b border-[#e8e4dc]/30 flex items-center gap-3">
@@ -14,6 +14,14 @@ export function RecipeCardSkeleton() {
       </div>
       <div className="px-5 py-4 flex flex-col flex-grow">
         <div className="h-5 bg-[#e8e4dc] rounded w-3/4 flex-grow" />
+        {/* matches the ingredient-chips row on feed cards */}
+        {feed && (
+          <div className="flex items-center gap-1 mt-1">
+            <div className="h-[18px] w-14 bg-[#e8e4dc] rounded-full" />
+            <div className="h-[18px] w-12 bg-[#e8e4dc] rounded-full" />
+            <div className="h-[18px] w-14 bg-[#e8e4dc] rounded-full" />
+          </div>
+        )}
         <div className="border-t border-[#e8e4dc] pt-2 mt-2">
           <div className="flex justify-between items-center">
             <div className="h-4 bg-[#e8e4dc] rounded w-1/4" />
@@ -25,11 +33,33 @@ export function RecipeCardSkeleton() {
   )
 }
 
-export function RecipeCard({ recipe, language = 'en', apiBase = '/api', onSelect, showCategory = true, likeCount, authorUsername, authorId, onSelectAuthor, userCategories, currentRecipeCategories, onToggleRecipeCategory, onCreateCategory }) {
+// Google avatar URLs carry a size suffix — request a tiny variant so feed avatars are ~1-2KB
+function smallAvatar(url) {
+  return url.replace(/=s\d+(-c)?$/, '=s64-c')
+}
+
+// ponytail: naive ingredient teaser — longest word per line, skips numbers/units well enough
+function teaserWords(ingredients) {
+  const out = []
+  for (const line of ingredients.slice(0, 3)) {
+    const w = String(line).split(/[\s,()]+/)
+      .map(t => t.replace(/[^\p{L}]/gu, ''))
+      .reduce((a, b) => (b.length > a.length ? b : a), '')
+    if (w.length > 1) out.push(w)
+  }
+  return out
+}
+
+const RANK_BG = { 1: 'bg-[#e67e22]', 2: 'bg-[#a89a84]', 3: 'bg-[#c4b49a]' }
+
+export function RecipeCard({ recipe, language = 'en', apiBase = '/api', onSelect, showCategory = true, likeCount, authorUsername, authorId, authorAvatar, rank, feed = false, onSelectAuthor, userCategories, currentRecipeCategories, onToggleRecipeCategory, onCreateCategory }) {
   const isRtl = language === 'he'
   const [copied, setCopied] = useState(false)
   const [showQR, setShowQR] = useState(false)
   const [saveOpen, setSaveOpen] = useState(false)
+
+  const teaser = feed ? teaserWords(recipe.ingredients || []) : []
+  const isNew = feed && recipe.created_at && (Date.now() - new Date(recipe.created_at)) < 7 * 86400000
 
   const handleShare = async (e) => {
     e?.stopPropagation()
@@ -104,7 +134,20 @@ export function RecipeCard({ recipe, language = 'en', apiBase = '/api', onSelect
           {recipe.description}
         </p>
 
-          <div className="border-t border-[#e8e4dc] pt-2 mt-2">
+          {/* Ingredient teaser chips — feed cards only. Single line, never wraps: a second
+              chip line would stretch every equal-height card in the carousel row. */}
+          {teaser.length > 0 && (
+            <div className="flex flex-nowrap items-center gap-1 mt-1 overflow-hidden" style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
+              {teaser.map(w => (
+                <span key={w} className="px-2 py-0.5 rounded-full bg-[#f3efe7] text-[10px] font-semibold text-[#8a7a62] whitespace-nowrap flex-shrink-0">{w}</span>
+              ))}
+              {recipe.ingredients.length > teaser.length && (
+                <span dir="ltr" className="text-[10px] font-semibold text-[#b3a891] flex-shrink-0">+{recipe.ingredients.length - teaser.length}</span>
+              )}
+            </div>
+          )}
+
+          <div className="border-t border-[#e8e4dc] pt-2 mt-2 relative">
             <div className="flex justify-between items-center gap-2" style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
               <div className="flex items-center gap-2 min-w-0">
                 {showCategory && recipe.category && (
@@ -116,13 +159,32 @@ export function RecipeCard({ recipe, language = 'en', apiBase = '/api', onSelect
                   <Carrot className="w-3.5 h-3.5" />
                   {recipe.ingredients.length}
                 </span>
+                {isNew && (
+                  <span className="flex items-center gap-1 text-[10px] font-bold text-[#7f9a5e] flex-shrink-0">
+                    <i className="w-1.5 h-1.5 rounded-full bg-[#8fae6d] fresh-dot" />
+                    {language === 'en' ? 'new' : 'חדש'}
+                  </span>
+                )}
               </div>
               <div className="flex items-center gap-2 flex-shrink-0">
                 {authorUsername && (
                   <button
                     onClick={e => { e.stopPropagation(); onSelectAuthor && onSelectAuthor(authorId) }}
-                    className="text-xs text-[#7a7265] hover:text-[#e67e22] transition-colors"
+                    className="flex items-center gap-1.5 text-xs text-[#7a7265] hover:text-[#e67e22] transition-colors"
                   >
+                    {feed && (
+                      <span className="relative w-[18px] h-[18px] rounded-full bg-[#e67e22]/10 overflow-hidden flex items-center justify-center flex-shrink-0">
+                        <span className="text-[9px] font-bold text-[#e67e22]">{authorUsername[0].toUpperCase()}</span>
+                        {authorAvatar && (
+                          <img
+                            src={smallAvatar(authorAvatar)} alt="" referrerPolicy="no-referrer" loading="lazy"
+                            onLoad={e => { e.currentTarget.style.opacity = 1 }}
+                            className="absolute inset-0 w-full h-full object-cover transition-opacity duration-200"
+                            style={{ opacity: 0 }}
+                          />
+                        )}
+                      </span>
+                    )}
                     <span dir="ltr">@{authorUsername}</span>
                   </button>
                 )}
@@ -134,9 +196,25 @@ export function RecipeCard({ recipe, language = 'en', apiBase = '/api', onSelect
                 )}
               </div>
             </div>
+            {/* Hover reveal — desktop only, footer swaps to "Open recipe" */}
+            {feed && (
+              <div
+                className="absolute inset-x-0 top-2 bottom-0 bg-white hidden sm:flex items-center justify-between text-xs font-bold text-[#cf711f] opacity-0 translate-y-1 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-200 pointer-events-none"
+                style={{ direction: isRtl ? 'rtl' : 'ltr' }}
+              >
+                <span>{language === 'en' ? 'Open recipe' : 'פתח מתכון'}</span>
+                <span>{isRtl ? '←' : '→'}</span>
+              </div>
+            )}
           </div>
         </div>
       </div>
+      {/* Rank flag — outside the clipped inner so it can overlap the top edge */}
+      {feed && RANK_BG[rank] && (
+        <span dir="ltr" className={`absolute -top-2 start-3 z-10 px-2 py-0.5 rounded-full text-[10px] font-extrabold text-white shadow-sm ${RANK_BG[rank]}`}>
+          #{rank}
+        </span>
+      )}
     </div>
   )
 }

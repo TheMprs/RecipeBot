@@ -27,9 +27,15 @@ function seedUserCategories() {
   return uid ? (peekCache(`categories:${uid}`) || []) : []
 }
 
+// cookstats cache = { counts: {recipeId: n}, last: {recipeId: isoDate} }
 function seedCookCounts() {
   const uid = currentUserIdSync()
-  return uid ? (peekCache(`cookcounts:${uid}`) || {}) : {}
+  return uid ? (peekCache(`cookstats:${uid}`)?.counts || {}) : {}
+}
+
+function seedLastCooked() {
+  const uid = currentUserIdSync()
+  return uid ? (peekCache(`cookstats:${uid}`)?.last || {}) : {}
 }
 import './global.css'
 
@@ -77,6 +83,7 @@ function App() {
   const likedRecipesCarouselRef = useRef(null)
   const [hoveringCarousel, setHoveringCarousel] = useState(false)
   const [cookCounts, setCookCounts] = useState(seedCookCounts)
+  const [lastCooked, setLastCooked] = useState(seedLastCooked) // recipeId -> most recent cooked_at
   const [carouselLoading, setCarouselLoading] = useState(true)
   const [globalQuery, setGlobalQuery] = useState('')
   const [globalResults, setGlobalResults] = useState({ users: [], recipes: [] })
@@ -398,23 +405,26 @@ function App() {
   // Fetch public recipes for home page when not logged in
   const fetchCookCounts = async (force = false) => {
     if (!user) return
-    const cacheKey = `cookcounts:${user.id}`
+    const cacheKey = `cookstats:${user.id}`
     if (force) invalidate(cacheKey)
     try {
-      // ttl 10min — feeds the "Most Prepped" podium. Invalidated on mark-made
-      // and cook-count edits.
+      // ttl 10min — feeds the "Most Prepped" hero (counts + last-made dates).
+      // Invalidated on mark-made and cook-count edits.
       await swr(cacheKey, async () => {
         const token = await getToken();
         const res = await fetch(
-          `${supabaseUrl}/rest/v1/cook_logs?user_id=eq.${user.id}&select=recipe_id`,
+          `${supabaseUrl}/rest/v1/cook_logs?user_id=eq.${user.id}&select=recipe_id,cooked_at`,
           { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${token}` } }
         );
         if (!res.ok) throw new Error(`API error: ${res.status}`);
         const data = await res.json();
-        const counts = {};
-        for (const row of data) counts[row.recipe_id] = (counts[row.recipe_id] || 0) + 1;
-        return counts;
-      }, setCookCounts, 10 * 60 * 1000)
+        const counts = {}, last = {};
+        for (const row of data) {
+          counts[row.recipe_id] = (counts[row.recipe_id] || 0) + 1;
+          if (!last[row.recipe_id] || row.cooked_at > last[row.recipe_id]) last[row.recipe_id] = row.cooked_at;
+        }
+        return { counts, last };
+      }, ({ counts, last }) => { setCookCounts(counts); setLastCooked(last) }, 10 * 60 * 1000)
     } catch (err) {
       console.error('[Data] Failed to fetch cook counts:', err.message);
     }
@@ -481,41 +491,58 @@ function App() {
         body: JSON.stringify({ limit_count: 10 })
       })
       if (!rpcRes.ok) throw new Error('rpc failed')
-      const ranked = await rpcRes.json()
-      if (!ranked || ranked.length === 0) { return [] }
+      const ranked = (await rpcRes.json()) || []
 
-      const ids = ranked.map(r => r.recipe_id).join(',')
-      const recipesRes = await fetch(`${supabaseUrl}/rest/v1/recipes?id=in.(${ids})&select=*,recipe_categories(categories(name,color))`, {
-        headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` }
-      })
-      if (!recipesRes.ok) throw new Error('recipes fetch failed')
-      const recipesData = await recipesRes.json()
+      const ids = ranked.map(r => r.recipe_id)
+      let recipesData = []
+      if (ids.length > 0) {
+        const recipesRes = await fetch(`${supabaseUrl}/rest/v1/recipes?id=in.(${ids.join(',')})&select=*,recipe_categories(categories(name,color))`, {
+          headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` }
+        })
+        if (!recipesRes.ok) throw new Error('recipes fetch failed')
+        recipesData = await recipesRes.json()
+      }
+
+      // The RPC only returns recipes with ≥1 like — pad the row to 10 with the
+      // newest public recipes so the feed never looks empty.
+      if (recipesData.length < 10) {
+        const excl = ids.length ? `&id=not.in.(${ids.join(',')})` : ''
+        const fillRes = await fetch(
+          `${supabaseUrl}/rest/v1/recipes?visibility=eq.public${excl}&order=created_at.desc&limit=${10 - recipesData.length}&select=*,recipe_categories(categories(name,color))`,
+          { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` } }
+        )
+        if (fillRes.ok) recipesData = recipesData.concat(await fillRes.json())
+      }
 
       const likeCountMap = {}
       ranked.forEach(r => { likeCountMap[r.recipe_id] = Number(r.like_count) })
 
       const userIds = [...new Set(recipesData.map(r => r.user_id).filter(Boolean))]
-      let usernameMap = {}
+      let usernameMap = {}, avatarMap = {}
       if (userIds.length > 0) {
         const usersRes = await fetch(
-          `${supabaseUrl}/rest/v1/users?id=in.(${userIds.join(',')})&select=id,username`,
+          `${supabaseUrl}/rest/v1/users?id=in.(${userIds.join(',')})&select=id,username,avatar_url`,
           { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` } }
         )
         if (usersRes.ok) {
           const usersData = await usersRes.json()
-          usersData.forEach(u => { usernameMap[u.id] = u.username })
+          usersData.forEach(u => { usernameMap[u.id] = u.username; avatarMap[u.id] = u.avatar_url })
         }
       }
 
-      const sorted = ranked.map(r => {
-        const recipe = recipesData.find(rd => rd.id === r.recipe_id)
-        if (!recipe) return null
-        return {
-          ...formatRecipe(recipe),
-          likeCount: likeCountMap[r.recipe_id],
-          authorUsername: usernameMap[recipe.user_id] || null
-        }
-      }).filter(Boolean)
+      const decorate = (recipe) => ({
+        ...formatRecipe(recipe),
+        likeCount: likeCountMap[recipe.id] || 0,
+        authorUsername: usernameMap[recipe.user_id] || null,
+        authorAvatar: avatarMap[recipe.user_id] || null
+      })
+      // liked recipes in rank order, then the recency fills
+      const rankedIds = new Set(ids)
+      const sorted = ranked
+        .map(r => recipesData.find(rd => rd.id === r.recipe_id))
+        .filter(Boolean)
+        .concat(recipesData.filter(rd => !rankedIds.has(rd.id)))
+        .map(decorate)
 
       return sorted
       }, (sorted) => {
@@ -1592,7 +1619,7 @@ function App() {
                 <div className="flex gap-4 sm:gap-6 py-2 pb-3 overflow-hidden">
                   {[...Array(4)].map((_, i) => (
                     <div key={i} className="flex-shrink-0 w-80 sm:w-96">
-                      <RecipeCardSkeleton />
+                      <RecipeCardSkeleton feed />
                     </div>
                   ))}
                 </div>
@@ -1600,10 +1627,10 @@ function App() {
                 <div className="relative w-full">
                   <div
                     ref={likedRecipesCarouselRef}
-                    className="carousel-scroll flex gap-4 sm:gap-6 overflow-x-auto py-2 pb-3"
+                    className="carousel-scroll flex gap-4 sm:gap-4 overflow-x-auto py-2 pb-3"
                     style={{ WebkitOverflowScrolling: 'touch' }}
                   >
-                    {topLikedRecipes.map((recipe) => (
+                    {topLikedRecipes.map((recipe, idx) => (
                       <div key={recipe.id} className="flex-shrink-0 w-80 sm:w-96">
                         <RecipeCard
                           recipe={recipe}
@@ -1612,6 +1639,9 @@ function App() {
                           likeCount={recipe.likeCount}
                           authorUsername={recipe.authorUsername}
                           authorId={recipe.authorId}
+                          authorAvatar={recipe.authorAvatar}
+                          rank={recipe.likeCount > 0 ? idx + 1 : undefined}
+                          feed
                           onSelectAuthor={navigateToProfile}
                         />
                       </div>
@@ -1638,7 +1668,15 @@ function App() {
               </div>
               {(() => {
                 // skeleton only before first load — background refetches keep showing current data
-                if (ownRecipesLoading && recipes.length === 0) return <div className="animate-pulse bg-[#e8e4dc]/60 rounded-3xl" style={{ height: '276px' }} />;
+                if (ownRecipesLoading && recipes.length === 0) return (
+                  <div className="animate-pulse">
+                    <div className="bg-[#e8e4dc]/60 rounded-3xl" style={{ height: '168px' }} />
+                    <div className="flex flex-col sm:flex-row gap-2.5 mt-3">
+                      <div className="flex-1 bg-[#e8e4dc]/60 rounded-2xl" style={{ height: '46px' }} />
+                      <div className="flex-1 bg-[#e8e4dc]/60 rounded-2xl" style={{ height: '46px' }} />
+                    </div>
+                  </div>
+                );
 
                 const mostPrepped = [...recipes]
                   .filter(r => cookCounts[r.id] > 0)
@@ -1652,46 +1690,64 @@ function App() {
                   </div>
                 );
 
-                const podiumOrder = mostPrepped.length === 1
-                  ? [null, mostPrepped[0], null]
-                  : mostPrepped.length === 2
-                  ? [mostPrepped[1], mostPrepped[0], null]
-                  : [mostPrepped[1], mostPrepped[0], mostPrepped[2]];
-
-                const medals = ['🥇', '🥈', '🥉'];
-                const podiumHeights = ['h-24', 'h-36', 'h-16'];
-                const podiumColors = ['bg-[#C0C0C0]', 'bg-[#D4AF37]', 'bg-[#CD7F32]'];
-                const podiumPositions = [1, 0, 2];
+                const [top, ...runners] = mostPrepped;
+                // "last made 3 days ago" — Intl handles the wording in both languages
+                let lastMade = null;
+                if (lastCooked[top.id]) {
+                  const days = Math.max(0, Math.floor((Date.now() - new Date(lastCooked[top.id])) / 86400000));
+                  lastMade = new Intl.RelativeTimeFormat(language === 'he' ? 'he' : 'en', { numeric: 'auto' }).format(-days, 'day');
+                }
 
                 return (
                   <div>
-                  <div className="flex items-end justify-center gap-2 pt-8">
-                    {podiumOrder.map((recipe, slot) => {
-                      const rank = podiumPositions[slot];
-                      return (
-                        <div key={slot} className="flex flex-col items-center flex-1 min-w-0 max-w-[200px]">
-                          {recipe ? (
-                            <>
-                              <span className="text-2xl mb-1">{medals[rank]}</span>
-                              <button
-                                onClick={() => handleSelectRecipe(recipe)}
-                                className="w-full mb-2 px-3 py-2 bg-white rounded-2xl border border-[#e8e4dc] hover:border-[#e67e22]/50 hover:shadow-sm transition-all text-center"
-                              >
-                                <p className="text-sm font-semibold text-[#3d3429] truncate">{recipe.title}</p>
-                                <p className="text-xs text-[#7a7265] mt-0.5">{language === 'en' ? `made ${cookCounts[recipe.id]} times` : cookCounts[recipe.id] === 1 ? 'הוכן פעם אחת' : cookCounts[recipe.id] === 2 ? 'הוכן פעמיים' : `הוכן ${cookCounts[recipe.id]} פעמים`}</p>
-                              </button>
-                              <div className={`w-full rounded-t-xl ${podiumHeights[slot]} ${podiumColors[slot]} flex items-start justify-center pt-2`}>
-                                <span className="text-white font-bold text-lg">{rank + 1}</span>
-                              </div>
-                            </>
-                          ) : (
-                            <div className={`w-full ${podiumHeights[slot]} ${podiumColors[slot]} opacity-20 rounded-t-xl`} />
-                          )}
+                    {/* Signature dish hero — deep-cream card with a breathing ember glow */}
+                    <button
+                      onClick={() => handleSelectRecipe(top)}
+                      className="sig-hero w-full text-start rounded-3xl transition-all duration-300 hover:-translate-y-0.5"
+                    >
+                      <div className="relative z-10 flex flex-wrap items-end justify-between gap-5 p-6 sm:px-7">
+                        {/* mobile: the count is absolute in the top corner, so keep the text clear of it */}
+                        <div className="min-w-0 pe-16 sm:pe-0">
+                          <span className={`inline-flex items-center gap-1.5 text-[0.68rem] font-bold uppercase text-[#cf711f] ${isRtl ? '' : 'tracking-[0.14em]'}`}>
+                            <svg className="sig-flame" width="10" height="14" viewBox="0 0 12 16" fill="#cf711f" aria-hidden="true">
+                              <path d="M6 0 C7 4, 11 5.5, 11 10 A5 5 0 0 1 1 10 C1 7, 4 6.5, 4 3.5 C5 5, 6 5.5, 6 0Z" />
+                            </svg>
+                            {language === 'en' ? 'Your signature dish' : 'מנת הדגל שלך'}
+                          </span>
+                          {/* Hebrew glyphs break under synthetic 800 weight + negative tracking — key off the title's script, not the UI language */}
+                          <h3 className={`mt-1 text-2xl sm:text-4xl text-[#3d3429] text-balance ${/[֐-׿]/.test(top.title) ? 'font-bold' : 'font-extrabold tracking-tight'}`}>{top.title}</h3>
+                          <p className="mt-2 text-sm text-[#7a7265]">
+                            {language === 'en'
+                              ? <>Cooked more than anything else{lastMade && <> — last made <b className="font-semibold text-[#cf711f]">{lastMade}</b></>}.</>
+                              : <>הוכן יותר מכל מתכון אחר{lastMade && <> — לאחרונה <b className="font-semibold text-[#cf711f]">{lastMade}</b></>}.</>}
+                          </p>
                         </div>
-                      );
-                    })}
-                  </div>
-                  <div style={{ height: '2px', backgroundColor: '#e8e4dc', width: '100%', display: 'block', flexShrink: 0 }} />
+                        {/* mobile: top corner opposite the text (saves a wrapped row); desktop: inline as before */}
+                        <div className="text-end leading-none flex-shrink-0 absolute top-5 end-5 sm:static">
+                          <span dir="ltr" className="block text-4xl sm:text-6xl font-extrabold tracking-tight text-[#e67e22] tabular-nums"
+                            style={{ textShadow: '0 0 30px rgba(230,126,34,0.35)' }}>
+                            ×{cookCounts[top.id]}
+                          </span>
+                          <span className={`hidden sm:block mt-1.5 text-[0.7rem] font-semibold uppercase text-[#a39b8d] ${isRtl ? '' : 'tracking-widest'}`}>
+                            {language === 'en' ? 'times cooked' : 'פעמים'}
+                          </span>
+                        </div>
+                      </div>
+                    </button>
+
+                    {/* Runners-up — quiet chips so the hero keeps the drama */}
+                    {runners.length > 0 && (
+                      <div className="flex flex-col sm:flex-row gap-2.5 mt-3">
+                        {runners.map((r, i) => (
+                          <button key={r.id} onClick={() => handleSelectRecipe(r)}
+                            className="flex-1 flex items-center gap-2.5 bg-white border border-[#e8e4dc] rounded-2xl px-4 py-2.5 hover:border-[#e67e22]/50 hover:-translate-y-px transition-all text-start">
+                            <span className="text-[0.7rem] font-bold text-[#cbc0ae]">#{i + 2}</span>
+                            <span className="flex-1 text-sm font-semibold text-[#3d3429] truncate">{r.title}</span>
+                            <span dir="ltr" className="text-sm font-bold text-[#cf711f] tabular-nums">×{cookCounts[r.id]}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 );
               })()}
