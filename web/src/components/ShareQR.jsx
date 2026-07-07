@@ -16,14 +16,14 @@ export function ShareQR({ recipe, language = 'en', copied = false, onShare, onCl
       <div className="relative bg-white rounded-3xl shadow-2xl max-w-sm w-full overflow-hidden" onClick={e => e.stopPropagation()}>
         <button
           onClick={onClose}
-          className="absolute top-3 end-3 w-8 h-8 flex items-center justify-center rounded-full text-[#7a7265] hover:text-[#3d3429] hover:bg-[#faf9f7] transition-colors z-10"
+          className="absolute top-3 end-3 w-8 h-8 flex items-center justify-center rounded-full text-muted hover:text-ink hover:bg-cream transition-colors z-10"
         >
           <X className="w-5 h-5" />
         </button>
 
         {/* Accent header — the recipe name */}
         <div className="flex flex-col items-center gap-2 px-8 pt-6 pb-4" style={{ backgroundColor: `${accent}14` }}>
-          <h3 className="text-2xl font-bold text-center text-[#3d3429] text-balance">
+          <h3 className="text-2xl font-bold text-center text-ink text-balance">
             {recipe.title}
           </h3>
           <span className="block h-1 w-10 rounded-full" style={{ backgroundColor: accent }} />

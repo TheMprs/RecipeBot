@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { createPortal, flushSync } from 'react-dom'
 import { BookOpen, Plus, Search, Filter, X, Link as LinkIcon, User as UserIcon, ChevronLeft, ChevronRight, Heart, RotateCcw, Pencil, Menu, Settings, LogOut, Check, Trash2, Sparkles, AtSign, ChefHat } from 'lucide-react'
 import { RecipeCard, RecipeCardSkeleton } from './components/RecipeCard'
@@ -1382,21 +1382,21 @@ function App() {
     <>
       {/* ponytail: desktop shows Add recipe as its own button (below), so hide it here on sm+ */}
       <button onClick={() => { closeNavMenu(); setEditingRecipe(null); setShowRecipeForm(true); }}
-        className="w-full flex items-center gap-3 px-4 py-4 text-base text-[#3d3429] hover:bg-[#f5f3ef] transition-colors text-start sm:hidden">
-        <Plus className="w-5 h-5 text-[#7a7265]"/>
+        className="w-full flex items-center gap-3 px-4 py-4 text-base text-ink hover:bg-cream-dark transition-colors text-start sm:hidden">
+        <Plus className="w-5 h-5 text-muted"/>
         {language === 'en' ? 'Add recipe' : 'הוסף מתכון'}
       </button>
       <button onClick={() => { closeNavMenu(); handleNavigate('profile'); }}
-        className="w-full flex items-center gap-3 px-4 py-4 text-base text-[#3d3429] hover:bg-[#f5f3ef] transition-colors text-start sm:py-2.5 sm:text-sm">
-        <UserIcon className="w-5 h-5 text-[#7a7265] sm:w-4 sm:h-4"/>
+        className="w-full flex items-center gap-3 px-4 py-4 text-base text-ink hover:bg-cream-dark transition-colors text-start sm:py-2.5 sm:text-sm">
+        <UserIcon className="w-5 h-5 text-muted sm:w-4 sm:h-4"/>
         {language === 'en' ? 'Profile' : 'פרופיל'}
       </button>
       <button onClick={() => { closeNavMenu(); setOpenProfileSettings(true); handleNavigate('profile'); }}
-        className="w-full flex items-center gap-3 px-4 py-4 text-base text-[#3d3429] hover:bg-[#f5f3ef] transition-colors text-start sm:py-2.5 sm:text-sm">
-        <Settings className="w-5 h-5 text-[#7a7265] sm:w-4 sm:h-4"/>
+        className="w-full flex items-center gap-3 px-4 py-4 text-base text-ink hover:bg-cream-dark transition-colors text-start sm:py-2.5 sm:text-sm">
+        <Settings className="w-5 h-5 text-muted sm:w-4 sm:h-4"/>
         {language === 'en' ? 'Settings' : 'הגדרות'}
       </button>
-      <div className="border-t border-[#e8e4dc]" />
+      <div className="border-t border-border" />
       <button onClick={() => {
           closeNavMenu()
           setConfirmDialog({
@@ -1409,7 +1409,7 @@ function App() {
             onCancel: () => setConfirmDialog(null),
           })
         }}
-        className="w-full flex items-center gap-3 px-4 py-4 text-base text-[#dc2626] hover:bg-[#fef2f2] transition-colors text-start sm:py-2.5 sm:text-sm">
+        className="w-full flex items-center gap-3 px-4 py-4 text-base text-red-600 hover:bg-red-50 transition-colors text-start sm:py-2.5 sm:text-sm">
         <LogOut className="w-5 h-5 sm:w-4 sm:h-4"/>
         {language === 'en' ? 'Log out' : 'התנתק'}
       </button>
@@ -1418,10 +1418,10 @@ function App() {
 
   // Segmented EN/HE switch — rendered twice in the footer (mobile action row / desktop bottom bar)
   const langToggle = (
-    <div className="inline-flex bg-white border border-[#e8e4dc] rounded-xl overflow-hidden" dir="ltr">
+    <div className="inline-flex bg-white border border-border rounded-xl overflow-hidden" dir="ltr">
       {['en', 'he'].map(l => (
         <button key={l} onClick={() => { localStorage.setItem('language', l); setLanguage(l); }}
-          className={`px-3 py-1.5 text-xs font-medium transition-colors ${language === l ? 'bg-[#f0e7dc] text-[#3d3429]' : 'text-[#7a7265] hover:text-[#3d3429]'}`}>
+          className={`px-3 py-1.5 text-xs font-medium transition-colors ${language === l ? 'bg-[#f0e7dc] text-ink' : 'text-muted hover:text-ink'}`}>
           {l.toUpperCase()}
         </button>
       ))}
@@ -1431,7 +1431,7 @@ function App() {
   return (
     <>
       {loading ? (
-        <div className="min-h-screen flex flex-col items-center justify-center bg-[#f5f3ef]">
+        <div className="min-h-screen flex flex-col items-center justify-center bg-cream-dark">
           {/* Simmering pan on a stove flame — same saucepan as the offline banner */}
           <svg width="110" height="100" viewBox="0 0 200 182" fill="none" aria-hidden="true">
             <g className="splash-steam">
@@ -1451,19 +1451,19 @@ function App() {
               <line x1="130" y1="152" x2="130" y2="166" />
             </g>
           </svg>
-          <p className="mt-4 text-[0.95rem] font-semibold text-[#3d3429] tracking-tight">Yuval's Recipe Book</p>
+          <p className="mt-4 text-[0.95rem] font-semibold text-ink tracking-tight">Yuval's Recipe Book</p>
         </div>
       ) : (
-    <div className="min-h-screen bg-[#f5f3ef]">
-      <header className="sticky top-0 z-30 bg-[#faf9f7]/95 backdrop-blur-md border-b border-[#e8e4dc]">
+    <div className="min-h-screen bg-cream-dark">
+      <header className="sticky top-0 z-30 bg-cream/95 backdrop-blur-md border-b border-border">
         <div className="relative max-w-6xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between gap-4">
             <button onClick={() => handleNavigate('home')} className="flex items-center gap-2 group min-w-0">
-              <div className="w-10 h-10 rounded-2xl bg-[#e67e22] flex items-center justify-center flex-shrink-0">
+              <div className="w-10 h-10 rounded-2xl bg-brand flex items-center justify-center flex-shrink-0">
                 <BookOpen className="w-5 h-5 text-white" />
               </div>
               <div className="text-left hidden sm:block">
-                <h1 className="text-lg font-semibold text-[#3d3429]">Yuval's Recipe Book</h1>
-                <p className="text-xs text-[#7a7265]">זה בתהליך לא לשפוט</p>
+                <h1 className="text-lg font-semibold text-ink">Yuval's Recipe Book</h1>
+                <p className="text-xs text-muted">זה בתהליך לא לשפוט</p>
               </div>
             </button>
 
@@ -1471,17 +1471,17 @@ function App() {
               {user ? (
                 <>
                 <button onClick={() => { setEditingRecipe(null); setShowRecipeForm(true); }}
-                  className="hidden sm:flex items-center text-[#64748b] hover:text-[#1e293b] transition-colors p-2 sm:-me-3">
+                  className="hidden sm:flex items-center text-muted hover:text-ink transition-colors p-2 sm:-me-3">
                   <Plus className="w-5 h-5" />
                 </button>
                 <div className="relative" ref={navMenuRef}>
                   <button onClick={() => { if (navMenuOpen && !navClosing) { closeNavMenu() } else { setNavClosing(false); setNavMenuOpen(true) } }}
-                    className="flex items-center gap-2 text-[#64748b] hover:text-[#1e293b] transition-colors p-2 -me-2">
+                    className="flex items-center gap-2 text-muted hover:text-ink transition-colors p-2 -me-2">
                     <Menu className="w-5 h-5"/>
                   </button>
                   {/* Desktop: plain anchored dropdown (same style as the recipe-form category menu) */}
                   {navMenuOpen && (
-                    <div className={`hidden sm:block absolute ${isRtl ? 'right-0' : 'left-0'} mt-2 w-48 bg-white border border-[#e8e4dc] rounded-2xl shadow-lg overflow-hidden z-50`}
+                    <div className={`hidden sm:block absolute ${isRtl ? 'right-0' : 'left-0'} mt-2 w-48 bg-white border border-border rounded-2xl shadow-lg overflow-hidden z-50`}
                       style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
                       {navItems}
                     </div>
@@ -1495,7 +1495,7 @@ function App() {
                         className={`fixed top-0 inset-x-0 h-3/5 bg-white py-2 z-[70] rounded-b-3xl overflow-hidden shadow-xl ${navClosing ? 'nav-flow-up' : 'nav-flow-down'}`}
                         style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
                         <div className="flex justify-end px-4 py-2">
-                          <button onClick={closeNavMenu} className="p-2 text-[#7a7265]">
+                          <button onClick={closeNavMenu} className="p-2 text-muted">
                             <X className="w-6 h-6"/>
                           </button>
                         </div>
@@ -1508,7 +1508,7 @@ function App() {
                 </>
               ) : (
                 <button onClick={() => setShowLoginModal(true)}
-                  className="flex items-center gap-1.5 px-4 py-2 bg-[#e8e4dc] text-[#3d3429] rounded-xl hover:bg-[#ddd9d0] transition-colors text-sm font-medium whitespace-nowrap">
+                  className="flex items-center gap-1.5 px-4 py-2 bg-border text-ink rounded-xl hover:bg-border-dark transition-colors text-sm font-medium whitespace-nowrap">
                   <UserIcon className="w-4 h-4" />
                   <span>{language === 'en' ? 'Sign In' : 'התחברות'}</span>
                 </button>
@@ -1531,14 +1531,14 @@ function App() {
               const leader = recipes.reduce((a, r) => (cookCounts[r.id] || 0) > (cookCounts[a?.id] || 0) ? r : a, null)
               return (
                 <div className="mb-6">
-                  <h2 className={`text-2xl sm:text-3xl text-[#3d3429] ${isRtl ? 'font-bold' : 'font-extrabold tracking-tight'}`}>
-                    {greet}{firstName && <>, <span className="text-[#cf711f]">{firstName}</span></>}
+                  <h2 className={`text-2xl sm:text-3xl text-ink ${isRtl ? 'font-bold' : 'font-extrabold tracking-tight'}`}>
+                    {greet}{firstName && <>, <span className="text-brand-dark">{firstName}</span></>}
                   </h2>
-                  <p className="mt-1 text-sm text-[#7a7265]">
+                  <p className="mt-1 text-sm text-muted">
                     {weekCooks > 0
                       ? (language === 'en'
-                        ? <>You've cooked <b className="font-semibold text-[#cf711f]">{weekCooks === 1 ? 'once' : `${weekCooks} times`}</b> this week{leader && cookCounts[leader.id] > 0 && <> — {leader.title} is still in the lead</>}.</>
-                        : <>בישלת <b className="font-semibold text-[#cf711f]">{weekCooks === 1 ? 'פעם אחת' : `${weekCooks} פעמים`}</b> השבוע{leader && cookCounts[leader.id] > 0 && <> — {leader.title} עדיין מוביל</>}.</>)
+                        ? <>You've cooked <b className="font-semibold text-brand-dark">{weekCooks === 1 ? 'once' : `${weekCooks} times`}</b> this week{leader && cookCounts[leader.id] > 0 && <> — {leader.title} is still in the lead</>}.</>
+                        : <>בישלת <b className="font-semibold text-brand-dark">{weekCooks === 1 ? 'פעם אחת' : `${weekCooks} פעמים`}</b> השבוע{leader && cookCounts[leader.id] > 0 && <> — {leader.title} עדיין מוביל</>}.</>)
                       : (language === 'en' ? 'What are you cooking today?' : 'מה מבשלים היום?')}
                   </p>
                 </div>
@@ -1548,7 +1548,7 @@ function App() {
             {/* Global Search */}
             <div ref={globalSearchRef} className="relative mb-8">
               <div className="relative">
-                <Search className={`absolute top-1/2 -translate-y-1/2 w-4 h-4 text-[#7a7265] ${isRtl ? 'right-4' : 'left-4'}`} />
+                <Search className={`absolute top-1/2 -translate-y-1/2 w-4 h-4 text-muted ${isRtl ? 'right-4' : 'left-4'}`} />
                 <input
                   type="text"
                   value={globalQuery}
@@ -1568,27 +1568,27 @@ function App() {
                     }
                   }}
                   placeholder={language === 'en' ? 'Search recipes and people...' : 'חפש מתכונים ואנשים...'}
-                  className={`w-full py-3 bg-white border border-[#e8e4dc] rounded-2xl text-[#3d3429] placeholder:text-[#7a7265] focus:outline-none focus:ring-2 focus:ring-[#cf711f]/20 focus:border-[#cf711f] transition-all ${isRtl ? `pr-11 ${globalQuery ? 'pl-10' : 'pl-4'} text-right` : `pl-11 ${globalQuery ? 'pr-10' : 'pr-4'}`}`}
+                  className={`w-full py-3 bg-white border border-border rounded-2xl text-ink placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-brand-dark/20 focus:border-brand-dark transition-all ${isRtl ? `pr-11 ${globalQuery ? 'pl-10' : 'pl-4'} text-right` : `pl-11 ${globalQuery ? 'pr-10' : 'pr-4'}`}`}
                 />
                 {globalQuery && (
                   <button onClick={() => { setGlobalQuery(''); setShowGlobalResults(false) }}
-                    className={`absolute top-1/2 -translate-y-1/2 text-[#7a7265] hover:text-[#3d3429] transition-colors ${isRtl ? 'left-3' : 'right-3'}`}>
+                    className={`absolute top-1/2 -translate-y-1/2 text-muted hover:text-ink transition-colors ${isRtl ? 'left-3' : 'right-3'}`}>
                     <X className="w-4 h-4" />
                   </button>
                 )}
               </div>
 
               {showGlobalResults && globalQuery.trim() && globalResults.users.length === 0 && globalResults.recipes.length === 0 && (
-                <div className="absolute top-full mt-2 w-full bg-white border border-[#e8e4dc] rounded-2xl shadow-lg z-50 px-4 py-4">
-                  <p className="text-sm text-[#7a7265] text-center">{language === 'en' ? 'No results found' : 'לא נמצאו תוצאות'}</p>
+                <div className="absolute top-full mt-2 w-full bg-white border border-border rounded-2xl shadow-lg z-50 px-4 py-4">
+                  <p className="text-sm text-muted text-center">{language === 'en' ? 'No results found' : 'לא נמצאו תוצאות'}</p>
                 </div>
               )}
 
               {showGlobalResults && (globalResults.users.length > 0 || globalResults.recipes.length > 0) && (
-                <div className="absolute top-full mt-2 w-full bg-white border border-[#e8e4dc] rounded-2xl shadow-lg z-50 overflow-hidden">
+                <div className="absolute top-full mt-2 w-full bg-white border border-border rounded-2xl shadow-lg z-50 overflow-hidden">
                   {globalResults.users.length > 0 && (
                     <div>
-                      <p className="px-4 pt-3 pb-1 text-xs font-semibold text-[#7a7265] uppercase tracking-wide">{language === 'en' ? 'People' : 'אנשים'}</p>
+                      <p className="px-4 pt-3 pb-1 text-xs font-semibold text-muted uppercase tracking-wide">{language === 'en' ? 'People' : 'אנשים'}</p>
                       {globalResults.users.map(u => (
                         <button key={u.id} onClick={() => {
                           setViewingProfile(u)
@@ -1596,15 +1596,15 @@ function App() {
                           setShowGlobalResults(false)
                           setGlobalQuery('')
                           window.history.pushState({}, '', `/?user=${u.username}`)
-                        }} className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-[#f5f3ef] transition-colors">
-                          <div className="w-8 h-8 rounded-full bg-[#e67e22]/10 flex-shrink-0 overflow-hidden">
+                        }} className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-cream-dark transition-colors">
+                          <div className="w-8 h-8 rounded-full bg-brand/10 flex-shrink-0 overflow-hidden">
                             {u.avatar_url
                               ? <img src={u.avatar_url} alt="" referrerPolicy="no-referrer" className="w-full h-full object-cover" />
-                              : <div className="w-full h-full flex items-center justify-center"><UserIcon className="w-4 h-4 text-[#e67e22]" /></div>}
+                              : <div className="w-full h-full flex items-center justify-center"><UserIcon className="w-4 h-4 text-brand" /></div>}
                           </div>
                           <div className="text-start">
-                            <p className="text-sm text-[#3d3429] font-medium">{u.display_name || u.username}</p>
-                            <p className="text-xs text-[#7a7265]"><span dir="ltr">@{u.username}</span></p>
+                            <p className="text-sm text-ink font-medium">{u.display_name || u.username}</p>
+                            <p className="text-xs text-muted"><span dir="ltr">@{u.username}</span></p>
                           </div>
                         </button>
                       ))}
@@ -1612,19 +1612,19 @@ function App() {
                   )}
                   {globalResults.recipes.length > 0 && (
                     <div>
-                      <p className="px-4 pt-3 pb-1 text-xs font-semibold text-[#7a7265] uppercase tracking-wide">{language === 'en' ? 'Recipes' : 'מתכונים'}</p>
+                      <p className="px-4 pt-3 pb-1 text-xs font-semibold text-muted uppercase tracking-wide">{language === 'en' ? 'Recipes' : 'מתכונים'}</p>
                       {globalResults.recipes.map(r => (
                         <button key={r.id} onClick={() => {
                           loadRecipeFromSupabase(`id=eq.${r.id}`)
                           setShowGlobalResults(false)
                           setGlobalQuery('')
-                        }} className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-[#f5f3ef] transition-colors">
-                          <div className="w-8 h-8 rounded-full bg-[#e67e22]/10 flex items-center justify-center flex-shrink-0">
-                            <BookOpen className="w-4 h-4 text-[#e67e22]" />
+                        }} className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-cream-dark transition-colors">
+                          <div className="w-8 h-8 rounded-full bg-brand/10 flex items-center justify-center flex-shrink-0">
+                            <BookOpen className="w-4 h-4 text-brand" />
                           </div>
                           <div className="text-start">
-                            <p className="text-sm text-[#3d3429] font-medium">{r.name}</p>
-                            <p className="text-xs text-[#7a7265]">{r.category}{r.authorUsername ? ` · ${r.authorUsername}` : ''}</p>
+                            <p className="text-sm text-ink font-medium">{r.name}</p>
+                            <p className="text-xs text-muted">{r.category}{r.authorUsername ? ` · ${r.authorUsername}` : ''}</p>
                           </div>
                         </button>
                       ))}
@@ -1639,14 +1639,14 @@ function App() {
             <section className="carousel-section" onMouseEnter={() => setHoveringCarousel(true)} onMouseLeave={() => setHoveringCarousel(false)}>
               <div className="mb-3">
                 <div className="flex items-center gap-2.5">
-                  <span className={`mb-2 text-[0.68rem] font-bold uppercase text-[#cf711f] ${isRtl ? '' : 'tracking-[0.13em]'}`}>
+                  <span className={`mb-2 text-[0.68rem] font-bold uppercase text-brand-dark ${isRtl ? '' : 'tracking-[0.13em]'}`}>
                     {language === 'en' ? 'From the community' : 'מהקהילה'}
                   </span>
-                  <span className="mb-2 flex-1 h-px bg-[#e3ddd1]" />
+                  <span className="mb-2 flex-1 h-px bg-border" />
                 </div>
                 <div className="flex items-baseline gap-2.5 mt-1.5">
-                  <h2 className="text-xl font-bold text-[#3d3429]">{language === 'en' ? 'Most liked' : 'האהובים ביותר'}</h2>
-                  <span className="text-xs text-[#a39b8d]">{language === 'en' ? 'top public recipes' : 'המתכונים הציבוריים המובילים'}</span>
+                  <h2 className="text-xl font-bold text-ink">{language === 'en' ? 'Most liked' : 'האהובים ביותר'}</h2>
+                  <span className="text-xs text-faint">{language === 'en' ? 'top public recipes' : 'המתכונים הציבוריים המובילים'}</span>
                 </div>
               </div>
               {carouselLoading ? (
@@ -1683,9 +1683,9 @@ function App() {
                   </div>
                 </div>
               ) : (
-                <div className="text-center py-16 bg-gradient-to-br from-[#faf9f7] to-[#f5f3ef] rounded-3xl border-2 border-dashed border-[#e8e4dc]">
-                  <Heart className="w-12 h-12 text-[#e67e22]/30 mx-auto mb-4" />
-                  <p className="text-[#7a7265] font-medium">{language === 'en' ? 'No liked recipes yet' : 'אין מתכונים עם לייקים עדיין'}</p>
+                <div className="text-center py-16 bg-gradient-to-br from-cream to-cream-dark rounded-3xl border-2 border-dashed border-border">
+                  <Heart className="w-12 h-12 text-brand/30 mx-auto mb-4" />
+                  <p className="text-muted font-medium">{language === 'en' ? 'No liked recipes yet' : 'אין מתכונים עם לייקים עדיין'}</p>
                 </div>
               )}
             </section>
@@ -1695,24 +1695,24 @@ function App() {
             <section className="mt-4">
               <div className="mb-3">
                 <div className="flex items-center gap-2.5">
-                  <span className={`mb-2 text-[0.68rem] font-bold uppercase text-[#cf711f] ${isRtl ? '' : 'tracking-[0.13em]'}`}>
+                  <span className={`mb-2 text-[0.68rem] font-bold uppercase text-brand-dark ${isRtl ? '' : 'tracking-[0.13em]'}`}>
                     {language === 'en' ? 'Your kitchen' : 'המטבח שלך'}
                   </span>
-                  <span className="mb-2 flex-1 h-px bg-[#e3ddd1]" />
+                  <span className="mb-2 flex-1 h-px bg-border" />
                 </div>
                 <div className="flex items-baseline gap-2.5 mt-1.5">
-                  <h2 className="text-xl font-bold text-[#3d3429]">{language === 'en' ? 'Most prepped' : 'המוכנים ביותר'}</h2>
-                  <span className="text-xs text-[#a39b8d]">{language === 'en' ? 'your cooking habits' : 'הרגלי הבישול שלך'}</span>
+                  <h2 className="text-xl font-bold text-ink">{language === 'en' ? 'Most prepped' : 'המוכנים ביותר'}</h2>
+                  <span className="text-xs text-faint">{language === 'en' ? 'your cooking habits' : 'הרגלי הבישול שלך'}</span>
                 </div>
               </div>
               {(() => {
                 // skeleton only before first load — background refetches keep showing current data
                 if (ownRecipesLoading && recipes.length === 0) return (
                   <div className="animate-pulse">
-                    <div className="bg-[#e8e4dc]/60 rounded-3xl" style={{ height: '168px' }} />
+                    <div className="bg-border/60 rounded-3xl" style={{ height: '168px' }} />
                     <div className="flex flex-col sm:flex-row gap-2.5 mt-3">
-                      <div className="flex-1 bg-[#e8e4dc]/60 rounded-2xl" style={{ height: '46px' }} />
-                      <div className="flex-1 bg-[#e8e4dc]/60 rounded-2xl" style={{ height: '46px' }} />
+                      <div className="flex-1 bg-border/60 rounded-2xl" style={{ height: '46px' }} />
+                      <div className="flex-1 bg-border/60 rounded-2xl" style={{ height: '46px' }} />
                     </div>
                   </div>
                 );
@@ -1723,22 +1723,22 @@ function App() {
                   .slice(0, 3);
 
                 if (mostPrepped.length === 0) return (
-                  <div className="relative overflow-hidden text-center py-14 px-6 bg-[#faf9f7] rounded-3xl border border-[#e8e4dc]">
+                  <div className="relative overflow-hidden text-center py-14 px-6 bg-cream rounded-3xl border border-border">
                     {/* same faint top ember glow as the filled sig-hero */}
                     <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(ellipse 60% 55% at 50% 0%, rgba(230,126,34,.09), transparent 70%)' }} />
                     <div className="relative">
-                      <span className="w-11 h-11 rounded-full bg-[#e67e22]/10 flex items-center justify-center mx-auto">
-                        <ChefHat className="w-5 h-5 text-[#cf711f]" />
+                      <span className="w-11 h-11 rounded-full bg-brand/10 flex items-center justify-center mx-auto">
+                        <ChefHat className="w-5 h-5 text-brand-dark" />
                       </span>
-                      <p className="mt-3 font-bold text-[#3d3429]">{language === 'en' ? 'No cooks logged yet' : 'עדיין לא סימנת בישולים'}</p>
-                      <p className="mt-1 text-sm text-[#7a7265] max-w-[42ch] mx-auto">
+                      <p className="mt-3 font-bold text-ink">{language === 'en' ? 'No cooks logged yet' : 'עדיין לא סימנת בישולים'}</p>
+                      <p className="mt-1 text-sm text-muted max-w-[42ch] mx-auto">
                         {language === 'en'
                           ? 'Recipes you mark as cooked show up here, ranked by how often you make them.'
                           : 'מתכונים שסימנת כמבושלים יופיעו כאן, לפי כמות הבישולים.'}
                       </p>
                       <button
                         onClick={() => handleNavigate('profile')}
-                        className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-semibold text-[#cf711f] border border-[#e67e22]/35 hover:bg-[#e67e22]/5 transition-colors"
+                        className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-semibold text-brand-dark border border-brand/35 hover:bg-brand/5 transition-colors"
                       >
                         {language === 'en' ? 'Go to my recipes' : 'למתכונים שלי'}
                       </button>
@@ -1764,27 +1764,27 @@ function App() {
                       <div className="relative z-10 flex flex-wrap items-end justify-between gap-5 p-6 sm:px-7">
                         {/* mobile: the count is absolute in the top corner, so keep the text clear of it */}
                         <div className="min-w-0 pe-16 sm:pe-0">
-                          <span className={`inline-flex items-center gap-1.5 text-[0.68rem] font-bold uppercase text-[#cf711f] ${isRtl ? '' : 'tracking-[0.14em]'}`}>
+                          <span className={`inline-flex items-center gap-1.5 text-[0.68rem] font-bold uppercase text-brand-dark ${isRtl ? '' : 'tracking-[0.14em]'}`}>
                             <svg className="sig-flame" width="10" height="14" viewBox="0 0 12 16" fill="#cf711f" aria-hidden="true">
                               <path d="M6 0 C7 4, 11 5.5, 11 10 A5 5 0 0 1 1 10 C1 7, 4 6.5, 4 3.5 C5 5, 6 5.5, 6 0Z" />
                             </svg>
                             {language === 'en' ? 'Your signature dish' : 'מנת הדגל שלך'}
                           </span>
                           {/* Hebrew glyphs break under synthetic 800 weight + negative tracking — key off the title's script, not the UI language */}
-                          <h3 className={`mt-1 text-2xl sm:text-4xl text-[#3d3429] text-balance ${/[֐-׿]/.test(top.title) ? 'font-bold' : 'font-extrabold tracking-tight'}`}>{top.title}</h3>
-                          <p className="mt-2 text-sm text-[#7a7265]">
+                          <h3 className={`mt-1 text-2xl sm:text-4xl text-ink text-balance ${/[֐-׿]/.test(top.title) ? 'font-bold' : 'font-extrabold tracking-tight'}`}>{top.title}</h3>
+                          <p className="mt-2 text-sm text-muted">
                             {language === 'en'
-                              ? <>Cooked more than anything else{lastMade && <> — last made <b className="font-semibold text-[#cf711f]">{lastMade}</b></>}.</>
-                              : <>הוכן יותר מכל מתכון אחר{lastMade && <> — לאחרונה <b className="font-semibold text-[#cf711f]">{lastMade}</b></>}.</>}
+                              ? <>Cooked more than anything else{lastMade && <> — last made <b className="font-semibold text-brand-dark">{lastMade}</b></>}.</>
+                              : <>הוכן יותר מכל מתכון אחר{lastMade && <> — לאחרונה <b className="font-semibold text-brand-dark">{lastMade}</b></>}.</>}
                           </p>
                         </div>
                         {/* mobile: top corner opposite the text (saves a wrapped row); desktop: inline as before */}
                         <div className="text-end leading-none flex-shrink-0 absolute top-5 end-5 sm:static">
-                          <span dir="ltr" className="block text-4xl sm:text-6xl font-extrabold tracking-tight text-[#e67e22] tabular-nums"
+                          <span dir="ltr" className="block text-4xl sm:text-6xl font-extrabold tracking-tight text-brand tabular-nums"
                             style={{ textShadow: '0 0 30px rgba(230,126,34,0.35)' }}>
                             ×{cookCounts[top.id]}
                           </span>
-                          <span className={`hidden sm:block mt-1.5 text-[0.7rem] font-semibold uppercase text-[#a39b8d] ${isRtl ? '' : 'tracking-widest'}`}>
+                          <span className={`hidden sm:block mt-1.5 text-[0.7rem] font-semibold uppercase text-faint ${isRtl ? '' : 'tracking-widest'}`}>
                             {language === 'en' ? 'times cooked' : 'פעמים'}
                           </span>
                         </div>
@@ -1796,10 +1796,10 @@ function App() {
                       <div className="flex flex-col sm:flex-row gap-2.5 mt-3">
                         {runners.map((r, i) => (
                           <button key={r.id} onClick={() => handleSelectRecipe(r)}
-                            className="flex-1 flex items-center gap-2.5 bg-white border border-[#e8e4dc] rounded-2xl px-4 py-2.5 hover:border-[#e67e22]/50 hover:-translate-y-px transition-all text-start will-change-transform">
-                            <span className="text-[0.7rem] font-bold text-[#cbc0ae]">#{i + 2}</span>
-                            <span className="flex-1 text-sm font-semibold text-[#3d3429] truncate">{r.title}</span>
-                            <span dir="ltr" className="text-sm font-bold text-[#cf711f] tabular-nums">×{cookCounts[r.id]}</span>
+                            className="flex-1 flex items-center gap-2.5 bg-white border border-border rounded-2xl px-4 py-2.5 hover:border-brand/50 hover:-translate-y-px transition-all text-start will-change-transform">
+                            <span className="text-[0.7rem] font-bold text-fainter">#{i + 2}</span>
+                            <span className="flex-1 text-sm font-semibold text-ink truncate">{r.title}</span>
+                            <span dir="ltr" className="text-sm font-bold text-brand-dark tabular-nums">×{cookCounts[r.id]}</span>
                           </button>
                         ))}
                       </div>
@@ -1810,14 +1810,14 @@ function App() {
             </section>
             ) : (
             <section className="mt-12">
-              <div className="bg-gradient-to-br from-[#faf9f7] to-[#f5f3ef] rounded-3xl border border-[#e8e4dc] p-8 sm:p-12 text-center">
-                <div className="w-14 h-14 rounded-2xl bg-[#e67e22]/10 flex items-center justify-center mx-auto mb-4">
-                  <BookOpen className="w-7 h-7 text-[#e67e22]" />
+              <div className="bg-gradient-to-br from-cream to-cream-dark rounded-3xl border border-border p-8 sm:p-12 text-center">
+                <div className="w-14 h-14 rounded-2xl bg-brand/10 flex items-center justify-center mx-auto mb-4">
+                  <BookOpen className="w-7 h-7 text-brand" />
                 </div>
-                <h3 className="text-xl font-bold text-[#3d3429] mb-2">
+                <h3 className="text-xl font-bold text-ink mb-2">
                   {language === 'en' ? 'Save recipes & track your cooking' : 'שמור מתכונים ועקוב אחרי הבישולים שלך'}
                 </h3>
-                <p className="text-[#7a7265] text-sm max-w-sm mx-auto">
+                <p className="text-muted text-sm max-w-sm mx-auto">
                   {language === 'en'
                     ? 'Sign in to add your own recipes, mark what you\'ve cooked, and see your personal stats.'
                     : 'התחבר כדי להוסיף מתכונים, לסמן מה בישלת ולראות את הסטטיסטיקות שלך.'}
@@ -1859,40 +1859,40 @@ function App() {
           <div className="max-w-3xl mx-auto animate-pulse" style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
             {/* Header row: back button + action buttons (matches h of py-2 buttons) */}
             <div className="flex items-center justify-between mb-6 gap-2">
-              <div className="h-9 w-20 rounded-xl bg-[#e8e4dc]/60" />
+              <div className="h-9 w-20 rounded-xl bg-border/60" />
               <div className="flex items-center gap-2">
                 {/* matches the detail toolbar: Share · Saved · Edit · Delete */}
-                <div className="h-9 w-9 sm:w-20 rounded-xl bg-[#e8e4dc]/60" />
-                <div className="h-9 w-9 sm:w-20 rounded-xl bg-[#e8e4dc]/60" />
-                <div className="h-9 w-9 sm:w-16 rounded-xl bg-[#e8e4dc]/60" />
-                <div className="h-9 w-9 sm:w-20 rounded-xl bg-[#e8e4dc]/60" />
+                <div className="h-9 w-9 sm:w-20 rounded-xl bg-border/60" />
+                <div className="h-9 w-9 sm:w-20 rounded-xl bg-border/60" />
+                <div className="h-9 w-9 sm:w-16 rounded-xl bg-border/60" />
+                <div className="h-9 w-9 sm:w-20 rounded-xl bg-border/60" />
               </div>
             </div>
             {/* Recipe header card */}
-            <div className="bg-white rounded-3xl border border-[#e2e8f0]/50 shadow-sm overflow-hidden mb-3">
+            <div className="bg-white rounded-3xl border border-border/50 shadow-sm overflow-hidden mb-3">
               <div className="p-6 sm:p-8">
-                <div className="h-6 w-16 rounded-full bg-[#e8e4dc]/60 mb-3" />
-                <div className="h-8 sm:h-9 w-2/3 rounded-lg bg-[#e8e4dc]/60 mb-4" />
-                <div className="h-4 w-full rounded bg-[#e8e4dc]/60 mb-2" />
-                <div className="h-4 w-4/5 rounded bg-[#e8e4dc]/60 mb-6" />
+                <div className="h-6 w-16 rounded-full bg-border/60 mb-3" />
+                <div className="h-8 sm:h-9 w-2/3 rounded-lg bg-border/60 mb-4" />
+                <div className="h-4 w-full rounded bg-border/60 mb-2" />
+                <div className="h-4 w-4/5 rounded bg-border/60 mb-6" />
                 <div className="flex items-center gap-4 sm:gap-6">
-                  <div className="h-8 w-28 rounded-full bg-[#e8e4dc]/60" />
-                  <div className="h-8 w-28 rounded-full bg-[#e8e4dc]/60" />
+                  <div className="h-8 w-28 rounded-full bg-border/60" />
+                  <div className="h-8 w-28 rounded-full bg-border/60" />
                 </div>
               </div>
             </div>
             {/* Ingredients / instructions cards */}
             <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
-              <div className="lg:col-span-2 bg-white rounded-3xl border border-[#e2e8f0]/50 shadow-sm p-6">
-                <div className="h-7 w-32 rounded-lg bg-[#e8e4dc]/60 mb-4" />
+              <div className="lg:col-span-2 bg-white rounded-3xl border border-border/50 shadow-sm p-6">
+                <div className="h-7 w-32 rounded-lg bg-border/60 mb-4" />
                 <div className="space-y-3">
-                  {[...Array(6)].map((_, i) => <div key={i} className="h-5 w-full rounded bg-[#e8e4dc]/60" />)}
+                  {[...Array(6)].map((_, i) => <div key={i} className="h-5 w-full rounded bg-border/60" />)}
                 </div>
               </div>
-              <div className="lg:col-span-3 bg-white rounded-3xl border border-[#e2e8f0]/50 shadow-sm p-6">
-                <div className="h-7 w-32 rounded-lg bg-[#e8e4dc]/60 mb-4" />
+              <div className="lg:col-span-3 bg-white rounded-3xl border border-border/50 shadow-sm p-6">
+                <div className="h-7 w-32 rounded-lg bg-border/60 mb-4" />
                 <div className="space-y-3">
-                  {[...Array(5)].map((_, i) => <div key={i} className="h-5 w-full rounded bg-[#e8e4dc]/60" />)}
+                  {[...Array(5)].map((_, i) => <div key={i} className="h-5 w-full rounded bg-border/60" />)}
                 </div>
               </div>
             </div>
@@ -1954,7 +1954,7 @@ function App() {
           <div className="fixed inset-0 flex items-center justify-center z-[70] p-4" onClick={() => setShowUrlModal(false)}>
             <div onClick={(e) => e.stopPropagation()} className="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-lg overflow-hidden" style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
               {/* Branded header band — gray, matches the settings menu */}
-              <div className="relative -mx-6 -mt-6 sm:-mx-8 sm:-mt-8 px-6 sm:px-8 pt-7 pb-7 mb-6 bg-gradient-to-br from-[#7a7265] to-[#5a5248]">
+              <div className="relative -mx-6 -mt-6 sm:-mx-8 sm:-mt-8 px-6 sm:px-8 pt-7 pb-7 mb-6 bg-gradient-to-br from-muted to-muted-dark">
                 <button onClick={() => setShowUrlModal(false)} className="absolute top-4 end-4 text-white/85 hover:text-white transition-colors">
                   <X className="w-5 h-5" />
                 </button>
@@ -1970,14 +1970,14 @@ function App() {
               
               {!canScrape ? (
                 <div className="space-y-4">
-                  <p className="text-sm text-[#7a7265] text-center py-4">
+                  <p className="text-sm text-muted text-center py-4">
                     {language === 'en'
                       ? "You're not verified to import recipes from URLs."
                       : 'החשבון שלך אינו מאומת לייבוא מתכונים מ-URL.'}
                   </p>
                   <button
                     onClick={() => setShowUrlModal(false)}
-                    className="w-full px-4 py-3 bg-[#f5f3ef] text-[#3d3429] rounded-xl hover:bg-[#e8e4dc] transition-colors font-medium"
+                    className="w-full px-4 py-3 bg-cream-dark text-ink rounded-xl hover:bg-border transition-colors font-medium"
                   >
                     {language === 'en' ? 'Close' : 'סגור'}
                   </button>
@@ -1985,22 +1985,22 @@ function App() {
               ) : (
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-[#3d3429] mb-2">
+                  <label className="block text-sm font-medium text-ink mb-2">
                     {language === 'en' ? 'Recipe URL' : 'לינק למתכון'}
                   </label>
                   <div className="relative">
-                    <LinkIcon className="w-4 h-4 text-[#7a7265] absolute top-1/2 -translate-y-1/2 left-4 pointer-events-none" />
+                    <LinkIcon className="w-4 h-4 text-muted absolute top-1/2 -translate-y-1/2 left-4 pointer-events-none" />
                     <input
                       type="url"
                       dir="ltr"
                       value={urlInput}
                       onChange={(e) => setUrlInput(e.target.value)}
                       placeholder='https://example.com/recipe'
-                      className="w-full pl-11 pr-4 py-3 bg-[#faf9f7] text-left border border-[#e8e4dc] rounded-2xl text-[#3d3429] placeholder:text-[#7a7265] focus:outline-none focus:ring-2 focus:ring-[#cf711f]/20 focus:border-[#cf711f] transition-all"
+                      className="w-full pl-11 pr-4 py-3 bg-cream text-left border border-border rounded-2xl text-ink placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-brand-dark/20 focus:border-brand-dark transition-all"
                     />
                   </div>
-                  <p className="flex items-start gap-1.5 text-xs text-[#7a7265] mt-2 text-start">
-                    <Sparkles className="w-3.5 h-3.5 text-[#cf711f] flex-shrink-0 mt-0.5" />
+                  <p className="flex items-start gap-1.5 text-xs text-muted mt-2 text-start">
+                    <Sparkles className="w-3.5 h-3.5 text-brand-dark flex-shrink-0 mt-0.5" />
                     <span>
                       {language === 'en'
                         ? 'Paste the URL of a recipe webpage. AI will extract the recipe details automatically.'
@@ -2012,14 +2012,14 @@ function App() {
                 <div className="flex gap-3 pt-4">
                   <button
                     onClick={() => setShowUrlModal(false)}
-                    className="flex-1 px-4 py-3 bg-[#f5f3ef] text-[#3d3429] rounded-xl hover:bg-[#e8e4dc] transition-colors font-medium"
+                    className="flex-1 px-4 py-3 bg-cream-dark text-ink rounded-xl hover:bg-border transition-colors font-medium"
                   >
                     {language === 'en' ? 'Cancel' : 'בטל'}
                   </button>
                   <button
                     onClick={handleScrapeFromUrl}
                     disabled={isScrapingLoading}
-                    className="flex-1 px-4 py-3 bg-[#cf711f] text-white rounded-xl hover:bg-[#b8621a] disabled:bg-[#cf711f]/50 transition-colors font-medium flex items-center justify-center gap-2"
+                    className="flex-1 px-4 py-3 bg-brand-dark text-white rounded-xl hover:bg-brand-deep disabled:bg-brand-dark/50 transition-colors font-medium flex items-center justify-center gap-2"
                   >
                     {isScrapingLoading ? (
                       <>
@@ -2042,16 +2042,16 @@ function App() {
       )}
 
       {/* Footer — brand line, Telegram chip, legal links, language toggle */}
-      <footer className="border-t border-[#e8e4dc] bg-[#faf9f7] mt-12" style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
+      <footer className="border-t border-border bg-cream mt-12" style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-7">
           <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-xl bg-[#e67e22] flex items-center justify-center flex-shrink-0">
+              <div className="w-9 h-9 rounded-xl bg-brand flex items-center justify-center flex-shrink-0">
                 <BookOpen className="w-4 h-4 text-white" />
               </div>
               <div>
-                <p className="text-sm font-semibold text-[#3d3429]">Yuval's Recipe Book</p>
-                <p className="text-xs text-[#7a7265]">
+                <p className="text-sm font-semibold text-ink">Yuval's Recipe Book</p>
+                <p className="text-xs text-muted">
                   {language === 'en'
                     ? 'Save recipes, log what you cook, share the keepers.'
                     : 'שמרו מתכונים, תעדו מה בישלתם ושתפו את המוצלחים.'}
@@ -2060,7 +2060,7 @@ function App() {
             </div>
             <div className="flex items-center justify-between gap-3">
               <a href="https://t.me/Yuvals_Recipe_Book_bot" target="_blank" rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 px-3.5 py-2 bg-white border border-[#e8e4dc] rounded-xl text-xs font-medium text-[#3d3429] hover:border-[#e67e22]/50 transition-colors">
+                className="inline-flex items-center gap-2 px-3.5 py-2 bg-white border border-border rounded-xl text-xs font-medium text-ink hover:border-brand/50 transition-colors">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="#2AABEE" className="flex-shrink-0" aria-hidden="true">
                   <path d="M12 0C5.37 0 0 5.37 0 12s5.37 12 12 12 12-5.37 12-12S18.63 0 12 0zm5.56 8.16-1.97 9.28c-.15.66-.54.82-1.09.51l-3-2.21-1.45 1.39c-.16.16-.29.29-.6.29l.21-3.05 5.56-5.02c.24-.21-.05-.33-.37-.12l-6.87 4.33-2.96-.93c-.64-.2-.66-.64.14-.95l11.57-4.46c.53-.19 1 .13.83.94z" />
                 </svg>
@@ -2069,12 +2069,12 @@ function App() {
               <div className="sm:hidden">{langToggle}</div>
             </div>
           </div>
-          <div className="mt-5 pt-4 border-t border-[#e8e4dc] flex items-center justify-center sm:justify-between gap-4 flex-wrap">
-            <div className="flex items-center gap-4 text-xs text-[#a39b8d]">
+          <div className="mt-5 pt-4 border-t border-border flex items-center justify-center sm:justify-between gap-4 flex-wrap">
+            <div className="flex items-center gap-4 text-xs text-faint">
               <span>© 2026 Yuval's Recipe Book</span>
               {/* TODO: point to the privacy policy / terms pages once they exist */}
-              <a className="hover:text-[#7a7265] transition-colors cursor-pointer">{language === 'en' ? 'Privacy' : 'פרטיות'}</a>
-              <a className="hover:text-[#7a7265] transition-colors cursor-pointer">{language === 'en' ? 'Terms' : 'תנאים'}</a>
+              <a className="hover:text-muted transition-colors cursor-pointer">{language === 'en' ? 'Privacy' : 'פרטיות'}</a>
+              <a className="hover:text-muted transition-colors cursor-pointer">{language === 'en' ? 'Terms' : 'תנאים'}</a>
             </div>
             <div className="hidden sm:block">{langToggle}</div>
           </div>
@@ -2101,11 +2101,11 @@ function App() {
         style={{ bottom: 'calc(1rem + env(safe-area-inset-bottom))' }}
       >
         {saveSuccess && (
-          <div className="flex items-center gap-2 bg-white border border-[#e8e4dc] shadow-lg rounded-2xl px-4 py-3">
-            <span className="w-6 h-6 rounded-full bg-[#e67e22]/10 flex items-center justify-center shrink-0">
-              <Check className="w-4 h-4 text-[#e67e22]" />
+          <div className="flex items-center gap-2 bg-white border border-border shadow-lg rounded-2xl px-4 py-3">
+            <span className="w-6 h-6 rounded-full bg-brand/10 flex items-center justify-center shrink-0">
+              <Check className="w-4 h-4 text-brand" />
             </span>
-            <span className="text-sm font-medium text-[#3d3429] whitespace-nowrap">
+            <span className="text-sm font-medium text-ink whitespace-nowrap">
               {saveSuccess === 'added'
                 ? (language === 'en' ? 'Recipe added' : 'המתכון נוסף')
                 : (language === 'en' ? 'Changes saved' : 'השינויים נשמרו')}
@@ -2114,18 +2114,18 @@ function App() {
         )}
 
         {pendingDelete && (
-          <div className={`flex items-center gap-3 bg-white border border-[#e8e4dc] shadow-lg rounded-2xl px-4 py-2.5 ${language === 'en' ? 'flex-row-reverse' : ''}`} style={{ direction: 'ltr' }}>
+          <div className={`flex items-center gap-3 bg-white border border-border shadow-lg rounded-2xl px-4 py-2.5 ${language === 'en' ? 'flex-row-reverse' : ''}`} style={{ direction: 'ltr' }}>
             <button onClick={undoDelete}
-              className="shrink-0 text-sm font-semibold text-[#e67e22] hover:text-[#cf711f] transition-colors">
+              className="shrink-0 text-sm font-semibold text-brand hover:text-brand-dark transition-colors">
               {language === 'en' ? 'Undo' : 'ביטול'}
             </button>
-            <span className="text-sm font-medium text-[#3d3429] whitespace-nowrap">
+            <span className="text-sm font-medium text-ink whitespace-nowrap">
               {language === 'en' ? 'Recipe deleted' : 'המתכון נמחק'}
             </span>
           </div>
         )}
         {isOffline && !offlineDismissed && (
-          <div className="flex items-center gap-3 bg-white border border-[#e8e4dc] shadow-lg rounded-2xl px-4 py-2">
+          <div className="flex items-center gap-3 bg-white border border-border shadow-lg rounded-2xl px-4 py-2">
             <button
               type="button"
               onClick={() => { if (!isStirring) { setIsStirring(true); setTimeout(() => setIsStirring(false), 1300); } }}
@@ -2151,14 +2151,14 @@ function App() {
             <span className="text-sm font-semibold text-red-500 whitespace-nowrap">
               {language === 'en' ? 'No internet' : 'אין אינטרנט'}
             </span>
-            <button onClick={() => setOfflineDismissed(true)} className="shrink-0 text-[#7a7265] hover:text-[#3d3429] text-sm">✕</button>
+            <button onClick={() => setOfflineDismissed(true)} className="shrink-0 text-muted hover:text-ink text-sm">✕</button>
           </div>
         )}
 
         {/* Error banner — failed saves get retry/edit buttons, plain errors just the message */}
         {saveError && (
         <div className="flex items-center gap-3 bg-white border border-red-200 shadow-lg rounded-2xl px-4 py-3 max-w-full">
-          <p className="text-sm text-[#3d3429] truncate">
+          <p className="text-sm text-ink truncate">
             {saveError.message
               ? saveError.message
               : (language === 'en' ? `Failed to save "${saveError.recipe.title}"` : `השמירה של "${saveError.recipe.title}" נכשלה`)}
@@ -2168,20 +2168,20 @@ function App() {
               <button
                 onClick={handleResend}
                 title={language === 'en' ? 'Retry as is' : 'שלח שוב כפי שהוא'}
-                className="shrink-0 w-9 h-9 flex items-center justify-center bg-[#e67e22] text-white rounded-xl hover:bg-[#cf711f] transition-colors"
+                className="shrink-0 w-9 h-9 flex items-center justify-center bg-brand text-white rounded-xl hover:bg-brand-dark transition-colors"
               >
                 <RotateCcw className="w-4 h-4" />
               </button>
               <button
                 onClick={handleRetryWithEdit}
                 title={language === 'en' ? 'Edit and retry' : 'ערוך ונסה שוב'}
-                className="shrink-0 w-9 h-9 flex items-center justify-center border border-[#e8e4dc] text-[#7a7265] rounded-xl hover:text-[#cf711f] hover:border-[#cf711f]/50 transition-colors"
+                className="shrink-0 w-9 h-9 flex items-center justify-center border border-border text-muted rounded-xl hover:text-brand-dark hover:border-brand-dark/50 transition-colors"
               >
                 <Pencil className="w-4 h-4" />
               </button>
             </>
           )}
-          <button onClick={() => setSaveError(null)} className="shrink-0 text-[#7a7265] hover:text-[#3d3429] text-sm">✕</button>
+          <button onClick={() => setSaveError(null)} className="shrink-0 text-muted hover:text-ink text-sm">✕</button>
         </div>
         )}
       </div>
@@ -2194,15 +2194,15 @@ function App() {
           <div className="fixed inset-0 z-[95] flex items-center justify-center p-4" onClick={() => setShowLinkSuccess(false)}>
             <div className="bg-white rounded-3xl shadow-xl p-8 max-w-sm w-full text-center" onClick={e => e.stopPropagation()}>
               <div className="text-5xl mb-4">🎉</div>
-              <h2 className="text-2xl font-bold text-[#3d3429] mb-2">{language === 'en' ? 'Connected!' : 'מחוברים!'}</h2>
-              <p className="text-[#7a7265] mb-6">
+              <h2 className="text-2xl font-bold text-ink mb-2">{language === 'en' ? 'Connected!' : 'מחוברים!'}</h2>
+              <p className="text-muted mb-6">
                 {language === 'en'
                   ? 'Your Telegram is linked — recipes you add with the bot will show up here.'
                   : 'הטלגרם שלך מקושר — מתכונים שתוסיף דרך הבוט יופיעו כאן.'}
               </p>
               <button
                 onClick={() => setShowLinkSuccess(false)}
-                className="px-8 py-3 bg-[#e67e22] text-white rounded-2xl font-medium hover:bg-[#cf711f] transition-colors"
+                className="px-8 py-3 bg-brand text-white rounded-2xl font-medium hover:bg-brand-dark transition-colors"
               >
                 {language === 'en' ? 'Awesome' : 'מעולה'}
               </button>
@@ -2219,7 +2219,7 @@ function App() {
           <div className="fixed inset-0 z-[95] flex items-center justify-center p-4">
             <div className="bg-white rounded-3xl shadow-2xl w-96 max-w-[90vw] overflow-hidden" dir="ltr">
               {/* Warm branded header */}
-              <div className="relative bg-gradient-to-br from-[#e67e22] to-[#cf711f] px-8 pt-9 pb-12 text-center">
+              <div className="relative bg-gradient-to-br from-brand to-brand-dark px-8 pt-9 pb-12 text-center">
                 <div className="w-16 h-16 rounded-2xl bg-white/15 backdrop-blur flex items-center justify-center mx-auto mb-4 ring-1 ring-white/25">
                   <AtSign className="w-8 h-8 text-white" />
                 </div>
@@ -2228,12 +2228,12 @@ function App() {
               </div>
 
               <div className="px-8 pt-8 pb-8 -mt-5 bg-white rounded-t-3xl relative">
-                <p className="text-sm text-[#3d3429] mb-5 text-center">
+                <p className="text-sm text-ink mb-5 text-center">
                   It appears on your profile and recipes — lowercase letters, numbers and underscores.
                 </p>
 
                 <div className="relative mb-2">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[#7a7265]">@</span>
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted">@</span>
                   <input
                     type="text"
                     value={newHandle}
@@ -2242,7 +2242,7 @@ function App() {
                     onKeyDown={e => { if (e.key === 'Enter') submitHandle() }}
                     placeholder="yourhandle"
                     autoFocus
-                    className="w-full pl-9 pr-4 p-3.5 border border-[#e8e4dc] rounded-2xl text-[#3d3429] focus:outline-none focus:border-[#e67e22] transition-colors"
+                    className="w-full pl-9 pr-4 p-3.5 border border-border rounded-2xl text-ink focus:outline-none focus:border-brand transition-colors"
                   />
                 </div>
 
@@ -2255,7 +2255,7 @@ function App() {
                 <button
                   onClick={submitHandle}
                   disabled={creatingProfile || newHandle.trim().length < 3}
-                  className="relative w-full bg-[#e67e22] text-white p-3.5 rounded-2xl hover:bg-[#cf711f] disabled:opacity-50 disabled:cursor-not-allowed font-semibold transition-all shadow-sm hover:shadow-md mt-3"
+                  className="relative w-full bg-brand text-white p-3.5 rounded-2xl hover:bg-brand-dark disabled:opacity-50 disabled:cursor-not-allowed font-semibold transition-all shadow-sm hover:shadow-md mt-3"
                 >
                   <span className={creatingProfile ? 'invisible' : ''}>Confirm</span>
                   <span className={`absolute inset-0 flex items-center justify-center gap-3 ${creatingProfile ? '' : 'invisible'}`}>
@@ -2264,8 +2264,8 @@ function App() {
                   </span>
                 </button>
 
-                <p className="flex items-center justify-center gap-1.5 text-center text-xs text-[#7a7265] mt-4">
-                  <Heart className="w-3 h-3 text-[#e67e22]" />
+                <p className="flex items-center justify-center gap-1.5 text-center text-xs text-muted mt-4">
+                  <Heart className="w-3 h-3 text-brand" />
                   You can change it anytime in settings
                 </p>
               </div>

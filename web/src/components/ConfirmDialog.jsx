@@ -12,22 +12,22 @@ export function ConfirmDialog({ title, message, confirmLabel, onConfirm, onCance
           onClick={e => e.stopPropagation()}
         >
           <div className="p-6 flex flex-col items-center gap-4">
-            <span className={`w-16 h-16 rounded-2xl flex items-center justify-center ${danger ? 'bg-red-50 text-red-500' : 'bg-[#e67e22]/10 text-[#e67e22]'}`}>
+            <span className={`w-16 h-16 rounded-2xl flex items-center justify-center ${danger ? 'bg-red-50 text-red-500' : 'bg-brand/10 text-brand'}`}>
               <Icon className="w-8 h-8" />
             </span>
-            <h2 className="text-xl font-bold text-[#3d3429] text-center text-balance">{title}</h2>
-            {message && <p className="text-sm text-[#7a7265] leading-relaxed text-center -mt-1">{message}</p>}
+            <h2 className="text-xl font-bold text-ink text-center text-balance">{title}</h2>
+            {message && <p className="text-sm text-muted leading-relaxed text-center -mt-1">{message}</p>}
             <div className="flex gap-3 w-full mt-1">
               <button
                 onClick={onCancel}
-                className="flex-1 py-2.5 rounded-2xl text-sm font-medium border border-[#e8e4dc] text-[#7a7265] hover:bg-[#f5f3ef] transition-colors"
+                className="flex-1 py-2.5 rounded-2xl text-sm font-medium border border-border text-muted hover:bg-cream-dark transition-colors"
               >
                 {language === 'en' ? 'Cancel' : 'בטל'}
               </button>
               <button
                 onClick={onConfirm}
                 className={`flex-1 py-2.5 rounded-2xl text-sm font-medium transition-colors text-white ${
-                  danger ? 'bg-red-500 hover:bg-red-600' : 'bg-[#e67e22] hover:bg-[#cf711f]'
+                  danger ? 'bg-red-500 hover:bg-red-600' : 'bg-brand hover:bg-brand-dark'
                 }`}
               >
                 {confirmLabel || (language === 'en' ? 'Confirm' : 'אשר')}

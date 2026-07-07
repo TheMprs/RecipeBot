@@ -36,7 +36,7 @@ export default function Login({ onLoginSuccess }) {
       onClick={(e) => e.stopPropagation()}
     >
       {/* Warm branded header */}
-      <div className="relative bg-gradient-to-br from-[#e67e22] to-[#cf711f] px-8 pt-9 pb-12 text-center">
+      <div className="relative bg-gradient-to-br from-brand to-brand-dark px-8 pt-9 pb-12 text-center">
         <div className="w-16 h-16 rounded-2xl bg-white/15 backdrop-blur flex items-center justify-center mx-auto mb-4 ring-1 ring-white/25">
           <BookOpen className="w-8 h-8 text-white" />
         </div>
@@ -49,10 +49,10 @@ export default function Login({ onLoginSuccess }) {
         <ul className="space-y-3 mb-7">
           {PERKS.map(({ icon: Icon, text }) => (
             <li key={text} className="flex items-center gap-3">
-              <span className="w-9 h-9 rounded-xl bg-[#e67e22]/10 flex items-center justify-center flex-shrink-0">
-                <Icon className="w-4 h-4 text-[#e67e22]" />
+              <span className="w-9 h-9 rounded-xl bg-brand/10 flex items-center justify-center flex-shrink-0">
+                <Icon className="w-4 h-4 text-brand" />
               </span>
-              <span className="text-sm text-[#3d3429]">{text}</span>
+              <span className="text-sm text-ink">{text}</span>
             </li>
           ))}
         </ul>
@@ -66,7 +66,7 @@ export default function Login({ onLoginSuccess }) {
         <button
           onClick={handleGoogleSignIn}
           disabled={loading}
-          className="relative w-full bg-white border border-[#e8e4dc] text-[#3d3429] p-3.5 rounded-2xl hover:bg-[#faf9f7] hover:border-[#d9d3c8] disabled:opacity-50 font-semibold transition-all flex items-center justify-center gap-3 shadow-sm hover:shadow-md"
+          className="relative w-full bg-white border border-border text-ink p-3.5 rounded-2xl hover:bg-cream hover:border-[#d9d3c8] disabled:opacity-50 font-semibold transition-all flex items-center justify-center gap-3 shadow-sm hover:shadow-md"
         >
           {/* Both states always mounted, toggled by opacity — avoids a DOM insert/remove
               race that, mid-redirect on mobile Safari, paints both at once on the unloading page. */}
@@ -80,13 +80,13 @@ export default function Login({ onLoginSuccess }) {
             <span>Continue with Google</span>
           </span>
           <span className={`absolute inset-0 flex items-center justify-center gap-3 ${loading ? '' : 'invisible'}`}>
-            <span className="w-4 h-4 border-2 border-[#e67e22]/30 border-t-[#e67e22] rounded-full animate-spin" />
+            <span className="w-4 h-4 border-2 border-brand/30 border-t-brand rounded-full animate-spin" />
             <span>Signing in...</span>
           </span>
         </button>
 
-        <p className="flex items-center justify-center gap-1.5 text-center text-xs text-[#7a7265] mt-4">
-          <Heart className="w-3 h-3 text-[#e67e22]" />
+        <p className="flex items-center justify-center gap-1.5 text-center text-xs text-muted mt-4">
+          <Heart className="w-3 h-3 text-brand" />
           Securely authenticated through Google
         </p>
       </div>

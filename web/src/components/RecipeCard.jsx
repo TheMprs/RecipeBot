@@ -1,4 +1,4 @@
-﻿import { useState } from 'react'
+import { useState } from 'react'
 import { Share2, Heart, Carrot } from 'lucide-react'
 import { buildShareText } from '../utils/shareRecipe'
 import { MarbleSpine } from './MarbleSpine'
@@ -7,25 +7,25 @@ import { SaveToMenu } from './SaveToMenu'
 
 export function RecipeCardSkeleton({ feed = false }) {
   return (
-    <div className="w-full bg-white rounded-2xl overflow-hidden border border-[#e8e4dc]/50 flex flex-col animate-pulse">
-      <div className="px-5 pt-5 pb-1 border-b border-[#e8e4dc]/30 flex items-center gap-3">
-        <div className="h-8 bg-[#e8e4dc] rounded-lg flex-1" />
+    <div className="w-full bg-white rounded-2xl overflow-hidden border border-border/50 flex flex-col animate-pulse">
+      <div className="px-5 pt-5 pb-1 border-b border-border/30 flex items-center gap-3">
+        <div className="h-8 bg-border rounded-lg flex-1" />
         <div className="w-8 h-8 flex-shrink-0" />
       </div>
       <div className="px-5 py-4 flex flex-col flex-grow">
-        <div className="h-5 bg-[#e8e4dc] rounded w-3/4 flex-grow" />
+        <div className="h-5 bg-border rounded w-3/4 flex-grow" />
         {/* matches the ingredient-chips row on feed cards */}
         {feed && (
           <div className="flex items-center gap-1 mt-1">
-            <div className="h-[18px] w-14 bg-[#e8e4dc] rounded-full" />
-            <div className="h-[18px] w-12 bg-[#e8e4dc] rounded-full" />
-            <div className="h-[18px] w-14 bg-[#e8e4dc] rounded-full" />
+            <div className="h-[18px] w-14 bg-border rounded-full" />
+            <div className="h-[18px] w-12 bg-border rounded-full" />
+            <div className="h-[18px] w-14 bg-border rounded-full" />
           </div>
         )}
-        <div className="border-t border-[#e8e4dc] pt-2 mt-2">
+        <div className="border-t border-border pt-2 mt-2">
           <div className="flex justify-between items-center">
-            <div className="h-4 bg-[#e8e4dc] rounded w-1/4" />
-            <div className="h-4 bg-[#e8e4dc] rounded w-1/6" />
+            <div className="h-4 bg-border rounded w-1/4" />
+            <div className="h-4 bg-border rounded w-1/6" />
           </div>
         </div>
       </div>
@@ -88,7 +88,7 @@ function teaserWords(ingredients) {
   return out
 }
 
-const RANK_BG = { 1: 'bg-[#e67e22]', 2: 'bg-[#a89a84]', 3: 'bg-[#c4b49a]' }
+const RANK_BG = { 1: 'bg-brand', 2: 'bg-[#a89a84]', 3: 'bg-[#c4b49a]' }
 
 export function RecipeCard({ recipe, language = 'en', apiBase = '/api', onSelect, showCategory = true, likeCount, authorUsername, authorId, authorAvatar, rank, feed = false, onSelectAuthor, userCategories, currentRecipeCategories, onToggleRecipeCategory, onCreateCategory }) {
   const isRtl = language === 'he'
@@ -133,12 +133,12 @@ export function RecipeCard({ recipe, language = 'en', apiBase = '/api', onSelect
           promotes the layer when the hover transform starts and demotes it when it ends, and
           each promote/demote re-rasterizes the gradient spine ~1 device px sideways (the
           multi-color hover stutter — verified with a controlled repro, 2026-07-02). */}
-      <div className="relative flex-1 bg-white border border-[#e8e4dc]/50 flex flex-col group-hover:-translate-y-0.5 transition-transform duration-300 will-change-transform" style={{ clipPath: 'inset(0 round 1rem)' }}>
+      <div className="relative flex-1 bg-white border border-border/50 flex flex-col group-hover:-translate-y-0.5 transition-transform duration-300 will-change-transform" style={{ clipPath: 'inset(0 round 1rem)' }}>
       <MarbleSpine colors={spineColors} id={recipe.id} />
       {showQR && <ShareQR recipe={recipe} language={language} copied={copied} onShare={handleShare} onClose={() => setShowQR(false)} />}
       {/* Header — color lives on the left spine (card border), so the header stays plain white. */}
-      <div className="px-5 pt-5 pb-1 border-b border-[#e8e4dc]/30 flex items-center gap-3" style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
-        <h3 className={`font-semibold text-[#3d3429] text-lg group-hover:text-[#cf711f] transition-colors line-clamp-1 ${isRtl ? 'text-right' : 'text-left'} flex-1`}>
+      <div className="px-5 pt-5 pb-1 border-b border-border/30 flex items-center gap-3" style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
+        <h3 className={`font-semibold text-ink text-lg group-hover:text-brand-dark transition-colors line-clamp-1 ${isRtl ? 'text-right' : 'text-left'} flex-1`}>
           {recipe.title}
         </h3>
 
@@ -159,7 +159,7 @@ export function RecipeCard({ recipe, language = 'en', apiBase = '/api', onSelect
           )}
           <button
             onClick={e => { e.stopPropagation(); setShowQR(true) }}
-            className="w-8 h-8 rounded-lg bg-white/80 backdrop-blur flex items-center justify-center text-[#7a7265] hover:text-[#cf711f] hover:bg-white transition-colors shadow-sm border border-[#e8e4dc]/50"
+            className="w-8 h-8 rounded-lg bg-white/80 backdrop-blur flex items-center justify-center text-muted hover:text-brand-dark hover:bg-white transition-colors shadow-sm border border-border/50"
           >
             <Share2 className="w-3.5 h-3.5" />
           </button>
@@ -168,7 +168,7 @@ export function RecipeCard({ recipe, language = 'en', apiBase = '/api', onSelect
 
       {/* Content area */}
       <div className="px-5 py-4 flex flex-col flex-grow">
-        <p className={`text-[#7a7265] text-sm line-clamp-1 flex-grow ${isRtl ? 'text-right' : 'text-left'}`}>
+        <p className={`text-muted text-sm line-clamp-1 flex-grow ${isRtl ? 'text-right' : 'text-left'}`}>
           {recipe.description}
         </p>
 
@@ -185,7 +185,7 @@ export function RecipeCard({ recipe, language = 'en', apiBase = '/api', onSelect
             </div>
           )}
 
-          <div className="border-t border-[#e8e4dc] pt-2 mt-2 relative">
+          <div className="border-t border-border pt-2 mt-2 relative">
             <div className="flex justify-between items-center gap-2" style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
               <div className="flex items-center gap-2 min-w-0">
                 {showCategory && recipe.category && (
@@ -193,7 +193,7 @@ export function RecipeCard({ recipe, language = 'en', apiBase = '/api', onSelect
                     {recipe.category}
                   </span>
                 )}
-                <span className="flex items-center gap-1 text-xs text-[#7a7265] flex-shrink-0" title={language === 'en' ? 'ingredients' : 'מצרכים'}>
+                <span className="flex items-center gap-1 text-xs text-muted flex-shrink-0" title={language === 'en' ? 'ingredients' : 'מצרכים'}>
                   <Carrot className="w-3.5 h-3.5" />
                   {recipe.ingredients.length}
                 </span>
@@ -208,11 +208,11 @@ export function RecipeCard({ recipe, language = 'en', apiBase = '/api', onSelect
                 {authorUsername && (
                   <button
                     onClick={e => { e.stopPropagation(); onSelectAuthor && onSelectAuthor(authorId) }}
-                    className="flex items-center gap-1.5 text-xs text-[#7a7265] hover:text-[#e67e22] transition-colors"
+                    className="flex items-center gap-1.5 text-xs text-muted hover:text-brand transition-colors"
                   >
                     {feed && (
-                      <span className="relative w-[18px] h-[18px] rounded-full bg-[#e67e22]/10 overflow-hidden flex items-center justify-center flex-shrink-0">
-                        <span className="text-[9px] font-bold text-[#e67e22]">{authorUsername[0].toUpperCase()}</span>
+                      <span className="relative w-[18px] h-[18px] rounded-full bg-brand/10 overflow-hidden flex items-center justify-center flex-shrink-0">
+                        <span className="text-[9px] font-bold text-brand">{authorUsername[0].toUpperCase()}</span>
                         {authorAvatar && (
                           <img
                             src={smallAvatar(authorAvatar)} alt="" referrerPolicy="no-referrer" loading="lazy"
@@ -227,7 +227,7 @@ export function RecipeCard({ recipe, language = 'en', apiBase = '/api', onSelect
                   </button>
                 )}
                 {likeCount > 0 && (
-                  <span className="flex items-center gap-1 text-xs text-[#7a7265]">
+                  <span className="flex items-center gap-1 text-xs text-muted">
                     <Heart className="w-3 h-3 fill-red-400 text-red-400" />
                     {likeCount}
                   </span>
@@ -237,7 +237,7 @@ export function RecipeCard({ recipe, language = 'en', apiBase = '/api', onSelect
             {/* Hover reveal — desktop only, footer swaps to "Open recipe" */}
             {feed && (
               <div
-                className="absolute inset-x-0 top-2 bottom-0 bg-white hidden sm:flex items-center justify-between text-xs font-bold text-[#cf711f] opacity-0 translate-y-1 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-200 pointer-events-none"
+                className="absolute inset-x-0 top-2 bottom-0 bg-white hidden sm:flex items-center justify-between text-xs font-bold text-brand-dark opacity-0 translate-y-1 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-200 pointer-events-none"
                 style={{ direction: isRtl ? 'rtl' : 'ltr' }}
               >
                 <span>{language === 'en' ? 'Open recipe' : 'פתח מתכון'}</span>

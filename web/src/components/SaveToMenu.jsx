@@ -64,7 +64,7 @@ export function SaveToMenu({ language, accent = BRAND, recipe, userCategories = 
         <button
           ref={btnRef}
           onClick={toggle}
-          className="w-8 h-8 rounded-lg bg-white/80 backdrop-blur flex items-center justify-center text-[#7a7265] hover:text-[#cf711f] hover:bg-white transition-colors shadow-sm border border-[#e8e4dc]/50"
+          className="w-8 h-8 rounded-lg bg-white/80 backdrop-blur flex items-center justify-center text-muted hover:text-brand-dark hover:bg-white transition-colors shadow-sm border border-border/50"
           style={saved ? { color: accent } : undefined}
         >
           <Bookmark className="w-3.5 h-3.5" style={saved ? { fill: accent } : undefined} />
@@ -73,7 +73,7 @@ export function SaveToMenu({ language, accent = BRAND, recipe, userCategories = 
         <button
           ref={btnRef}
           onClick={toggle}
-          className={`flex items-center gap-2 px-3 py-2 text-sm rounded-xl transition-colors ${saved ? '' : 'text-[#7a7265] hover:text-[#cf711f] hover:bg-[#faf9f7]'}`}
+          className={`flex items-center gap-2 px-3 py-2 text-sm rounded-xl transition-colors ${saved ? '' : 'text-muted hover:text-brand-dark hover:bg-cream'}`}
           style={saved ? { color: accent, backgroundColor: `${accent}1a` } : undefined}
         >
           <Bookmark className="w-4 h-4" style={saved ? { fill: accent } : undefined} />
@@ -85,10 +85,10 @@ export function SaveToMenu({ language, accent = BRAND, recipe, userCategories = 
           ref={menuRef}
           onClick={e => e.stopPropagation()}
           style={{ position: 'fixed', top: pos.y, left: pos.left, right: pos.right }}
-          className="z-50 bg-white border border-[#e8e4dc] rounded-2xl shadow-lg overflow-hidden min-w-[200px]"
+          className="z-50 bg-white border border-border rounded-2xl shadow-lg overflow-hidden min-w-[200px]"
         >
           {userCategories.length === 0 && !onCreateCategory && (
-            <p className="px-4 py-3 text-sm text-[#7a7265]">{language === 'en' ? 'No categories yet' : 'אין קטגוריות עדיין'}</p>
+            <p className="px-4 py-3 text-sm text-muted">{language === 'en' ? 'No categories yet' : 'אין קטגוריות עדיין'}</p>
           )}
           {userCategories.map(cat => {
             const isSaved = selected.includes(cat.id)
@@ -96,7 +96,7 @@ export function SaveToMenu({ language, accent = BRAND, recipe, userCategories = 
               <button
                 key={cat.id}
                 onClick={() => setSelected(s => s.includes(cat.id) ? s.filter(id => id !== cat.id) : [...s, cat.id])}
-                className={`w-full flex items-center justify-between gap-2 px-4 py-2.5 text-sm text-start transition-colors ${isSaved ? 'bg-[#e67e22]/10 text-[#e67e22] font-medium' : 'text-[#3d3429] hover:bg-[#f5f3ef]'}`}
+                className={`w-full flex items-center justify-between gap-2 px-4 py-2.5 text-sm text-start transition-colors ${isSaved ? 'bg-brand/10 text-brand font-medium' : 'text-ink hover:bg-cream-dark'}`}
               >
                 <span className="flex items-center gap-2 min-w-0">
                   <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: cat.color || categoryColor(cat.name) }} />
@@ -116,14 +116,14 @@ export function SaveToMenu({ language, accent = BRAND, recipe, userCategories = 
                 if (newCat) setSelected(s => [...s, newCat.id])
                 setNewCategoryInput('')
               }}
-              className="border-t border-[#e8e4dc] px-3 py-2 flex items-center gap-2"
+              className="border-t border-border px-3 py-2 flex items-center gap-2"
             >
-              <Plus className="w-3.5 h-3.5 text-[#7a7265] flex-shrink-0" />
+              <Plus className="w-3.5 h-3.5 text-muted flex-shrink-0" />
               <input
                 value={newCategoryInput}
                 onChange={e => setNewCategoryInput(e.target.value)}
                 placeholder={language === 'en' ? 'New category...' : 'קטגוריה חדשה...'}
-                className="flex-1 text-sm text-[#3d3429] placeholder:text-[#7a7265] focus:outline-none bg-transparent"
+                className="flex-1 text-sm text-ink placeholder:text-muted focus:outline-none bg-transparent"
               />
             </form>
           )}

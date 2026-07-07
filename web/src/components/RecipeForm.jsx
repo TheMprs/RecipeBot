@@ -1,16 +1,16 @@
-﻿import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { LinkIcon, ChevronDown, Check, Plus, ChefHat, Globe, Lock, Type, AlignLeft, Tag, Flame, Hash, List, ListOrdered, X } from 'lucide-react'
 import { categoryColor } from '../utils/categoryColor'
 
 const FieldLabel = ({ icon: Icon, children, hint, trailing }) => (
   <div className="mb-2">
     <div className="flex items-center justify-between gap-2">
-      <label className="flex items-center gap-1.5 text-sm font-medium text-[#3d3429]">
-        <Icon className="w-4 h-4 text-[#cf711f]" />{children}
+      <label className="flex items-center gap-1.5 text-sm font-medium text-ink">
+        <Icon className="w-4 h-4 text-brand-dark" />{children}
       </label>
       {trailing}
     </div>
-    {hint && <p className="text-xs text-[#7a7265] mt-1">{hint}</p>}
+    {hint && <p className="text-xs text-muted mt-1">{hint}</p>}
   </div>
 )
 
@@ -178,7 +178,7 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
       <div className="max-w-2xl mx-auto">
       <form id="recipe-form" noValidate onSubmit={handleSubmit} className="bg-white rounded-3xl shadow-sm p-6 sm:p-8">
         {/* Branded header band — matches the login window look */}
-        <div className="relative overflow-hidden rounded-t-3xl -mx-6 -mt-6 sm:-mx-8 sm:-mt-8 px-6 sm:px-8 pt-5 pb-6 bg-gradient-to-br from-[#e88934] via-[#e67e22] to-[#cf711f]">
+        <div className="relative overflow-hidden rounded-t-3xl -mx-6 -mt-6 sm:-mx-8 sm:-mt-8 px-6 sm:px-8 pt-5 pb-6 bg-gradient-to-br from-[#e88934] via-brand to-brand-dark">
           {/* soft decorative glow */}
           <div className="pointer-events-none absolute -top-16 -right-10 w-48 h-48 rounded-full bg-white/10 blur-2xl" />
           <div className="pointer-events-none absolute -bottom-20 -left-10 w-52 h-52 rounded-full bg-black/10 blur-2xl" />
@@ -228,7 +228,7 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
                 onChange={e => { setTitle(e.target.value); if (errors.title) setErrors(p => ({ ...p, title: null })) }}
                 placeholder={language === 'en' ? "e.g., Grandma's Apple Pie" : 'למשל, חלה של יובל'}
                 data-invalid={!!errors.title}
-                className={`flex-1 min-w-0 px-4 py-3 bg-[#faf9f7] border rounded-2xl font-medium text-[#3d3429] placeholder:text-[#7a7265] placeholder:font-normal focus:outline-none transition-all ${errors.title ? 'border-red-400 ring-2 ring-red-200' : 'border-[#e8e4dc] focus:ring-2 focus:ring-[#cf711f]/20 focus:border-[#cf711f]'}`}
+                className={`flex-1 min-w-0 px-4 py-3 bg-cream border rounded-2xl font-medium text-ink placeholder:text-muted placeholder:font-normal focus:outline-none transition-all ${errors.title ? 'border-red-400 ring-2 ring-red-200' : 'border-border focus:ring-2 focus:ring-brand-dark/20 focus:border-brand-dark'}`}
               />
               <button
                 type="button"
@@ -236,8 +236,8 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
                 title={language === 'en' ? 'Who can see this recipe' : 'מי יכול לראות את המתכון'}
                 className={`flex-shrink-0 w-28 flex items-center justify-center gap-1.5 px-3 rounded-2xl text-sm font-medium border transition-colors ${
                   visibility === 'public'
-                    ? 'bg-[#e67e22]/10 text-[#cf711f] border-[#e67e22]/30 hover:bg-[#e67e22]/15'
-                    : 'bg-[#f5f3ef] text-[#7a7265] border-[#e8e4dc] hover:bg-[#e8e4dc]'
+                    ? 'bg-brand/10 text-brand-dark border-brand/30 hover:bg-brand/15'
+                    : 'bg-cream-dark text-muted border-border hover:bg-border'
                 }`}
               >
                 {visibility === 'public'
@@ -257,7 +257,7 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
               onChange={e => setDescription(e.target.value)}
               placeholder={language === 'en' ? 'A brief description of your recipe...' : 'תיאור קצר של המתכון...'}
               rows={3}
-              className="w-full px-4 py-3 bg-[#faf9f7] border border-[#e8e4dc] rounded-2xl text-[#3d3429] placeholder:text-[#7a7265] focus:outline-none focus:ring-2 focus:ring-[#cf711f]/20 focus:border-[#cf711f] transition-all resize-none"
+              className="w-full px-4 py-3 bg-cream border border-border rounded-2xl text-ink placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-brand-dark/20 focus:border-brand-dark transition-all resize-none"
             />
           </div>
 
@@ -269,9 +269,9 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
               <button
                 type="button"
                 onClick={() => setCatOpen(o => { if (o) { setShowNewCatInput(false); setNewCatName('') } return !o })}
-                className="w-full flex items-center justify-center sm:justify-between gap-2 px-4 py-3 bg-[#faf9f7] border border-[#e8e4dc] rounded-2xl text-[#3d3429] font-medium cursor-pointer hover:border-[#d9d3c8] hover:bg-[#f5f3ef] focus:outline-none focus:ring-2 focus:ring-[#cf711f]/20 focus:border-[#cf711f] transition-all"
+                className="w-full flex items-center justify-center sm:justify-between gap-2 px-4 py-3 bg-cream border border-border rounded-2xl text-ink font-medium cursor-pointer hover:border-[#d9d3c8] hover:bg-cream-dark focus:outline-none focus:ring-2 focus:ring-brand-dark/20 focus:border-brand-dark transition-all"
               >
-                <span className={`flex items-center gap-1.5 min-w-0 ${selectedCats.length ? '' : 'text-[#7a7265]'}`}>
+                <span className={`flex items-center gap-1.5 min-w-0 ${selectedCats.length ? '' : 'text-muted'}`}>
                   {selectedCats.length === 0
                     ? <span className="truncate">{language === 'en' ? 'None' : 'ללא'}</span>
                     : <>
@@ -279,12 +279,12 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
                         <span className="truncate hidden sm:inline">{selectedCats.map(c => c.name).join(', ')}</span>
                       </>}
                 </span>
-                <ChevronDown className={`w-4 h-4 text-[#cf711f] flex-shrink-0 transition-transform duration-200 ${catOpen ? 'rotate-180' : ''}`} />
+                <ChevronDown className={`w-4 h-4 text-brand-dark flex-shrink-0 transition-transform duration-200 ${catOpen ? 'rotate-180' : ''}`} />
               </button>
               {catOpen && (
-                <div ref={catMenuRef} style={{ direction: isRtl ? 'ltr' : 'rtl' }} className={`absolute z-20 mt-2 ${isRtl ? 'right-0' : 'left-0'} min-w-full w-max max-w-[80vw] bg-white border border-[#e8e4dc] rounded-2xl shadow-lg max-h-60 overflow-y-auto overflow-x-hidden`}>
+                <div ref={catMenuRef} style={{ direction: isRtl ? 'ltr' : 'rtl' }} className={`absolute z-20 mt-2 ${isRtl ? 'right-0' : 'left-0'} min-w-full w-max max-w-[80vw] bg-white border border-border rounded-2xl shadow-lg max-h-60 overflow-y-auto overflow-x-hidden`}>
                   {userCategories.length === 0 && !showNewCatInput && (
-                    <p className="px-4 py-2.5 text-sm text-[#a39b8d] text-center">{language === 'en' ? 'No categories yet' : 'אין קטגוריות עדיין'}</p>
+                    <p className="px-4 py-2.5 text-sm text-faint text-center">{language === 'en' ? 'No categories yet' : 'אין קטגוריות עדיין'}</p>
                   )}
                   {userCategories.map(c => {
                     const selected = selectedCatIds.includes(c.id)
@@ -294,7 +294,7 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
                         type="button"
                         style={{ direction: isRtl ? 'rtl' : 'ltr' }}
                         onClick={() => toggleCat(c.id)}
-                        className={`w-full flex items-center justify-between gap-2 px-4 py-2.5 text-sm text-start transition-colors ${selected ? 'bg-[#e67e22]/10 text-[#e67e22] font-medium' : 'text-[#3d3429] hover:bg-[#f5f3ef]'}`}
+                        className={`w-full flex items-center justify-between gap-2 px-4 py-2.5 text-sm text-start transition-colors ${selected ? 'bg-brand/10 text-brand font-medium' : 'text-ink hover:bg-cream-dark'}`}
                       >
                         <span className="flex items-center gap-2 min-w-0">
                           <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: c.color || categoryColor(c.name) }} />
@@ -305,7 +305,7 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
                     )
                   })}
                   {onCreateCategory && (showNewCatInput ? (
-                    <div style={{ direction: isRtl ? 'rtl' : 'ltr' }} className="flex flex-col gap-2 sm:flex-row sm:items-center px-4 py-2 border-t border-[#e8e4dc]/60">
+                    <div style={{ direction: isRtl ? 'rtl' : 'ltr' }} className="flex flex-col gap-2 sm:flex-row sm:items-center px-4 py-2 border-t border-border/60">
                       <input
                         autoFocus
                         type="text"
@@ -327,7 +327,7 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
                           }
                         }}
                         placeholder={language === 'en' ? 'Category name' : 'שם קטגוריה'}
-                        className="w-full sm:flex-1 min-w-0 px-3 py-2 bg-[#faf9f7] border border-[#e8e4dc] rounded-2xl text-sm text-[#3d3429] focus:outline-none focus:border-[#cf711f]"
+                        className="w-full sm:flex-1 min-w-0 px-3 py-2 bg-cream border border-border rounded-2xl text-sm text-ink focus:outline-none focus:border-brand-dark"
                       />
                       <button
                         type="button"
@@ -339,7 +339,7 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
                           setShowNewCatInput(false); setNewCatName('')
                         }}
                         title={language === 'en' ? 'Add' : 'הוסף'}
-                        className="w-full sm:w-9 h-9 flex items-center justify-center bg-[#e67e22] text-white rounded-xl hover:bg-[#cf711f] flex-shrink-0"
+                        className="w-full sm:w-9 h-9 flex items-center justify-center bg-brand text-white rounded-xl hover:bg-brand-dark flex-shrink-0"
                       >
                         <Check className="w-4 h-4" />
                       </button>
@@ -349,7 +349,7 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
                       type="button"
                       style={{ direction: isRtl ? 'rtl' : 'ltr' }}
                       onClick={() => { setShowNewCatInput(true); setNewCatName(''); requestAnimationFrame(() => catMenuRef.current?.scrollTo({ top: catMenuRef.current.scrollHeight, behavior: 'smooth' })) }}
-                      className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-start text-[#e67e22] hover:bg-[#faf9f7] border-t border-[#e8e4dc]/60 font-medium transition-colors"
+                      className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-start text-brand hover:bg-cream border-t border-border/60 font-medium transition-colors"
                     >
                       <Plus className="w-4 h-4 flex-shrink-0" />
                       {language === 'en' ? 'Add category' : 'הוסף קטגוריה'}
@@ -371,7 +371,7 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
               value={calories}
               onChange={e => { const v = e.target.value; if (v === '') return setCalories(''); const n = parseInt(v, 10); if (!isNaN(n)) setCalories(String(Math.min(Math.max(n, 0), 100000))) }}
               placeholder="—"
-              className="no-spinner w-28 text-center font-semibold bg-[#faf9f7] border border-[#e8e4dc] rounded-2xl px-3 py-3 text-[#3d3429] placeholder:text-[#7a7265] focus:outline-none focus:ring-2 focus:ring-[#cf711f]/20 focus:border-[#cf711f] transition-all"
+              className="no-spinner w-28 text-center font-semibold bg-cream border border-border rounded-2xl px-3 py-3 text-ink placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-brand-dark/20 focus:border-brand-dark transition-all"
             />
           </div>
 
@@ -379,12 +379,12 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
           {editingRecipe?.id && (
             <div className="shrink-0">
               <FieldLabel icon={Hash}>{language === 'en' ? 'Times prepped' : 'מספר הכנות'}</FieldLabel>
-              <div className="inline-flex items-center gap-1 bg-[#faf9f7] border border-[#e8e4dc] rounded-2xl px-2 py-1.5">
+              <div className="inline-flex items-center gap-1 bg-cream border border-border rounded-2xl px-2 py-1.5">
                 <button
                   type="button"
                   onClick={() => setLocalCookCount(c => Math.max(0, c - 1))}
                   disabled={localCookCount === 0}
-                  className="w-9 h-9 rounded-xl text-lg font-semibold text-[#7a7265] hover:text-[#cf711f] hover:bg-white disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
+                  className="w-9 h-9 rounded-xl text-lg font-semibold text-muted hover:text-brand-dark hover:bg-white disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
                 >
                   −
                 </button>
@@ -402,13 +402,13 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
                       if (e.key === 'Enter') { e.preventDefault(); commitCountDraft() }
                       if (e.key === 'Escape') setCountEditing(false)
                     }}
-                    className="no-spinner w-[2.5rem] text-center font-semibold text-[#3d3429] bg-transparent focus:outline-none"
+                    className="no-spinner w-[2.5rem] text-center font-semibold text-ink bg-transparent focus:outline-none"
                   />
                 ) : (
                   <button
                     type="button"
                     onClick={() => { setCountDraft(String(localCookCount)); setCountEditing(true) }}
-                    className="min-w-[2.5rem] text-center font-semibold text-[#3d3429] hover:text-[#cf711f] transition-colors"
+                    className="min-w-[2.5rem] text-center font-semibold text-ink hover:text-brand-dark transition-colors"
                   >
                     {localCookCount}
                   </button>
@@ -417,7 +417,7 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
                   type="button"
                   onClick={() => setLocalCookCount(c => Math.min(c + 1, MAX_COOK))}
                   disabled={localCookCount >= MAX_COOK}
-                  className="w-9 h-9 rounded-xl text-lg font-semibold text-[#7a7265] hover:text-[#cf711f] hover:bg-white disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
+                  className="w-9 h-9 rounded-xl text-lg font-semibold text-muted hover:text-brand-dark hover:bg-white disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
                 >
                   +
                 </button>
@@ -429,7 +429,7 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
           {/* Ingredients — one line at a time */}
           <div>
             <FieldLabel icon={List} trailing={ingredients.length > 0 && (
-              <span className="text-xs font-medium text-[#a39b8d]">
+              <span className="text-xs font-medium text-faint">
                 {ingredients.length} {language === 'en' ? (ingredients.length === 1 ? 'item' : 'items') : 'פריטים'}
               </span>
             )}>
@@ -437,8 +437,8 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
             {ingredients.length > 0 && (
               <ul className="mb-2 space-y-1.5">
                 {ingredients.map((item, i) => (
-                  <li key={i} className="flex items-center gap-2 px-4 py-2 bg-[#faf9f7] border border-[#e8e4dc] rounded-2xl">
-                    <span className="w-1.5 h-1.5 rounded-full bg-[#e67e22] flex-shrink-0" />
+                  <li key={i} className="flex items-center gap-2 px-4 py-2 bg-cream border border-border rounded-2xl">
+                    <span className="w-1.5 h-1.5 rounded-full bg-brand flex-shrink-0" />
                     {editIng?.i === i ? (
                       <input
                         autoFocus
@@ -451,16 +451,16 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
                           if (e.key === 'Enter') { e.preventDefault(); commitEditIng() }
                           if (e.key === 'Escape') setEditIng(null)
                         }}
-                        className="flex-1 min-w-0 text-sm text-[#3d3429] bg-transparent focus:outline-none"
+                        className="flex-1 min-w-0 text-sm text-ink bg-transparent focus:outline-none"
                       />
                     ) : (
                       <button type="button" onClick={() => setEditIng({ i, text: item })}
-                        className="flex-1 min-w-0 text-start text-sm text-[#3d3429] break-words hover:text-[#cf711f] transition-colors">
+                        className="flex-1 min-w-0 text-start text-sm text-ink break-words hover:text-brand-dark transition-colors">
                         {item}
                       </button>
                     )}
                     <button type="button" onClick={() => setIngredients(list => list.filter((_, j) => j !== i))}
-                      className="flex-shrink-0 text-[#a39b8d] hover:text-red-500 transition-colors" title={language === 'en' ? 'Remove' : 'הסר'}>
+                      className="flex-shrink-0 text-faint hover:text-red-500 transition-colors" title={language === 'en' ? 'Remove' : 'הסר'}>
                       <X className="w-4 h-4" />
                     </button>
                   </li>
@@ -476,12 +476,12 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
                 onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addIngredient() } }}
                 placeholder={language === 'en' ? 'e.g., 2 cups flour' : 'למשל, 2 כוסות קמח'}
                 data-invalid={!!errors.ingredients}
-                className={`w-full px-4 py-3 pe-14 bg-[#faf9f7] border rounded-2xl text-[#3d3429] placeholder:text-[#7a7265] focus:outline-none transition-all ${errors.ingredients ? 'border-red-400 ring-2 ring-red-200' : 'border-[#e8e4dc] focus:ring-2 focus:ring-[#cf711f]/20 focus:border-[#cf711f]'}`}
+                className={`w-full px-4 py-3 pe-14 bg-cream border rounded-2xl text-ink placeholder:text-muted focus:outline-none transition-all ${errors.ingredients ? 'border-red-400 ring-2 ring-red-200' : 'border-border focus:ring-2 focus:ring-brand-dark/20 focus:border-brand-dark'}`}
               />
               {ingredientDraft && (
                 <button type="button"
                   onClick={() => { setIngredientDraft(''); if (errors.ingredients) setErrors(p => ({ ...p, ingredients: null })) }}
-                  className={`absolute top-1/2 -translate-y-1/2 ${isRtl ? 'left-3' : 'right-3'} text-xs font-medium text-[#a39b8d] hover:text-red-500 transition-colors`}>
+                  className={`absolute top-1/2 -translate-y-1/2 ${isRtl ? 'left-3' : 'right-3'} text-xs font-medium text-faint hover:text-red-500 transition-colors`}>
                   {language === 'en' ? 'Clear' : 'נקה'}
                 </button>
               )}
@@ -490,7 +490,7 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
               type="button"
               onClick={addIngredient}
               disabled={!ingredientDraft.trim()}
-              className="mt-2 flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-[#cf711f] bg-[#e67e22]/10 hover:bg-[#e67e22]/15 rounded-2xl border border-[#e67e22]/30 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              className="mt-2 flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-brand-dark bg-brand/10 hover:bg-brand/15 rounded-2xl border border-brand/30 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               <Plus className="w-4 h-4" />
               {language === 'en' ? 'Add ingredient' : 'הוסף רכיב'}
@@ -501,7 +501,7 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
           {/* Instructions — one line at a time */}
           <div>
             <FieldLabel icon={ListOrdered} trailing={instructions.length > 0 && (
-              <span className="text-xs font-medium text-[#a39b8d]">
+              <span className="text-xs font-medium text-faint">
                 {instructions.length} {language === 'en' ? (instructions.length === 1 ? 'step' : 'steps') : 'שלבים'}
               </span>
             )}>
@@ -510,16 +510,16 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
               <ol className="mb-2 space-y-1.5">
                 {instructions.map((item, i) => (
                   <li key={i} data-step-idx={i}
-                    className={`flex items-center gap-2.5 px-4 py-2 bg-[#faf9f7] border rounded-2xl transition-shadow ${dragIdx === i ? 'border-[#e67e22] shadow-md select-none' : 'border-[#e8e4dc]'}`}>
+                    className={`flex items-center gap-2.5 px-4 py-2 bg-cream border rounded-2xl transition-shadow ${dragIdx === i ? 'border-brand shadow-md select-none' : 'border-border'}`}>
                     <button type="button" onPointerDown={e => startStepDrag(e, i)}
                       style={{ touchAction: 'none' }}
-                      className="flex-shrink-0 cursor-grab active:cursor-grabbing text-[#a39b8d] hover:text-[#cf711f] transition-colors"
+                      className="flex-shrink-0 cursor-grab active:cursor-grabbing text-faint hover:text-brand-dark transition-colors"
                       title={language === 'en' ? 'Drag to reorder' : 'גרור לשינוי סדר'}>
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                         <path d="M5 6h14M5 12h14M5 18h14" />
                       </svg>
                     </button>
-                    <span className="flex-shrink-0 w-6 h-6 rounded-full bg-[#e67e22]/10 text-[#cf711f] text-xs font-semibold flex items-center justify-center">{i + 1}</span>
+                    <span className="flex-shrink-0 w-6 h-6 rounded-full bg-brand/10 text-brand-dark text-xs font-semibold flex items-center justify-center">{i + 1}</span>
                     {editInst?.i === i ? (
                       <input
                         autoFocus
@@ -532,16 +532,16 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
                           if (e.key === 'Enter') { e.preventDefault(); commitEditInst() }
                           if (e.key === 'Escape') setEditInst(null)
                         }}
-                        className="flex-1 min-w-0 text-sm text-[#3d3429] bg-transparent focus:outline-none"
+                        className="flex-1 min-w-0 text-sm text-ink bg-transparent focus:outline-none"
                       />
                     ) : (
                       <button type="button" onClick={() => setEditInst({ i, text: item })}
-                        className="flex-1 min-w-0 text-start text-sm text-[#3d3429] break-words hover:text-[#cf711f] transition-colors">
+                        className="flex-1 min-w-0 text-start text-sm text-ink break-words hover:text-brand-dark transition-colors">
                         {item}
                       </button>
                     )}
                     <button type="button" onClick={() => setInstructions(list => list.filter((_, j) => j !== i))}
-                      className="flex-shrink-0 text-[#a39b8d] hover:text-red-500 transition-colors" title={language === 'en' ? 'Remove' : 'הסר'}>
+                      className="flex-shrink-0 text-faint hover:text-red-500 transition-colors" title={language === 'en' ? 'Remove' : 'הסר'}>
                       <X className="w-4 h-4" />
                     </button>
                   </li>
@@ -557,12 +557,12 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
                 onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addInstruction() } }}
                 placeholder={language === 'en' ? 'e.g., Preheat oven to 350F' : 'למשל, מחמים תנור ל-180 מעלות'}
                 data-invalid={!!errors.instructions}
-                className={`w-full px-4 py-3 pe-14 bg-[#faf9f7] border rounded-2xl text-[#3d3429] placeholder:text-[#7a7265] focus:outline-none transition-all ${errors.instructions ? 'border-red-400 ring-2 ring-red-200' : 'border-[#e8e4dc] focus:ring-2 focus:ring-[#cf711f]/20 focus:border-[#cf711f]'}`}
+                className={`w-full px-4 py-3 pe-14 bg-cream border rounded-2xl text-ink placeholder:text-muted focus:outline-none transition-all ${errors.instructions ? 'border-red-400 ring-2 ring-red-200' : 'border-border focus:ring-2 focus:ring-brand-dark/20 focus:border-brand-dark'}`}
               />
               {instructionDraft && (
                 <button type="button"
                   onClick={() => { setInstructionDraft(''); if (errors.instructions) setErrors(p => ({ ...p, instructions: null })) }}
-                  className={`absolute top-1/2 -translate-y-1/2 ${isRtl ? 'left-3' : 'right-3'} text-xs font-medium text-[#a39b8d] hover:text-red-500 transition-colors`}>
+                  className={`absolute top-1/2 -translate-y-1/2 ${isRtl ? 'left-3' : 'right-3'} text-xs font-medium text-faint hover:text-red-500 transition-colors`}>
                   {language === 'en' ? 'Clear' : 'נקה'}
                 </button>
               )}
@@ -571,7 +571,7 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
               type="button"
               onClick={addInstruction}
               disabled={!instructionDraft.trim()}
-              className="mt-2 flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-[#cf711f] bg-[#e67e22]/10 hover:bg-[#e67e22]/15 rounded-2xl border border-[#e67e22]/30 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              className="mt-2 flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-brand-dark bg-brand/10 hover:bg-brand/15 rounded-2xl border border-brand/30 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               <Plus className="w-4 h-4" />
               {language === 'en' ? 'Add step' : 'הוסף שלב'}
@@ -591,14 +591,14 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
           <button
             type="button"
             onClick={onBack}
-            className="flex-1 py-3 px-4 bg-white border border-[#e8e4dc] text-[#7a7265] rounded-2xl font-medium hover:bg-[#f5f3ef] transition-colors shadow-sm"
+            className="flex-1 py-3 px-4 bg-white border border-border text-muted rounded-2xl font-medium hover:bg-cream-dark transition-colors shadow-sm"
           >
             {language === 'en' ? 'Cancel' : 'בטל'}
           </button>
           <button
             type="submit"
             form="recipe-form"
-            className="flex-1 py-3 px-4 bg-[#e67e22] text-white rounded-2xl font-medium hover:bg-[#cf711f] transition-colors shadow-sm"
+            className="flex-1 py-3 px-4 bg-brand text-white rounded-2xl font-medium hover:bg-brand-dark transition-colors shadow-sm"
           >
             {editingRecipe?.id ? (language === 'en' ? 'Save Changes' : 'שמור שינויים')
                                : (language === 'en' ? 'Add Recipe' : 'הוסף מתכון')}

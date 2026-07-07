@@ -75,7 +75,7 @@ function ToolbarButton({ icon: Icon, label, onClick, danger }) {
     <button
       onClick={onClick}
       dir="ltr"
-      className={`flex items-center gap-2 px-3 py-2 text-sm rounded-xl transition-colors ${danger ? 'text-[#7a7265] hover:text-red-500 hover:bg-red-50' : 'text-[#7a7265] hover:text-[#e67e22] hover:bg-[#faf9f7]'}`}
+      className={`flex items-center gap-2 px-3 py-2 text-sm rounded-xl transition-colors ${danger ? 'text-muted hover:text-red-500 hover:bg-red-50' : 'text-muted hover:text-brand hover:bg-cream'}`}
     >
       <Icon className="w-4 h-4" />
       <span className="hidden sm:inline">{label}</span>
@@ -86,14 +86,14 @@ function ToolbarButton({ icon: Icon, label, onClick, danger }) {
 function IngredientsCard({ recipe, language, accent, checked, toggle, clearAll }) {
   return (
     <div className="lg:col-span-2">
-      <div className="bg-white rounded-3xl border border-[#e8e4dc]/60 shadow-sm p-6">
+      <div className="bg-white rounded-3xl border border-border/60 shadow-sm p-6">
         <div className="flex items-center gap-2 mb-3">
           <IconChip icon={UtensilsCrossed} accent={accent} size={7} />
-          <h2 className="text-lg font-semibold text-[#3d3429] flex-1">
+          <h2 className="text-lg font-semibold text-ink flex-1">
             {language === 'en' ? 'Ingredients' : 'מצרכים'}
           </h2>
           {checked.size > 0 && (
-            <button onClick={clearAll} className="flex items-center gap-1.5 text-xs text-[#7a7265] hover:text-[#3d3429] transition-colors">
+            <button onClick={clearAll} className="flex items-center gap-1.5 text-xs text-muted hover:text-ink transition-colors">
               <RotateCcw className="w-3 h-3" />
               Clear all
             </button>
@@ -113,7 +113,7 @@ function IngredientsCard({ recipe, language, accent, checked, toggle, clearAll }
                     {isChecked && <Check className="w-3 h-3 text-white" />}
                   </button>
                 </div>
-                <span className={`text-sm transition-all duration-200 ${isChecked ? 'text-[#a39b8d] line-through' : 'text-[#3d3429]/85'}`}>
+                <span className={`text-sm transition-all duration-200 ${isChecked ? 'text-faint line-through' : 'text-ink/85'}`}>
                   {ingredient}
                 </span>
               </div>
@@ -128,8 +128,8 @@ function IngredientsCard({ recipe, language, accent, checked, toggle, clearAll }
 function InstructionsCard({ recipe, language, isRtl, accent }) {
   return (
     <div className="lg:col-span-3">
-      <div className="bg-white rounded-3xl border border-[#e8e4dc]/60 shadow-sm p-6">
-        <h2 className="text-lg font-semibold text-[#3d3429] mb-6 flex items-center">
+      <div className="bg-white rounded-3xl border border-border/60 shadow-sm p-6">
+        <h2 className="text-lg font-semibold text-ink mb-6 flex items-center">
           <IconChip icon={ChefHat} accent={accent} size={7} />
           <span className="ms-2">
             {language === 'en' ? 'Instructions' : 'הוראות'}
@@ -146,7 +146,7 @@ function InstructionsCard({ recipe, language, isRtl, accent }) {
                 {String(index + 1).padStart(2, '0')}
               </span>
               {/* The instruction content */}
-              <p className="relative z-10 text-[#3d3429]/85 leading-relaxed pt-1 m-0">
+              <p className="relative z-10 text-ink/85 leading-relaxed pt-1 m-0">
                 {instruction}
               </p>
             </li>
@@ -205,7 +205,7 @@ export function RecipeDetail({ recipe, language = 'en', apiBase = '/api', onBack
       {showQR && <ShareQR recipe={recipe} language={language} copied={copied} onShare={handleShare} onClose={() => setShowQR(false)} />}
       {/* Header */}
       <div className="flex items-center justify-between mb-6 gap-2">
-        <button onClick={onBack} className="flex items-center gap-2 text-[#7a7265] hover:text-[#3d3429] transition-colors">
+        <button onClick={onBack} className="flex items-center gap-2 text-muted hover:text-ink transition-colors">
           {isRtl ? <ArrowRight className="w-5 h-5" /> : <ArrowLeft className="w-5 h-5" />}
           <span className="font-medium">Back</span>
         </button>
@@ -214,7 +214,7 @@ export function RecipeDetail({ recipe, language = 'en', apiBase = '/api', onBack
           <button
             onClick={() => setShowQR(true)}
             dir="ltr"
-            className="flex items-center gap-2 px-3 py-2 text-sm text-[#7a7265] hover:text-[#cf711f] hover:bg-[#faf9f7] rounded-xl transition-colors"
+            className="flex items-center gap-2 px-3 py-2 text-sm text-muted hover:text-brand-dark hover:bg-cream rounded-xl transition-colors"
           >
             <Share2 className="w-4 h-4" />
             <span className="hidden sm:inline">Share</span>
@@ -237,7 +237,7 @@ export function RecipeDetail({ recipe, language = 'en', apiBase = '/api', onBack
       </div>
 
       {/* Recipe Header Card — marbled left spine blends the category colors (matches the cards) */}
-      <div className="relative bg-white rounded-3xl border border-[#e8e4dc]/60 shadow-sm overflow-hidden mb-3">
+      <div className="relative bg-white rounded-3xl border border-border/60 shadow-sm overflow-hidden mb-3">
         <MarbleSpine colors={spineColors} id={recipe.id} />
         <div className="p-6 sm:p-8">
           <div className="flex items-start justify-between gap-4 mb-4 w-full">
@@ -255,11 +255,11 @@ export function RecipeDetail({ recipe, language = 'en', apiBase = '/api', onBack
                   ))}
                 </div>
               )}
-              <h1 className="text-2xl sm:text-3xl font-bold text-[#3d3429] text-balance">
+              <h1 className="text-2xl sm:text-3xl font-bold text-ink text-balance">
                 {recipe.title}
                 {recipe.visibility && (
                   <span
-                    className="inline-block align-middle ms-2 -translate-y-0.5 text-[#a39b8d]"
+                    className="inline-block align-middle ms-2 -translate-y-0.5 text-faint"
                     title={recipe.visibility === 'public'
                       ? (language === 'en' ? 'Public' : 'ציבורי')
                       : (language === 'en' ? 'Private' : 'פרטי')}
@@ -273,7 +273,7 @@ export function RecipeDetail({ recipe, language = 'en', apiBase = '/api', onBack
               {recipe.authorUsername && (
                 <button
                   onClick={() => onSelectAuthor && onSelectAuthor(recipe.authorId)}
-                  className="mt-1.5 text-sm text-[#7a7265] hover:text-[#e67e22] transition-colors"
+                  className="mt-1.5 text-sm text-muted hover:text-brand transition-colors"
                 >
                   <span dir="ltr">@{recipe.authorUsername}</span>
                 </button>
@@ -283,7 +283,7 @@ export function RecipeDetail({ recipe, language = 'en', apiBase = '/api', onBack
               {onToggleLike && (
                 <button
                   onClick={() => onToggleLike(recipe.id)}
-                  className={`flex flex-col items-center gap-1 px-3 py-2 rounded-2xl border transition-all duration-200 ${isLiked ? 'bg-red-50 border-red-200 text-red-500' : 'bg-[#faf9f7] border-[#e8e4dc] text-[#7a7265] hover:border-red-200 hover:text-red-400'}`}
+                  className={`flex flex-col items-center gap-1 px-3 py-2 rounded-2xl border transition-all duration-200 ${isLiked ? 'bg-red-50 border-red-200 text-red-500' : 'bg-cream border-border text-muted hover:border-red-200 hover:text-red-400'}`}
                 >
                   <Heart className={`w-5 h-5 ${isLiked ? 'fill-red-500' : ''}`} />
                   <span className="text-xs font-medium leading-none">{likeCount > 0 ? likeCount : '—'}</span>
@@ -292,7 +292,7 @@ export function RecipeDetail({ recipe, language = 'en', apiBase = '/api', onBack
               {onMarkMade && (
                 <button
                   onClick={handleMarkMade}
-                  className={`flex flex-col items-center gap-1 px-3 py-2 rounded-2xl border transition-all duration-200 ${marked ? 'bg-green-50 border-green-200 text-green-500' : 'bg-[#faf9f7] border-[#e8e4dc] text-[#7a7265] hover:border-[#e67e22]/50 hover:text-[#e67e22]'}`}
+                  className={`flex flex-col items-center gap-1 px-3 py-2 rounded-2xl border transition-all duration-200 ${marked ? 'bg-green-50 border-green-200 text-green-500' : 'bg-cream border-border text-muted hover:border-brand/50 hover:text-brand'}`}
                 >
                   <ChefHat className="w-5 h-5" />
                   <span dir="ltr" className="flex items-center justify-center h-3 text-xs font-medium leading-none">
@@ -303,9 +303,9 @@ export function RecipeDetail({ recipe, language = 'en', apiBase = '/api', onBack
             </div>
           </div>
 
-          <p className="text-[#7a7265] leading-relaxed mb-6">{recipe.description}</p>
+          <p className="text-muted leading-relaxed mb-6">{recipe.description}</p>
 
-          <div className={`flex flex-wrap items-center gap-4 sm:gap-6 text-sm text-[#7a7265] ${isRtl ? 'text-right' : 'text-left'}`}>
+          <div className={`flex flex-wrap items-center gap-4 sm:gap-6 text-sm text-muted ${isRtl ? 'text-right' : 'text-left'}`}>
             <Stat icon={Users} accent={accent}>{language === 'en' ? '4 servings' : '4 מנות'}</Stat>
             <Stat icon={ChefHat} accent={accent}>{language === 'en' ? `${recipe.ingredients.length} ingredients` : `${recipe.ingredients.length} מצרכים`}</Stat>
             {/* calories_per_serving — shows once the field is populated; null/absent until calc lands */}
