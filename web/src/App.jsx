@@ -30,12 +30,17 @@ function seedUserCategories() {
 // cookstats cache = { counts: {recipeId: n}, last: {recipeId: isoDate} }
 function seedCookCounts() {
   const uid = currentUserIdSync()
-  return uid ? (peekCache(`cookstats:${uid}`)?.counts || {}) : {}
+  return uid ? (peekCache(`cookstats2:${uid}`)?.counts || {}) : {}
 }
 
 function seedLastCooked() {
   const uid = currentUserIdSync()
-  return uid ? (peekCache(`cookstats:${uid}`)?.last || {}) : {}
+  return uid ? (peekCache(`cookstats2:${uid}`)?.last || {}) : {}
+}
+
+function seedWeekCooks() {
+  const uid = currentUserIdSync()
+  return uid ? (peekCache(`cookstats2:${uid}`)?.week || 0) : 0
 }
 import './global.css'
 
@@ -84,6 +89,7 @@ function App() {
   const [hoveringCarousel, setHoveringCarousel] = useState(false)
   const [cookCounts, setCookCounts] = useState(seedCookCounts)
   const [lastCooked, setLastCooked] = useState(seedLastCooked) // recipeId -> most recent cooked_at
+  const [weekCooks, setWeekCooks] = useState(seedWeekCooks) // cook_logs rows in the last 7 days (greeting stat)
   const [carouselLoading, setCarouselLoading] = useState(true)
   const [globalQuery, setGlobalQuery] = useState('')
   const [globalResults, setGlobalResults] = useState({ users: [], recipes: [] })
@@ -405,7 +411,7 @@ function App() {
   // Fetch public recipes for home page when not logged in
   const fetchCookCounts = async (force = false) => {
     if (!user) return
-    const cacheKey = `cookstats:${user.id}`
+    const cacheKey = `cookstats2:${user.id}`
     if (force) invalidate(cacheKey)
     try {
       // ttl 10min — feeds the "Most Prepped" hero (counts + last-made dates).
@@ -419,12 +425,15 @@ function App() {
         if (!res.ok) throw new Error(`API error: ${res.status}`);
         const data = await res.json();
         const counts = {}, last = {};
+        let week = 0;
+        const weekAgo = Date.now() - 7 * 86400000;
         for (const row of data) {
           counts[row.recipe_id] = (counts[row.recipe_id] || 0) + 1;
           if (!last[row.recipe_id] || row.cooked_at > last[row.recipe_id]) last[row.recipe_id] = row.cooked_at;
+          if (new Date(row.cooked_at) > weekAgo) week++;
         }
-        return { counts, last };
-      }, ({ counts, last }) => { setCookCounts(counts); setLastCooked(last) }, 10 * 60 * 1000)
+        return { counts, last, week };
+      }, ({ counts, last, week }) => { setCookCounts(counts); setLastCooked(last); setWeekCooks(week || 0) }, 10 * 60 * 1000)
     } catch (err) {
       console.error('[Data] Failed to fetch cook counts:', err.message);
     }
@@ -1512,6 +1521,30 @@ function App() {
         {viewMode === 'home' && (
           <div style={{ direction: language === 'he' ? 'rtl' : 'ltr' }} >
 
+            {/* Greeting — the page opens by talking to the user (logged-in only) */}
+            {user && (() => {
+              const hour = new Date().getHours()
+              const greet = language === 'en'
+                ? (hour < 5 ? 'Good night' : hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening')
+                : (hour < 5 ? 'לילה טוב' : hour < 12 ? 'בוקר טוב' : hour < 17 ? 'צהריים טובים' : 'ערב טוב')
+              const firstName = (user.user_metadata?.full_name || userHandle || '').split(' ')[0]
+              const leader = recipes.reduce((a, r) => (cookCounts[r.id] || 0) > (cookCounts[a?.id] || 0) ? r : a, null)
+              return (
+                <div className="mb-6">
+                  <h2 className={`text-2xl sm:text-3xl text-[#3d3429] ${isRtl ? 'font-bold' : 'font-extrabold tracking-tight'}`}>
+                    {greet}{firstName && <>, <span className="text-[#cf711f]">{firstName}</span></>}
+                  </h2>
+                  <p className="mt-1 text-sm text-[#7a7265]">
+                    {weekCooks > 0
+                      ? (language === 'en'
+                        ? <>You've cooked <b className="font-semibold text-[#cf711f]">{weekCooks === 1 ? 'once' : `${weekCooks} times`}</b> this week{leader && cookCounts[leader.id] > 0 && <> — {leader.title} is still in the lead</>}.</>
+                        : <>בישלת <b className="font-semibold text-[#cf711f]">{weekCooks === 1 ? 'פעם אחת' : `${weekCooks} פעמים`}</b> השבוע{leader && cookCounts[leader.id] > 0 && <> — {leader.title} עדיין מוביל</>}.</>)
+                      : (language === 'en' ? 'What are you cooking today?' : 'מה מבשלים היום?')}
+                  </p>
+                </div>
+              )
+            })()}
+
             {/* Global Search */}
             <div ref={globalSearchRef} className="relative mb-8">
               <div className="relative">
@@ -1604,16 +1637,17 @@ function App() {
 
             {/* Most Liked Section */}
             <section className="carousel-section" onMouseEnter={() => setHoveringCarousel(true)} onMouseLeave={() => setHoveringCarousel(false)}>
-              <div className="mb-1">
-                <div className="flex items-center gap-3 mb-2">
-                  <div className="w-1 h-8 bg-[#e67e22] rounded-full"></div>
-                  <h2 className="text-3xl font-bold text-[#3d3429]">
-                    {language === 'en' ? 'Most Liked' : 'האהובים ביותר'}
-                  </h2>
+              <div className="mb-3">
+                <div className="flex items-center gap-2.5">
+                  <span className={`mb-2 text-[0.68rem] font-bold uppercase text-[#cf711f] ${isRtl ? '' : 'tracking-[0.13em]'}`}>
+                    {language === 'en' ? 'From the community' : 'מהקהילה'}
+                  </span>
+                  <span className="mb-2 flex-1 h-px bg-[#e3ddd1]" />
                 </div>
-                <p className="text-[#7a7265] text-sm ml-4">
-                  {language === 'en' ? 'Top public recipes' : 'המתכונים הציבוריים המובילים'}
-                </p>
+                <div className="flex items-baseline gap-2.5 mt-1.5">
+                  <h2 className="text-xl font-bold text-[#3d3429]">{language === 'en' ? 'Most liked' : 'האהובים ביותר'}</h2>
+                  <span className="text-xs text-[#a39b8d]">{language === 'en' ? 'top public recipes' : 'המתכונים הציבוריים המובילים'}</span>
+                </div>
               </div>
               {carouselLoading ? (
                 <div className="flex gap-4 sm:gap-6 py-2 pb-3 overflow-hidden">
@@ -1658,13 +1692,18 @@ function App() {
 
             {/* Most Prepped / Sign-In CTA */}
             {user ? (
-            <section>
-              <div className="mb-4">
-                <div className="flex items-center gap-3 mb-2">
-                  <div className="w-1 h-8 bg-[#e67e22] rounded-full"></div>
-                  <h2 className="text-3xl font-bold text-[#3d3429]">{language === 'en' ? 'Your Most Prepped' : 'המתכונים המוכנים ביותר'}</h2>
+            <section className="mt-4">
+              <div className="mb-3">
+                <div className="flex items-center gap-2.5">
+                  <span className={`mb-2 text-[0.68rem] font-bold uppercase text-[#cf711f] ${isRtl ? '' : 'tracking-[0.13em]'}`}>
+                    {language === 'en' ? 'Your kitchen' : 'המטבח שלך'}
+                  </span>
+                  <span className="mb-2 flex-1 h-px bg-[#e3ddd1]" />
                 </div>
-                <p className="text-[#7a7265] text-sm ml-4">{language === 'en' ? 'Track your cooking habits' : 'עקוב אחרי הרגלי הבישול שלך'}</p>
+                <div className="flex items-baseline gap-2.5 mt-1.5">
+                  <h2 className="text-xl font-bold text-[#3d3429]">{language === 'en' ? 'Most prepped' : 'המוכנים ביותר'}</h2>
+                  <span className="text-xs text-[#a39b8d]">{language === 'en' ? 'your cooking habits' : 'הרגלי הבישול שלך'}</span>
+                </div>
               </div>
               {(() => {
                 // skeleton only before first load — background refetches keep showing current data
@@ -1753,7 +1792,7 @@ function App() {
               })()}
             </section>
             ) : (
-            <section>
+            <section className="mt-12">
               <div className="bg-gradient-to-br from-[#faf9f7] to-[#f5f3ef] rounded-3xl border border-[#e8e4dc] p-8 sm:p-12 text-center">
                 <div className="w-14 h-14 rounded-2xl bg-[#e67e22]/10 flex items-center justify-center mx-auto mb-4">
                   <BookOpen className="w-7 h-7 text-[#e67e22]" />

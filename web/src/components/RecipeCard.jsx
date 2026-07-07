@@ -38,14 +38,52 @@ function smallAvatar(url) {
   return url.replace(/=s\d+(-c)?$/, '=s64-c')
 }
 
-// ponytail: naive ingredient teaser — longest word per line, skips numbers/units well enough
+// Ingredient teaser: drop quantities, units and prep words, keep the noun phrase.
+// ponytail: stopword list, not NLP — unknown units just show up in the chip, harmless
+const TEASER_STOP = new Set([
+  // en units & measures
+  'cup', 'cups', 'tbsp', 'tablespoon', 'tablespoons', 'tsp', 'teaspoon', 'teaspoons',
+  'g', 'gr', 'gram', 'grams', 'kg', 'ml', 'l', 'liter', 'liters', 'litre', 'litres',
+  'oz', 'lb', 'lbs', 'pound', 'pounds', 'pinch', 'dash', 'clove', 'cloves', 'can', 'cans',
+  'pack', 'packet', 'slice', 'slices', 'piece', 'pieces', 'handful', 'half', 'quarter',
+  // en prep & filler
+  'chopped', 'diced', 'minced', 'sliced', 'grated', 'peeled', 'crushed', 'fresh', 'dried',
+  'ground', 'large', 'small', 'medium', 'finely', 'roughly', 'thinly', 'optional',
+  'a', 'an', 'the', 'of', 'to', 'taste', 'some', 'about',
+  // he units & measures
+  'כוס', 'כוסות', 'כף', 'כפות', 'כפית', 'כפיות', 'גרם', 'ק"ג', 'קילו', 'מ"ל', 'ליטר',
+  'חבילה', 'חבילות', 'חבילת', 'קופסה', 'קופסת', 'פחית', 'שקית', 'שן', 'שיני', 'שיניים',
+  'יחידה', 'יחידות', 'קורט', 'מעט', 'חצי', 'וחצי', 'רבע', 'ורבע', 'שליש', 'שני', 'שתי',
+  'אחד', 'אחת', 'פרוסה', 'פרוסות', 'חתיכה', 'חתיכות', 'צרור', 'חופן', 'ראש', 'עלה', 'עלי',
+  // he prep & filler
+  'קצוץ', 'קצוצה', 'קצוצות', 'קצוצים', 'טרי', 'טרייה', 'טריים', 'יבש', 'יבשה', 'יבשים',
+  'טחון', 'טחונה', 'טחונים', 'טחונות', 'פרוס', 'פרוסים', 'מגורר', 'מגוררת', 'מגוררים',
+  'קלוף', 'קלופה', 'קלופים', 'קלופות', 'כתוש', 'כתושה', 'כתושים', 'כתושות',
+  'חתוך', 'חתוכה', 'חתוכים', 'חתוכות', 'חצוי', 'חצויה', 'חצויים', 'חצויות',
+  'קוביות', 'לקוביות', 'מקלות', 'למקלות', 'לרבעים',
+  'מרוסק', 'מרוסקת', 'מרוסקים', 'מרוסקות', 'מעוך', 'מעוכה', 'מעוכות', 'מהול', 'מהולה', 'מהולות',
+  'בשל', 'בשלה', 'בשלים', 'בשלות', 'רך', 'רכה', 'רכים', 'רכות', 'קר', 'קרה', 'קרים', 'קרות',
+  'חם', 'חמה', 'חמים', 'רותח', 'רותחת', 'רותחים', 'פושר', 'פושרת', 'פושרים', 'חלוט', 'חלוטה',
+  'גרוס', 'גרוסה', 'גדוש', 'גדושה', 'גדושות', 'מלא', 'מלאה', 'מלאות', 'דק', 'דקה', 'גס', 'גסה',
+  'גדול', 'גדולה', 'גדולים', 'גדולות', 'קטן', 'קטנה', 'קטנים', 'קטנות',
+  'בינוני', 'בינונית', 'בינוניים', 'בינוניות', 'שימורים', 'שטוחות', 'שטוחה',
+  'אופציונלי', 'לפי', 'טעם', 'הטעם', 'של', 'או', 'עם', 'בלבד', 'לא', 'חובה', 'קריטי', 'אבל', 'עדיף',
+])
+
 function teaserWords(ingredients) {
   const out = []
-  for (const line of ingredients.slice(0, 3)) {
-    const w = String(line).split(/[\s,()]+/)
-      .map(t => t.replace(/[^\p{L}]/gu, ''))
-      .reduce((a, b) => (b.length > a.length ? b : a), '')
-    if (w.length > 1) out.push(w)
+  for (const line of ingredients) {
+    const clean = String(line)
+      .replace(/<[^>]*>/g, ' ')       // scraped lines can carry HTML tags
+      .replace(/&[a-z]+;/gi, '"')     // …and entities (&rdquo; inside מ"ל etc.)
+      .replace(/\([^)]*\)/g, ' ')     // parentheses are clarification, never the ingredient
+    const isStop = (w) => TEASER_STOP.has(w) || (w.startsWith('ו') && TEASER_STOP.has(w.slice(1))) // וחתוכים = ו + חתוכים
+    const words = clean.split(/[\s,()/.·–-]+/)
+      .map(w => w.replace(/[^\p{L}"']/gu, ''))
+      .filter(w => w.length > 1 && !isStop(w.toLowerCase()))
+    const chip = words.slice(0, 2).join(' ').slice(0, 18)
+    if (chip && !out.includes(chip)) out.push(chip)
+    if (out.length === 3) break
   }
   return out
 }
