@@ -1,6 +1,6 @@
 ﻿import { useState, useEffect, useRef } from 'react'
 import { createPortal, flushSync } from 'react-dom'
-import { BookOpen, Plus, Search, Filter, X, Link as LinkIcon, User as UserIcon, ChevronLeft, ChevronRight, Heart, RotateCcw, Pencil, Menu, Settings, LogOut, Check, Trash2, Sparkles, AtSign } from 'lucide-react'
+import { BookOpen, Plus, Search, Filter, X, Link as LinkIcon, User as UserIcon, ChevronLeft, ChevronRight, Heart, RotateCcw, Pencil, Menu, Settings, LogOut, Check, Trash2, Sparkles, AtSign, ChefHat } from 'lucide-react'
 import { RecipeCard, RecipeCardSkeleton } from './components/RecipeCard'
 import { CATEGORY_PALETTE } from './utils/categoryColor'
 import { RecipeDetail } from './components/RecipeDetail'
@@ -1723,9 +1723,26 @@ function App() {
                   .slice(0, 3);
 
                 if (mostPrepped.length === 0) return (
-                  <div className="text-center py-16 bg-gradient-to-br from-[#faf9f7] to-[#f5f3ef] rounded-3xl border-2 border-dashed border-[#e8e4dc]">
-                    <BookOpen className="w-12 h-12 text-[#e67e22]/30 mx-auto mb-4" />
-                    <p className="text-[#7a7265] font-medium">{language === 'en' ? 'No recipes cooked yet' : 'עדיין לא בישלת מתכונים'}</p>
+                  <div className="relative overflow-hidden text-center py-14 px-6 bg-[#faf9f7] rounded-3xl border border-[#e8e4dc]">
+                    {/* same faint top ember glow as the filled sig-hero */}
+                    <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(ellipse 60% 55% at 50% 0%, rgba(230,126,34,.09), transparent 70%)' }} />
+                    <div className="relative">
+                      <span className="w-11 h-11 rounded-full bg-[#e67e22]/10 flex items-center justify-center mx-auto">
+                        <ChefHat className="w-5 h-5 text-[#cf711f]" />
+                      </span>
+                      <p className="mt-3 font-bold text-[#3d3429]">{language === 'en' ? 'No cooks logged yet' : 'עדיין לא סימנת בישולים'}</p>
+                      <p className="mt-1 text-sm text-[#7a7265] max-w-[42ch] mx-auto">
+                        {language === 'en'
+                          ? 'Recipes you mark as cooked show up here, ranked by how often you make them.'
+                          : 'מתכונים שסימנת כמבושלים יופיעו כאן, לפי כמות הבישולים.'}
+                      </p>
+                      <button
+                        onClick={() => handleNavigate('profile')}
+                        className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-semibold text-[#cf711f] border border-[#e67e22]/35 hover:bg-[#e67e22]/5 transition-colors"
+                      >
+                        {language === 'en' ? 'Go to my recipes' : 'למתכונים שלי'}
+                      </button>
+                    </div>
                   </div>
                 );
 
