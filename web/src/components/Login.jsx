@@ -66,7 +66,7 @@ export default function Login({ onLoginSuccess }) {
         <button
           onClick={handleGoogleSignIn}
           disabled={loading}
-          className="relative w-full bg-white border border-border text-ink p-3.5 rounded-2xl hover:bg-cream hover:border-[#d9d3c8] disabled:opacity-50 font-semibold transition-all flex items-center justify-center gap-3 shadow-sm hover:shadow-md"
+          className="relative w-full bg-white border border-border text-ink p-3.5 rounded-2xl hover:bg-cream hover:border-border-dark disabled:opacity-50 font-semibold transition-all flex items-center justify-center gap-3 shadow-sm hover:shadow-md"
         >
           {/* Both states always mounted, toggled by opacity — avoids a DOM insert/remove
               race that, mid-redirect on mobile Safari, paints both at once on the unloading page. */}

@@ -269,7 +269,7 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
               <button
                 type="button"
                 onClick={() => setCatOpen(o => { if (o) { setShowNewCatInput(false); setNewCatName('') } return !o })}
-                className="w-full flex items-center justify-center sm:justify-between gap-2 px-4 py-3 bg-cream border border-border rounded-2xl text-ink font-medium cursor-pointer hover:border-[#d9d3c8] hover:bg-cream-dark focus:outline-none focus:ring-2 focus:ring-brand-dark/20 focus:border-brand-dark transition-all"
+                className="w-full flex items-center justify-center sm:justify-between gap-2 px-4 py-3 bg-cream border border-border rounded-2xl text-ink font-medium cursor-pointer hover:border-border-dark hover:bg-cream-dark focus:outline-none focus:ring-2 focus:ring-brand-dark/20 focus:border-brand-dark transition-all"
               >
                 <span className={`flex items-center gap-1.5 min-w-0 ${selectedCats.length ? '' : 'text-muted'}`}>
                   {selectedCats.length === 0
