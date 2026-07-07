@@ -1723,18 +1723,16 @@ function App() {
                   .slice(0, 3);
 
                 if (mostPrepped.length === 0) return (
-                  <div className="relative overflow-hidden text-center py-14 px-6 bg-cream rounded-3xl border border-border">
-                    {/* same faint top ember glow as the filled sig-hero */}
-                    <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(ellipse 60% 55% at 50% 0%, rgba(230,126,34,.09), transparent 70%)' }} />
-                    <div className="relative">
+                  <div className="text-center py-14 px-6 bg-cream rounded-3xl border border-border">
+                    <div>
                       <span className="w-11 h-11 rounded-full bg-brand/10 flex items-center justify-center mx-auto">
                         <ChefHat className="w-5 h-5 text-brand-dark" />
                       </span>
-                      <p className="mt-3 font-bold text-ink">{language === 'en' ? 'No cooks logged yet' : 'עדיין לא סימנת בישולים'}</p>
+                      <p className="mt-3 font-bold text-ink">{language === 'en' ? 'No cooks logged yet' : 'עדיין לא בישלת כלום'}</p>
                       <p className="mt-1 text-sm text-muted max-w-[42ch] mx-auto">
                         {language === 'en'
                           ? 'Recipes you mark as cooked show up here, ranked by how often you make them.'
-                          : 'מתכונים שסימנת כמבושלים יופיעו כאן, לפי כמות הבישולים.'}
+                          : 'מתכונים שבישלת יופיעו כאן, לפי כמות הבישולים.'}
                       </p>
                       <button
                         onClick={() => handleNavigate('profile')}
