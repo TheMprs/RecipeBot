@@ -552,9 +552,17 @@ export function UserProfile({
         <div style={{ direction: isRtl ? 'rtl' : 'ltr' }} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
           {[...Array(6)].map((_, i) => <RecipeCardSkeleton key={i} />)}
         </div>
-      ) : (filteredRecipes.length > 0 || isOwnProfile) ? (
-        // Cap the visible area to ~2.4 rows so the 3rd row peeks at the bottom — a visual hint
-        // that there's more to scroll. px-2/-mx-2 keeps card hover shadows from being clipped.
+      ) : (filteredRecipes.length > 0 || (isOwnProfile && displayRecipes.length === 0 && !searchQuery)) ? (
+        <>
+        {/* First run — book is truly empty: copy above the (lone) ghost card, Telegram chip below */}
+        {isOwnProfile && displayRecipes.length === 0 && (
+          <div className="text-center mb-5">
+            <p className="font-bold text-ink">{language === 'en' ? 'Your recipe book is empty' : 'ספר המתכונים שלך ריק'}</p>
+            <p className="mt-1 text-sm text-muted">{language === 'en' ? 'Add a recipe here, or through the bot on Telegram.' : 'הוסף מתכון כאן, או דרך הבוט בטלגרם.'}</p>
+          </div>
+        )}
+        {/* Cap the visible area to ~2.4 rows so the 3rd row peeks at the bottom — a visual hint
+            that there's more to scroll. px-2/-mx-2 keeps card hover shadows from being clipped. */}
         <div ref={gridRef} style={{ direction: isRtl ? 'rtl' : 'ltr' }} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-4 max-h-[23.5rem] overflow-y-auto px-2 -mx-2">
           {/* Add-recipe ghost card — own profile only. Telegram-archive style on mobile:
               starts scrolled off the top (hidden), revealed by scrolling up to the top. Always visible on desktop. */}
@@ -584,11 +592,33 @@ export function UserProfile({
             />
           ))}
         </div>
+        {isOwnProfile && displayRecipes.length === 0 && (
+          <div className="text-center mt-5">
+            <a href="https://t.me/Yuvals_Recipe_Book_bot" target="_blank" rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 px-3.5 py-2 bg-white border border-border rounded-full text-xs font-medium text-ink hover:border-brand/50 transition-colors">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="#2AABEE" className="flex-shrink-0" aria-hidden="true">
+                <path d="M12 0C5.37 0 0 5.37 0 12s5.37 12 12 12 12-5.37 12-12S18.63 0 12 0zm5.56 8.16-1.97 9.28c-.15.66-.54.82-1.09.51l-3-2.21-1.45 1.39c-.16.16-.29.29-.6.29l.21-3.05 5.56-5.02c.24-.21-.05-.33-.37-.12l-6.87 4.33-2.96-.93c-.64-.2-.66-.64.14-.95l11.57-4.46c.53-.19 1 .13.83.94z" />
+              </svg>
+              @Yuvals_Recipe_Book_bot
+            </a>
+          </div>
+        )}
+        </>
+      ) : searchQuery ? (
+        <div className="text-center py-16">
+          <p className="text-muted">
+            {language === 'en' ? <>No recipes match <b className="font-semibold text-ink">“{searchQuery}”</b></> : <>אין מתכונים שמתאימים ל<b className="font-semibold text-ink">„{searchQuery}”</b></>}
+          </p>
+          <button onClick={() => setSearchQuery('')} className="mt-2 text-sm font-semibold text-brand-dark hover:underline">
+            {language === 'en' ? 'Clear search' : 'נקה חיפוש'}
+          </button>
+        </div>
       ) : (
         <div className="text-center py-16">
-          <BookOpen className="w-12 h-12 text-border mx-auto mb-4" />
-          <p className="text-muted text-lg">
-            {language === 'en' ? 'No recipes found' : 'לא נמצאו מתכונים'}
+          <p className="text-muted">
+            {isOwnProfile
+              ? (language === 'en' ? 'No recipes match these filters' : 'אין מתכונים שמתאימים לסינון')
+              : (language === 'en' ? 'No public recipes yet' : 'אין עדיין מתכונים ציבוריים')}
           </p>
         </div>
       )}
