@@ -35,16 +35,16 @@ export default function Login({ onLoginSuccess }) {
       className="bg-white rounded-3xl shadow-2xl w-96 max-w-[90vw] overflow-hidden"
       onClick={(e) => e.stopPropagation()}
     >
-      {/* Warm branded header */}
-      <div className="relative bg-gradient-to-br from-brand to-brand-dark px-8 pt-9 pb-12 text-center">
-        <div className="w-16 h-16 rounded-2xl bg-white/15 backdrop-blur flex items-center justify-center mx-auto mb-4 ring-1 ring-white/25">
+      {/* System band — espresso */}
+      <div className="relative band-espresso px-8 pt-9 pb-9 text-center">
+        <div className="w-16 h-16 band-badge mx-auto mb-4">
           <BookOpen className="w-8 h-8 text-white" />
         </div>
         <h2 className="text-2xl font-bold text-white">Sign in</h2>
         <p className="text-white/85 text-sm mt-1">Your personal recipe book awaits</p>
       </div>
 
-      <div className="px-8 pt-8 pb-8 -mt-5 bg-white rounded-t-3xl relative">
+      <div className="px-8 pt-7 pb-8">
         {/* Value props */}
         <ul className="space-y-3 mb-7">
           {PERKS.map(({ icon: Icon, text }) => (

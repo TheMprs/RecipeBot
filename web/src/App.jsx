@@ -1639,7 +1639,7 @@ function App() {
             <section className="carousel-section" onMouseEnter={() => setHoveringCarousel(true)} onMouseLeave={() => setHoveringCarousel(false)}>
               <div className="mb-3">
                 <div className="flex items-center gap-2.5">
-                  <span className={`mb-2 text-[0.68rem] font-bold uppercase text-brand-dark ${isRtl ? '' : 'tracking-[0.13em]'}`}>
+                  <span className={`mb-2 type-eyebrow ${isRtl ? '' : 'tracking-[0.13em]'}`}>
                     {language === 'en' ? 'From the community' : 'מהקהילה'}
                   </span>
                   <span className="mb-2 flex-1 h-px bg-border" />
@@ -1695,7 +1695,7 @@ function App() {
             <section className="mt-4">
               <div className="mb-3">
                 <div className="flex items-center gap-2.5">
-                  <span className={`mb-2 text-[0.68rem] font-bold uppercase text-brand-dark ${isRtl ? '' : 'tracking-[0.13em]'}`}>
+                  <span className={`mb-2 type-eyebrow ${isRtl ? '' : 'tracking-[0.13em]'}`}>
                     {language === 'en' ? 'Your kitchen' : 'המטבח שלך'}
                   </span>
                   <span className="mb-2 flex-1 h-px bg-border" />
@@ -1762,7 +1762,7 @@ function App() {
                       <div className="relative z-10 flex flex-wrap items-end justify-between gap-5 p-6 sm:px-7">
                         {/* mobile: the count is absolute in the top corner, so keep the text clear of it */}
                         <div className="min-w-0 pe-16 sm:pe-0">
-                          <span className={`inline-flex items-center gap-1.5 text-[0.68rem] font-bold uppercase text-brand-dark ${isRtl ? '' : 'tracking-[0.14em]'}`}>
+                          <span className={`inline-flex items-center gap-1.5 type-eyebrow ${isRtl ? '' : 'tracking-[0.14em]'}`}>
                             <svg className="sig-flame" width="10" height="14" viewBox="0 0 12 16" fill="#cf711f" aria-hidden="true">
                               <path d="M6 0 C7 4, 11 5.5, 11 10 A5 5 0 0 1 1 10 C1 7, 4 6.5, 4 3.5 C5 5, 6 5.5, 6 0Z" />
                             </svg>
@@ -1951,18 +1951,23 @@ function App() {
           <div className="fixed inset-0 z-[60] backdrop-blur-sm bg-black/30" onClick={() => setShowUrlModal(false)}></div>
           <div className="fixed inset-0 flex items-center justify-center z-[70] p-4" onClick={() => setShowUrlModal(false)}>
             <div onClick={(e) => e.stopPropagation()} className="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-lg overflow-hidden" style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
-              {/* Branded header band — gray, matches the settings menu */}
-              <div className="relative -mx-6 -mt-6 sm:-mx-8 sm:-mt-8 px-6 sm:px-8 pt-7 pb-7 mb-6 bg-gradient-to-br from-muted to-muted-dark">
+              {/* Branded header band — orange: importing is a cooking action */}
+              <div className="relative -mx-6 -mt-6 sm:-mx-8 sm:-mt-8 px-6 sm:px-8 pt-7 pb-7 mb-6 band-brand">
                 <button onClick={() => setShowUrlModal(false)} className="absolute top-4 end-4 text-white/85 hover:text-white transition-colors">
                   <X className="w-5 h-5" />
                 </button>
                 <div className="flex flex-col items-center gap-3">
-                  <div className="w-14 h-14 rounded-2xl bg-white/15 backdrop-blur flex items-center justify-center ring-1 ring-white/25">
+                  <div className="w-14 h-14 band-badge">
                     <LinkIcon className="w-7 h-7 text-white" />
                   </div>
-                  <h2 className="text-center text-2xl font-bold tracking-tight text-white">
-                    {language === 'en' ? 'Import Recipe from URL' : 'ייבא מתכון מקישור'}
-                  </h2>
+                  <div>
+                    <h2 className="text-center text-2xl font-bold tracking-tight text-white">
+                      {language === 'en' ? 'Import from a link' : 'ייבוא מקישור'}
+                    </h2>
+                    <p className="text-center text-sm text-white/85 mt-1">
+                      {language === 'en' ? "Paste a recipe page — we'll pull out the details" : 'הדבק קישור למתכון ואנחנו נשלוף את הפרטים'}
+                    </p>
+                  </div>
                 </div>
               </div>
               
@@ -1975,7 +1980,7 @@ function App() {
                   </p>
                   <button
                     onClick={() => setShowUrlModal(false)}
-                    className="w-full px-4 py-3 bg-cream-dark text-ink rounded-xl hover:bg-border transition-colors font-medium"
+                    className="w-full btn-modal btn-ghost"
                   >
                     {language === 'en' ? 'Close' : 'סגור'}
                   </button>
@@ -2001,8 +2006,8 @@ function App() {
                     <Sparkles className="w-3.5 h-3.5 text-brand-dark flex-shrink-0 mt-0.5" />
                     <span>
                       {language === 'en'
-                        ? 'Paste the URL of a recipe webpage. AI will extract the recipe details automatically.'
-                        : 'הדבק כתובת למתכון, אנחנו נשלוף את כל הפרטים.'}
+                        ? 'Works with most recipe sites, Hebrew or English.'
+                        : 'עובד עם רוב אתרי המתכונים, בעברית או באנגלית.'}
                     </span>
                   </p>
                 </div>
@@ -2010,14 +2015,14 @@ function App() {
                 <div className="flex gap-3 pt-4">
                   <button
                     onClick={() => setShowUrlModal(false)}
-                    className="flex-1 px-4 py-3 bg-cream-dark text-ink rounded-xl hover:bg-border transition-colors font-medium"
+                    className="flex-1 btn-modal btn-ghost"
                   >
                     {language === 'en' ? 'Cancel' : 'בטל'}
                   </button>
                   <button
                     onClick={handleScrapeFromUrl}
                     disabled={isScrapingLoading}
-                    className="flex-1 px-4 py-3 bg-brand-dark text-white rounded-xl hover:bg-brand-deep disabled:bg-brand-dark/50 transition-colors font-medium flex items-center justify-center gap-2"
+                    className="flex-1 btn-modal btn-brand disabled:bg-brand/50 flex items-center justify-center gap-2"
                   >
                     {isScrapingLoading ? (
                       <>
@@ -2190,20 +2195,26 @@ function App() {
         <>
           <div className="fixed inset-0 z-[90] backdrop-blur-sm bg-black/30" onClick={() => setShowLinkSuccess(false)} />
           <div className="fixed inset-0 z-[95] flex items-center justify-center p-4" onClick={() => setShowLinkSuccess(false)}>
-            <div className="bg-white rounded-3xl shadow-xl p-8 max-w-sm w-full text-center" onClick={e => e.stopPropagation()}>
-              <div className="text-5xl mb-4">🎉</div>
-              <h2 className="text-2xl font-bold text-ink mb-2">{language === 'en' ? 'Connected!' : 'מחוברים!'}</h2>
-              <p className="text-muted mb-6">
-                {language === 'en'
-                  ? 'Your Telegram is linked — recipes you add with the bot will show up here.'
-                  : 'הטלגרם שלך מקושר — מתכונים שתוסיף דרך הבוט יופיעו כאן.'}
-              </p>
-              <button
-                onClick={() => setShowLinkSuccess(false)}
-                className="px-8 py-3 bg-brand text-white rounded-2xl font-medium hover:bg-brand-dark transition-colors"
-              >
-                {language === 'en' ? 'Awesome' : 'מעולה'}
-              </button>
+            <div className="bg-white rounded-3xl shadow-xl max-w-sm w-full text-center overflow-hidden" onClick={e => e.stopPropagation()}>
+              {/* System band — espresso */}
+              <div className="band-espresso px-8 pt-7 pb-7">
+                <div className="w-14 h-14 band-badge mx-auto mb-3 text-3xl">🎉</div>
+                <h2 className="text-2xl font-bold text-white">{language === 'en' ? 'Connected!' : 'מחוברים!'}</h2>
+                <p className="text-white/85 text-sm mt-1">{language === 'en' ? 'Your Telegram is linked' : 'הטלגרם שלך מקושר'}</p>
+              </div>
+              <div className="px-8 py-7">
+                <p className="text-muted mb-6">
+                  {language === 'en'
+                    ? 'Recipes you add with the bot will show up here.'
+                    : 'מתכונים שתוסיף דרך הבוט יופיעו כאן.'}
+                </p>
+                <button
+                  onClick={() => setShowLinkSuccess(false)}
+                  className="btn-modal btn-espresso px-8"
+                >
+                  {language === 'en' ? 'Awesome' : 'מעולה'}
+                </button>
+              </div>
             </div>
           </div>
         </>
@@ -2216,20 +2227,16 @@ function App() {
           <div className="fixed inset-0 z-[90] backdrop-blur-sm bg-black/30" />
           <div className="fixed inset-0 z-[95] flex items-center justify-center p-4">
             <div className="bg-white rounded-3xl shadow-2xl w-96 max-w-[90vw] overflow-hidden" dir="ltr">
-              {/* Warm branded header */}
-              <div className="relative bg-gradient-to-br from-brand to-brand-dark px-8 pt-9 pb-12 text-center">
-                <div className="w-16 h-16 rounded-2xl bg-white/15 backdrop-blur flex items-center justify-center mx-auto mb-4 ring-1 ring-white/25">
+              {/* System band — espresso */}
+              <div className="relative band-espresso px-8 pt-9 pb-9 text-center">
+                <div className="w-16 h-16 band-badge mx-auto mb-4">
                   <AtSign className="w-8 h-8 text-white" />
                 </div>
                 <h2 className="text-2xl font-bold text-white">Pick your handle</h2>
                 <p className="text-white/85 text-sm mt-1">Your unique @name on RecipeBook</p>
               </div>
 
-              <div className="px-8 pt-8 pb-8 -mt-5 bg-white rounded-t-3xl relative">
-                <p className="text-sm text-ink mb-5 text-center">
-                  It appears on your profile and recipes — lowercase letters, numbers and underscores.
-                </p>
-
+              <div className="px-8 pt-7 pb-8">
                 <div className="relative mb-2">
                   <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted">@</span>
                   <input
@@ -2240,9 +2247,12 @@ function App() {
                     onKeyDown={e => { if (e.key === 'Enter') submitHandle() }}
                     placeholder="yourhandle"
                     autoFocus
-                    className="w-full pl-9 pr-4 p-3.5 border border-border rounded-2xl text-ink focus:outline-none focus:border-brand transition-colors"
+                    className="w-full pl-9 pr-4 p-3.5 border border-border rounded-2xl text-ink focus:outline-none focus:border-espresso transition-colors"
                   />
                 </div>
+                <p className="text-xs text-muted mb-2">
+                  Shown on your profile and recipes — lowercase letters, numbers and underscores.
+                </p>
 
                 {handleError && (
                   <div className="mb-3 p-3 bg-red-50 border border-red-200 rounded-xl">
@@ -2253,7 +2263,7 @@ function App() {
                 <button
                   onClick={submitHandle}
                   disabled={creatingProfile || newHandle.trim().length < 3}
-                  className="relative w-full bg-brand text-white p-3.5 rounded-2xl hover:bg-brand-dark disabled:opacity-50 disabled:cursor-not-allowed font-semibold transition-all shadow-sm hover:shadow-md mt-3"
+                  className="relative w-full bg-espresso text-white p-3.5 rounded-2xl hover:bg-espresso-dark disabled:opacity-50 disabled:cursor-not-allowed font-semibold transition-all shadow-sm hover:shadow-md mt-3"
                 >
                   <span className={creatingProfile ? 'invisible' : ''}>Confirm</span>
                   <span className={`absolute inset-0 flex items-center justify-center gap-3 ${creatingProfile ? '' : 'invisible'}`}>

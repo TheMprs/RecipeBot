@@ -12,23 +12,21 @@ export function ConfirmDialog({ title, message, confirmLabel, onConfirm, onCance
           onClick={e => e.stopPropagation()}
         >
           <div className="p-6 flex flex-col items-center gap-4">
-            <span className={`w-16 h-16 rounded-2xl flex items-center justify-center ${danger ? 'bg-red-50 text-red-500' : 'bg-brand/10 text-brand'}`}>
-              <Icon className="w-8 h-8" />
+            <span className={`w-14 h-14 rounded-2xl flex items-center justify-center ${danger ? 'bg-red-100 text-red-600' : 'bg-espresso/10 text-espresso'}`}>
+              <Icon className="w-7 h-7" />
             </span>
             <h2 className="text-xl font-bold text-ink text-center text-balance">{title}</h2>
             {message && <p className="text-sm text-muted leading-relaxed text-center -mt-1">{message}</p>}
             <div className="flex gap-3 w-full mt-1">
               <button
                 onClick={onCancel}
-                className="flex-1 py-2.5 rounded-2xl text-sm font-medium border border-border text-muted hover:bg-cream-dark transition-colors"
+                className="flex-1 btn-modal py-2.5 text-sm btn-ghost"
               >
                 {language === 'en' ? 'Cancel' : 'בטל'}
               </button>
               <button
                 onClick={onConfirm}
-                className={`flex-1 py-2.5 rounded-2xl text-sm font-medium transition-colors text-white ${
-                  danger ? 'bg-red-500 hover:bg-red-600' : 'bg-brand hover:bg-brand-dark'
-                }`}
+                className={`flex-1 btn-modal py-2.5 text-sm ${danger ? 'btn-danger' : 'btn-espresso'}`}
               >
                 {confirmLabel || (language === 'en' ? 'Confirm' : 'אשר')}
               </button>

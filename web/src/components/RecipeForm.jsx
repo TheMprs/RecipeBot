@@ -178,7 +178,7 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
       <div className="max-w-2xl mx-auto">
       <form id="recipe-form" noValidate onSubmit={handleSubmit} className="bg-white rounded-3xl shadow-sm p-6 sm:p-8">
         {/* Branded header band — matches the login window look */}
-        <div className="relative overflow-hidden rounded-t-3xl -mx-6 -mt-6 sm:-mx-8 sm:-mt-8 px-6 sm:px-8 pt-5 pb-6 bg-gradient-to-br from-[#e88934] via-brand to-brand-dark">
+        <div className="relative overflow-hidden rounded-t-3xl -mx-6 -mt-6 sm:-mx-8 sm:-mt-8 px-6 sm:px-8 pt-5 pb-6 band-brand">
           {/* soft decorative glow */}
           <div className="pointer-events-none absolute -top-16 -right-10 w-48 h-48 rounded-full bg-white/10 blur-2xl" />
           <div className="pointer-events-none absolute -bottom-20 -left-10 w-52 h-52 rounded-full bg-black/10 blur-2xl" />
@@ -188,7 +188,7 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
               className="flex items-center justify-center w-9 h-9 rounded-full text-white/85 hover:text-white hover:bg-white/15 transition-colors">
               <X className="w-5 h-5" />
             </button>
-            <div className="absolute left-1/2 -translate-x-1/2 translate-y-5 w-11 h-11 sm:w-14 sm:h-14 rounded-2xl bg-white/15 backdrop-blur flex items-center justify-center ring-1 ring-white/25">
+            <div className="absolute left-1/2 -translate-x-1/2 translate-y-5 w-11 h-11 sm:w-14 sm:h-14 band-badge">
               <ChefHat className="w-6 h-6 sm:w-8 sm:h-8 text-white" />
             </div>
             {editingRecipe?.id ? <span /> : (

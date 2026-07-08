@@ -654,8 +654,8 @@ export function UserProfile({
               className="bg-white rounded-3xl shadow-xl w-full max-w-md overflow-hidden"
               style={{ direction: isRtl ? 'rtl' : 'ltr' }}
             >
-              {/* Branded header band — gray, mirrors the URL-import / recipe-form bands */}
-              <div className="px-6 pt-5 pb-6 bg-gradient-to-br from-muted to-muted-dark">
+              {/* System band — espresso, matches login/handle-picker/telegram modals */}
+              <div className="px-6 pt-5 pb-6 band-espresso">
                 <div className="flex items-center justify-between">
                   {(showEditProfile || showRecipeSettings) ? (
                     <button

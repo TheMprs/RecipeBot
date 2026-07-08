@@ -2,6 +2,65 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ============================================================
+   CENTRAL UI ROLES — one place per recurring style.
+   Fetch a class, don't re-type the stack.
+   (Lives here because Tailwind 3 only allows @layer/@apply in
+   the file with the @tailwind directives.)
+   ============================================================ */
+
+/* Heebo, Hebrew glyphs only: unicode-range means Hebrew text renders Heebo while
+   Latin falls through to the system stack untouched. Self-hosted variable 400–700. */
+@font-face {
+  font-family: 'Heebo';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('/fonts/heebo-hebrew.woff2') format('woff2');
+  unicode-range: U+0307-0308, U+0590-05FF, U+200C-2010, U+20AA, U+25CC, U+FB1D-FB4F;
+}
+
+@layer components {
+  /* --- Type roles --- */
+
+  /* Section eyebrow — small bold brand label above home sections.
+     Tracking is added in JSX for Latin only (letterspaced Hebrew reads badly). */
+  .type-eyebrow {
+    @apply text-[0.68rem] font-bold uppercase text-brand-dark;
+  }
+
+  /* --- Modal band headers --- */
+  /* Orange = cooking actions (add recipe, import); espresso = site/system
+     (login, signup, settings, Telegram). Band bottom edge stays straight. */
+  .band-brand {
+    @apply bg-gradient-to-br from-brand to-brand-dark;
+  }
+  .band-espresso {
+    @apply bg-gradient-to-br from-espresso to-espresso-dark;
+  }
+  /* Glassy square badge inside a band (size set at the call site) */
+  .band-badge {
+    @apply rounded-2xl bg-white/15 backdrop-blur flex items-center justify-center ring-1 ring-white/25;
+  }
+
+  /* --- Modal buttons --- */
+  .btn-modal {
+    @apply px-4 py-3 rounded-xl font-medium transition-colors;
+  }
+  .btn-ghost {
+    @apply bg-cream-dark text-ink hover:bg-border;
+  }
+  .btn-brand {
+    @apply bg-brand text-white hover:bg-brand-dark;
+  }
+  .btn-espresso {
+    @apply bg-espresso text-white hover:bg-espresso-dark;
+  }
+  .btn-danger {
+    @apply bg-red-600 text-white hover:bg-red-700;
+  }
+}
+
 /* Pinch-zoom is enabled (a11y) — prevent iOS Safari's focus auto-zoom the right
    way instead: it only triggers on fields with font-size < 16px, so floor every
    field at 16px on phones (overrides text-sm etc.). */
