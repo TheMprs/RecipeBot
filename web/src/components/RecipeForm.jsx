@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { LinkIcon, ChevronDown, Check, Plus, ChefHat, Globe, Lock, Type, AlignLeft, Tag, Flame, Hash, List, ListOrdered, X } from 'lucide-react'
+import { LinkIcon, ChevronDown, Check, Plus, ChefHat, Globe, Lock, Type, AlignLeft, Tag, Flame, List, ListOrdered, X } from 'lucide-react'
 import { categoryColor } from '../utils/categoryColor'
 
 const FieldLabel = ({ icon: Icon, children, hint, trailing }) => (
@@ -18,7 +18,7 @@ const FieldLabel = ({ icon: Icon, children, hint, trailing }) => (
 // text still splits on line breaks so a copied list lands as separate items.
 const splitLines = (text) => text.split('\n').map(s => s.trim()).filter(Boolean)
 
-export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, language = 'en', userCategories = [], currentCategoryIds = [], onCreateCategory, cookCount = 0 }) {
+export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, language = 'en', userCategories = [], currentCategoryIds = [], onCreateCategory }) {
   const isRtl = language === 'he'
 
   const [title, setTitle] = useState('')
@@ -48,21 +48,6 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
     document.addEventListener('mousedown', onDown)
     return () => document.removeEventListener('mousedown', onDown)
   }, [catOpen])
-  // changes locally only; the net delta is applied on save. A retried save
-  // carries its unsaved delta back in via editingRecipe.cookCountDelta.
-  const [localCookCount, setLocalCookCount] = useState(cookCount + (editingRecipe?.cookCountDelta || 0))
-  useEffect(() => { setLocalCookCount(cookCount + (editingRecipe?.cookCountDelta || 0)) }, [cookCount])
-  const [countEditing, setCountEditing] = useState(false)
-  const [countDraft, setCountDraft] = useState('')
-
-  // Cap the prepped count: each unit of increase inserts one cook_logs row on save,
-  // so an unbounded value (e.g. a typed 1000000) would freeze the client and mass-insert.
-  const MAX_COOK = 999
-  const commitCountDraft = () => {
-    const n = parseInt(countDraft, 10)
-    if (!isNaN(n) && n >= 0) setLocalCookCount(Math.min(n, MAX_COOK))
-    setCountEditing(false)
-  }
 
   useEffect(() => {
     if (editingRecipe) {
@@ -170,7 +155,7 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
       return
     }
 
-    onSave({ title, description, ingredients: ingredients2, instructions: instructions2, categoryIds: selectedCatIds, caloriesPerServing: calories === '' ? null : parseInt(calories, 10), visibility, cookCountDelta: localCookCount - cookCount })
+    onSave({ title, description, ingredients: ingredients2, instructions: instructions2, categoryIds: selectedCatIds, caloriesPerServing: calories === '' ? null : parseInt(calories, 10), visibility })
   }
 
   return (
@@ -375,55 +360,8 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
             />
           </div>
 
-          {/* Prepped count (existing recipes only) */}
-          {editingRecipe?.id && (
-            <div className="shrink-0">
-              <FieldLabel icon={Hash}>{language === 'en' ? 'Times prepped' : 'מספר הכנות'}</FieldLabel>
-              <div className="inline-flex items-center gap-1 bg-cream border border-border rounded-2xl px-2 py-1.5">
-                <button
-                  type="button"
-                  onClick={() => setLocalCookCount(c => Math.max(0, c - 1))}
-                  disabled={localCookCount === 0}
-                  className="w-9 h-9 rounded-xl text-lg font-semibold text-muted hover:text-brand-dark hover:bg-white disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
-                >
-                  −
-                </button>
-                {countEditing ? (
-                  <input
-                    autoFocus
-                    type="number"
-                    min="0"
-                    inputMode="numeric"
-                    value={countDraft}
-                    maxLength={3}
-                    onChange={e => setCountDraft(e.target.value)}
-                    onBlur={commitCountDraft}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter') { e.preventDefault(); commitCountDraft() }
-                      if (e.key === 'Escape') setCountEditing(false)
-                    }}
-                    className="no-spinner w-[2.5rem] text-center font-semibold text-ink bg-transparent focus:outline-none"
-                  />
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => { setCountDraft(String(localCookCount)); setCountEditing(true) }}
-                    className="min-w-[2.5rem] text-center font-semibold text-ink hover:text-brand-dark transition-colors"
-                  >
-                    {localCookCount}
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => setLocalCookCount(c => Math.min(c + 1, MAX_COOK))}
-                  disabled={localCookCount >= MAX_COOK}
-                  className="w-9 h-9 rounded-xl text-lg font-semibold text-muted hover:text-brand-dark hover:bg-white disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
-                >
-                  +
-                </button>
-              </div>
-            </div>
-          )}
+          {/* Prepped-count stepper removed 2026-07-29 — moving to the cook-history
+              drawer on RecipeDetail. Recoverable from git if needed. */}
           </div>
 
           {/* Ingredients — one line at a time */}

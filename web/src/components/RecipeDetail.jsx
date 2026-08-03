@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from 'react'
-import { ArrowLeft, ArrowRight, Users, ChefHat, Check, Pencil, Trash2, RotateCcw, UtensilsCrossed, Share2, Heart, Copy, Bookmark, Plus, Flame, Lock, Globe } from 'lucide-react'
+import { ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, Users, ChefHat, Check, Pencil, Trash2, RotateCcw, UtensilsCrossed, Share2, Heart, Copy, Bookmark, Plus, Flame, Lock, Globe, CalendarDays } from 'lucide-react'
 import { buildShareText } from '../utils/shareRecipe'
 import { MarbleSpine } from './MarbleSpine'
 import { playSizzle } from '../utils/sizzle'
 import { ShareQR } from './ShareQR'
 import { SaveToMenu } from './SaveToMenu'
+import { groupByDay, monthMatrix, dayKey, stepMonth, canStep, isEditableDay, sameMonth, recentDays, tidyRelative, relativeUnit } from '../utils/cookStats'
 
 const COOKIE_NAME_PREFIX = 'recipe_ingredients_'
 const BRAND = '#e67e22'
@@ -83,6 +84,223 @@ function ToolbarButton({ icon: Icon, label, onClick, danger }) {
   )
 }
 
+// Cook history, shown in the page margin on xl+ (max-w-3xl leaves ~256px a side
+// at 1280px, so the panel fits without touching the layout). Anchored to the
+// same inline side as the Back button, so trigger and panel stay together in
+// both directions. Below xl there is no margin to borrow — the button hides.
+function CookHistoryDrawer({ dates, language, accent, open, recipe, onAddPrepOn, onRemovePrep }) {
+  const [editing, setEditing] = useState(false)
+  const canEdit = !!(onAddPrepOn && onRemovePrep)
+  const isRtlLang = language === 'he'
+  const locale = language === 'en' ? 'en-GB' : 'he-IL'
+  // Intl handles both languages, including Hebrew RTL — no date library.
+  const dayFmt = new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'long' })
+  const shortFmt = new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'short' })
+  const rtf = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' })
+
+  const now = new Date()
+  const relative = (iso) => {
+    const { n, unit } = relativeUnit(iso, now)
+    return tidyRelative(rtf.format(-n, unit))
+  }
+
+  const [view, setView] = useState({ y: now.getFullYear(), m: now.getMonth() })
+  const monthFmt = new Intl.DateTimeFormat(locale, { month: 'long', year: 'numeric' })
+
+  const byDay = groupByDay(dates)
+  const matrix = monthMatrix(view.y, view.m)
+  const isThisMonth = sameMonth(new Date(view.y, view.m, 1), now)
+
+  const cells = matrix.map((day, i) => {
+    if (!day) return <span key={i} className="block aspect-square" />
+
+    const hits = byDay[dayKey(day)] || []
+    const n = hits.length
+    const editable = isEditableDay(day, now)
+    const isToday = dayKey(day) === dayKey(now)
+    const tint = n
+      ? { backgroundColor: accent, opacity: n > 1 ? 1 : 0.62, color: '#fff' }
+      : { backgroundColor: '#f5f3ef', color: '#a39b8d' }
+    const label = `${shortFmt.format(day)}${n ? ` ×${n}` : ''}`
+
+    const base = `block w-full aspect-square rounded-md text-[0.6rem] leading-none flex items-center justify-center tabular-nums ${
+      isToday ? 'ring-1 ring-inset' : ''
+    }`
+    const ring = isToday ? { boxShadow: `inset 0 0 0 1px ${accent}` } : null
+
+    if (editing && editable) {
+      return (
+        <button
+          key={i}
+          type="button"
+          // Empty day adds a prep; a day that already has some removes the most
+          // recent one, so tapping N times clears a day prepped N times.
+          onClick={() => n
+            ? onRemovePrep(hits[0].id)
+            : onAddPrepOn(recipe, day.getFullYear(), day.getMonth(), day.getDate())}
+          title={label}
+          aria-label={label}
+          className={`${base} border-0 p-0 appearance-none cursor-pointer transition-transform hover:scale-110 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1`}
+          style={{ ...tint, ...ring, outlineColor: accent }}
+        >
+          {day.getDate()}
+        </button>
+      )
+    }
+    return (
+      <span
+        key={i}
+        title={label}
+        className={`${base} ${editing ? 'opacity-40' : ''}`}
+        style={{ ...tint, ...ring }}
+      >
+        {day.getDate()}
+      </span>
+    )
+  })
+
+  const dows = language === 'en'
+    ? ['S', 'M', 'T', 'W', 'T', 'F', 'S']
+    : ['א', 'ב', 'ג', 'ד', 'ה', 'ו', 'ש']
+
+  const go = (delta) => setView(v => stepMonth(v, delta, now))
+  // "Older" and "newer" are laid out by reading order, so the icons flip with
+  // the language while the meaning of each side stays put.
+  const OlderIcon = isRtlLang ? ChevronRight : ChevronLeft
+  const NewerIcon = isRtlLang ? ChevronLeft : ChevronRight
+
+  return (
+    <div
+      aria-hidden={!open}
+      // Physical side, not logical: the drawer sits in the page margin on the
+      // reading-end side — left in Hebrew, right in English. Explicit left/
+      // right avoids the logical-inset ambiguity once the element sets its own
+      // direction.
+      className={`hidden xl:block absolute top-0 w-60 transition-all duration-300 ease-out ${
+        open ? 'opacity-100' : 'opacity-0 pointer-events-none'
+      }`}
+      style={{
+        direction: isRtlLang ? 'rtl' : 'ltr',
+        ...(isRtlLang
+          ? { right: '100%', marginRight: '0.75rem' }
+          : { left: '100%', marginLeft: '0.75rem' })
+      }}
+    >
+      <div className="bg-white rounded-3xl border border-border/60 shadow-sm p-5">
+        <div className="flex items-center gap-2 mb-4">
+          <IconChip icon={CalendarDays} accent={accent} size={7} />
+          <h2 className="text-sm font-semibold text-ink flex-1 whitespace-nowrap">
+            {language === 'en' ? 'Cook history' : 'היסטוריית הכנות'}
+          </h2>
+          {canEdit && (
+            <button
+              type="button"
+              onClick={() => setEditing(v => !v)}
+              aria-pressed={editing}
+              title={editing
+                ? (language === 'en' ? 'Done' : 'סיום')
+                : (language === 'en' ? 'Edit history' : 'עריכת ההיסטוריה')}
+              className={`p-1 rounded-lg transition-colors ${
+                editing ? 'text-brand-dark bg-cream-dark' : 'text-faint hover:text-brand-dark hover:bg-cream-dark'
+              }`}
+            >
+              {editing ? <Check className="w-3.5 h-3.5" /> : <Pencil className="w-3.5 h-3.5" />}
+            </button>
+          )}
+        </div>
+
+        {/* Empty state gives way to the grid in edit mode — otherwise there is
+            nothing to tap to log the first prep. */}
+        {dates.length === 0 && !editing ? (
+          <p className="text-xs text-faint leading-relaxed">
+            {language === 'en'
+              ? 'No preps logged yet. Hit the chef hat when you make this.'
+              : 'עוד לא נרשמו הכנות. לחץ על כובע השף כשתכין את זה.'}
+          </p>
+        ) : (
+          <>
+            {/* Month nav — the label names the month you are looking at, so the
+                grid is never an unlabelled block of squares. */}
+            <div className="flex items-center justify-between gap-1 mb-2">
+              <button
+                type="button"
+                onClick={() => go(-1)}
+                disabled={!canStep(view, -1, now)}
+                aria-label={language === 'en' ? 'Previous month' : 'החודש הקודם'}
+                className="p-1 rounded-lg text-faint hover:text-brand-dark hover:bg-cream-dark disabled:opacity-25 disabled:hover:bg-transparent disabled:hover:text-faint transition-colors"
+              >
+                <OlderIcon className="w-3.5 h-3.5" />
+              </button>
+              <span className="text-[0.7rem] font-medium text-ink text-center flex-1">
+                {monthFmt.format(new Date(view.y, view.m, 1))}
+              </span>
+              <button
+                type="button"
+                onClick={() => go(1)}
+                disabled={!canStep(view, 1, now)}
+                aria-label={language === 'en' ? 'Next month' : 'החודש הבא'}
+                className="p-1 rounded-lg text-faint hover:text-brand-dark hover:bg-cream-dark disabled:opacity-25 disabled:hover:bg-transparent disabled:hover:text-faint transition-colors"
+              >
+                <NewerIcon className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-7 gap-[3px]">
+              {dows.map((d, i) => (
+                <span key={i} className="text-[0.55rem] text-fainter text-center leading-none pb-1">{d}</span>
+              ))}
+              {cells}
+            </div>
+
+            {!isThisMonth && (
+              <button
+                type="button"
+                onClick={() => setView({ y: now.getFullYear(), m: now.getMonth() })}
+                className="mt-2 text-[0.65rem] text-muted hover:text-brand-dark transition-colors"
+              >
+                {language === 'en' ? 'Back to this month' : 'חזרה לחודש הנוכחי'}
+              </button>
+            )}
+
+            {/* Total lives here rather than in the header: it kept the title
+                wrapping to two lines, and down here the label makes clear it
+                counts every prep, not the month on screen. */}
+            {dates.length > 0 && (
+              <div className="mt-3 pt-2.5 border-t border-border/50 flex items-baseline justify-between gap-2">
+                <span className="text-[0.65rem] text-faint">
+                  {language === 'en' ? 'Made in total' : 'סך הכל'}
+                </span>
+                <span dir="ltr" className="text-xs font-semibold" style={{ color: accent }}>
+                  ×{dates.length}
+                </span>
+              </div>
+            )}
+
+            {editing ? (
+              <p className="mt-3 text-[0.65rem] text-faint leading-relaxed">
+                {language === 'en'
+                  ? 'Tap a day to add a prep. Tap a day you already cooked to remove its latest one.'
+                  : 'לחץ על יום כדי להוסיף הכנה. לחץ על יום שכבר בישלת בו כדי להסיר את ההכנה האחרונה שלו.'}
+              </p>
+            ) : (
+              dates.length > 0 && (
+                <div className="mt-2.5 grid gap-2">
+                  {recentDays(dates, 3).map((d) => (
+                    <div key={d.key} className="flex justify-between gap-2 text-xs">
+                      <span className="text-ink/85">{dayFmt.format(new Date(d.at))}</span>
+                      <span className="text-faint whitespace-nowrap">{relative(d.at)}</span>
+                    </div>
+                  ))}
+                </div>
+              )
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function IngredientsCard({ recipe, language, accent, checked, toggle, clearAll }) {
   return (
     <div className="lg:col-span-2">
@@ -157,11 +375,12 @@ function InstructionsCard({ recipe, language, isRtl, accent }) {
   )
 }
 
-export function RecipeDetail({ recipe, language = 'en', apiBase = '/api', onBack, onEdit, onDelete, onMarkMade, cookCount = 0, likeCount = 0, isLiked = false, onToggleLike, onDuplicate, onSelectAuthor, userCategories = [], currentRecipeCategories = [], onToggleRecipeCategory, onCreateCategory }) {
+export function RecipeDetail({ recipe, language = 'en', onBack, onEdit, onDelete, onMarkMade, cookCount = 0, cookDates = [], onAddPrepOn, onRemovePrep, likeCount = 0, isLiked = false, onToggleLike, onDuplicate, onSelectAuthor, userCategories = [], currentRecipeCategories = [], onToggleRecipeCategory, onCreateCategory }) {
   const isRtl = language === 'he'
   const [showQR, setShowQR] = useState(false)
   const [copied, setCopied] = useState(false)
   const [marked, setMarked] = useState(false)
+  const [showHistory, setShowHistory] = useState(false)
   const { checked, toggle, clearAll } = useCheckedIngredients(recipe.id)
 
   const handleMarkMade = () => {
@@ -230,14 +449,43 @@ export function RecipeDetail({ recipe, language = 'en', apiBase = '/api', onBack
               onCreateCategory={onCreateCategory}
             />
           )}
+          {/* Sits between Saved and Edit. xl-only: below that there is no
+              margin for the panel to open into. */}
+          {onMarkMade && (
+            <button
+              onClick={() => setShowHistory(v => !v)}
+              aria-pressed={showHistory}
+              dir="ltr"
+              className={`hidden xl:flex items-center gap-2 px-3 py-2 text-sm rounded-xl transition-colors ${
+                showHistory ? 'bg-cream-dark text-brand-dark' : 'text-muted hover:text-brand hover:bg-cream'
+              }`}
+            >
+              <CalendarDays className="w-4 h-4" />
+              <span>History</span>
+            </button>
+          )}
           {onDuplicate && <ToolbarButton icon={Copy} label="Dupe" onClick={() => onDuplicate(recipe)} />}
           {onEdit && <ToolbarButton icon={Pencil} label="Edit" onClick={() => onEdit(recipe)} />}
           {onDelete && <ToolbarButton icon={Trash2} label="Delete" onClick={() => onDelete(recipe)} danger />}
         </div>
       </div>
 
+      {/* Wrapper exists only to anchor the history drawer level with the header
+          card — the card itself clips (overflow-hidden for the marbled spine). */}
+      <div className="relative mb-3">
+      {onMarkMade && (
+        <CookHistoryDrawer
+          dates={cookDates}
+          language={language}
+          accent={accent}
+          open={showHistory}
+          recipe={recipe}
+          onAddPrepOn={onAddPrepOn}
+          onRemovePrep={onRemovePrep}
+        />
+      )}
       {/* Recipe Header Card — marbled left spine blends the category colors (matches the cards) */}
-      <div className="relative bg-white rounded-3xl border border-border/60 shadow-sm overflow-hidden mb-3">
+      <div className="relative bg-white rounded-3xl border border-border/60 shadow-sm overflow-hidden">
         <MarbleSpine colors={spineColors} id={recipe.id} />
         <div className="p-6 sm:p-8">
           <div className="flex items-start justify-between gap-4 mb-4 w-full">
@@ -314,6 +562,7 @@ export function RecipeDetail({ recipe, language = 'en', apiBase = '/api', onBack
             )}
           </div>
         </div>
+      </div>
       </div>
 
       {/* Content Grid */}

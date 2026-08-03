@@ -37,7 +37,41 @@ export function currentUserIdSync() {
 export function writeCache(key, value) {
   const entry = { value, ts: Date.now() }
   mem.set(key, entry)
-  try { localStorage.setItem(PREFIX + key, JSON.stringify(entry)) } catch { /* quota/full */ }
+  const json = JSON.stringify(entry)
+  try {
+    localStorage.setItem(PREFIX + key, json)
+  } catch {
+    // Quota full. Everything under our prefix is re-fetchable, and our own
+    // stale entries are the likeliest hog, so purge the namespace and retry
+    // once. If it still fails, the in-memory copy keeps this session working —
+    // we just lose persistence, silently but no longer invisibly (the purge is
+    // the signal). Without this, a full quota degrades the app permanently.
+    purgeNamespace()
+    try { localStorage.setItem(PREFIX + key, json) } catch { /* mem holds it */ }
+  }
+}
+
+function purgeNamespace() {
+  try {
+    Object.keys(localStorage).forEach(k => { if (k.startsWith(PREFIX)) localStorage.removeItem(k) })
+  } catch { /* ignore */ }
+}
+
+// Drop cache entries left behind by a schema/key-version bump (e.g. the old
+// `cookstats2:`/`cookstats3:` shapes superseded by `cookstats4:`). Nothing
+// reads them, but they sit in every user's localStorage until logout and eat
+// quota. Call once at startup with the obsolete key prefixes.
+export function purgeCacheVersions(prefixes) {
+  try {
+    Object.keys(localStorage).forEach(k => {
+      if (!k.startsWith(PREFIX)) return
+      const key = k.slice(PREFIX.length)
+      if (prefixes.some(p => key.startsWith(p))) {
+        localStorage.removeItem(k)
+        mem.delete(key)
+      }
+    })
+  } catch { /* ignore */ }
 }
 
 export function invalidate(key) {

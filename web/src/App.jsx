@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { createPortal, flushSync } from 'react-dom'
 import { BookOpen, Plus, Search, Filter, X, Link as LinkIcon, User as UserIcon, ChevronLeft, ChevronRight, Heart, RotateCcw, Pencil, Menu, Settings, LogOut, Check, Trash2, Sparkles, AtSign, ChefHat } from 'lucide-react'
 import { RecipeCard, RecipeCardSkeleton } from './components/RecipeCard'
@@ -6,14 +6,16 @@ import { CATEGORY_PALETTE } from './utils/categoryColor'
 import { RecipeDetail } from './components/RecipeDetail'
 import { RecipeForm } from './components/RecipeForm'
 import { UserProfile } from './components/UserProfile'
+import { FollowListModal } from './components/FollowListModal'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import Login from './components/Login'
 import { supabase, supabaseUrl, supabaseKey } from './supabaseClient'
-import { swr, invalidate, clearCache, peekCache, currentUserIdSync } from './utils/cache'
+import { swr, invalidate, clearCache, peekCache, currentUserIdSync, purgeCacheVersions } from './utils/cache'
 import { getToken } from './utils/auth'
 import { formatRecipe } from './utils/formatRecipe'
 import { useWheelScroll } from './utils/useWheelScroll'
 import { useOutsideClick } from './utils/useOutsideClick'
+import { deriveCookStats } from './utils/cookStats'
 
 // Cached own-recipes for the stored session, read synchronously so they paint
 // on the first render (no skeleton flash on reload).
@@ -27,21 +29,16 @@ function seedUserCategories() {
   return uid ? (peekCache(`categories:${uid}`) || []) : []
 }
 
-// cookstats cache = { counts: {recipeId: n}, last: {recipeId: isoDate} }
-function seedCookCounts() {
+// cookstats cache = the raw cook_logs rows: [{ id, recipe: recipeId, at: isoDate }].
+// Counts, per-recipe dates, last-cooked and the week tally are all derived from
+// this one array (see deriveCookStats) instead of being stored four times over.
+// Deriving also means the "this week" figure is recomputed on render rather than
+// frozen into the cache, so it cannot go stale as days pass.
+function seedCookLogs() {
   const uid = currentUserIdSync()
-  return uid ? (peekCache(`cookstats2:${uid}`)?.counts || {}) : {}
+  return uid ? (peekCache(`cookstats4:${uid}`) || []) : []
 }
 
-function seedLastCooked() {
-  const uid = currentUserIdSync()
-  return uid ? (peekCache(`cookstats2:${uid}`)?.last || {}) : {}
-}
-
-function seedWeekCooks() {
-  const uid = currentUserIdSync()
-  return uid ? (peekCache(`cookstats2:${uid}`)?.week || 0) : 0
-}
 import './global.css'
 
 // API configuration: uses environment variable in production, /api proxy in dev
@@ -60,6 +57,11 @@ function App() {
   const [topLikedRecipes, setTopLikedRecipes] = useState([])
   const [recipeLikeCount, setRecipeLikeCount] = useState(0)
   const [recipeIsLiked, setRecipeIsLiked] = useState(false)
+  const [profileFollowerCount, setProfileFollowerCount] = useState(0)
+  const [profileFollowingCount, setProfileFollowingCount] = useState(0)
+  const [profileIsFollowed, setProfileIsFollowed] = useState(false)
+  const [followList, setFollowList] = useState(null) // { profileId, mode } while the follow-list modal is open
+  const followInFlightRef = useRef(false) // one follow/unfollow request at a time — see handleToggleFollow
   const [language, setLanguage] = useState(() => localStorage.getItem('language') || 'he')
   const [viewMode, setViewMode] = useState(() => {
     const params = new URLSearchParams(window.location.search)
@@ -87,9 +89,11 @@ function App() {
   const [viewingProfile, setViewingProfile] = useState(null)
   const likedRecipesCarouselRef = useRef(null)
   const [hoveringCarousel, setHoveringCarousel] = useState(false)
-  const [cookCounts, setCookCounts] = useState(seedCookCounts)
-  const [lastCooked, setLastCooked] = useState(seedLastCooked) // recipeId -> most recent cooked_at
-  const [weekCooks, setWeekCooks] = useState(seedWeekCooks) // cook_logs rows in the last 7 days (greeting stat)
+  // Single source of truth for prep history; everything below is a view of it,
+  // so an optimistic edit is one splice rather than four setStates.
+  const [cookLogs, setCookLogs] = useState(seedCookLogs)
+  const { counts: cookCounts, dates: cookDates, last: lastCooked, week: weekCooks } =
+    useMemo(() => deriveCookStats(cookLogs), [cookLogs])
   const [carouselLoading, setCarouselLoading] = useState(true)
   const [globalQuery, setGlobalQuery] = useState('')
   const [globalResults, setGlobalResults] = useState({ users: [], recipes: [] })
@@ -210,6 +214,10 @@ function App() {
     const t = setTimeout(() => setSaveSuccess(null), 3000)
     return () => clearTimeout(t)
   }, [saveSuccess])
+
+  // One-time cleanup of superseded cache versions (cook-stats key bumps left
+  // orphans in localStorage that only logout cleared). Runs once on mount.
+  useEffect(() => { purgeCacheVersions(['cookstats2:', 'cookstats3:']) }, [])
 
   // Check auth status on mount
   useEffect(() => {
@@ -411,35 +419,39 @@ function App() {
   // Fetch public recipes for home page when not logged in
   const fetchCookCounts = async (force = false) => {
     if (!user) return
-    const cacheKey = `cookstats2:${user.id}`
+    const cacheKey = `cookstats4:${user.id}`
     if (force) invalidate(cacheKey)
     try {
-      // ttl 10min — feeds the "Most Prepped" hero (counts + last-made dates).
-      // Invalidated on mark-made and cook-count edits.
+      // ttl 10min — feeds the "Most Prepped" hero, the greeting stat, and the
+      // cook-history drawer. Prep edits update state directly and only invalidate
+      // the cache, so this refetch is for fresh mounts, not for every tap.
       await swr(cacheKey, async () => {
         const token = await getToken();
+        // id comes along so the history drawer can delete an individual prep.
         const res = await fetch(
-          `${supabaseUrl}/rest/v1/cook_logs?user_id=eq.${user.id}&select=recipe_id,cooked_at`,
+          `${supabaseUrl}/rest/v1/cook_logs?user_id=eq.${user.id}&select=id,recipe_id,cooked_at`,
           { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${token}` } }
         );
         if (!res.ok) throw new Error(`API error: ${res.status}`);
         const data = await res.json();
-        const counts = {}, last = {};
-        let week = 0;
-        const weekAgo = Date.now() - 7 * 86400000;
-        for (const row of data) {
-          counts[row.recipe_id] = (counts[row.recipe_id] || 0) + 1;
-          if (!last[row.recipe_id] || row.cooked_at > last[row.recipe_id]) last[row.recipe_id] = row.cooked_at;
-          if (new Date(row.cooked_at) > weekAgo) week++;
-        }
-        return { counts, last, week };
-      }, ({ counts, last, week }) => { setCookCounts(counts); setLastCooked(last); setWeekCooks(week || 0) }, 10 * 60 * 1000)
+        return data.map(r => ({ id: r.id, recipe: r.recipe_id, at: r.cooked_at }));
+      }, setCookLogs, 10 * 60 * 1000)
     } catch (err) {
       console.error('[Data] Failed to fetch cook counts:', err.message);
     }
   };
 
-  const handleMarkMade = async (recipe) => {
+  // --- prep writes -------------------------------------------------------
+  // All three paint first and reconcile after. The row goes into local state
+  // immediately, the request follows, and a failure puts the row back. Nothing
+  // refetches on success — the cache is invalidated so the next mount is fresh,
+  // but tapping never waits on a round trip.
+
+  // Insert one cook_logs row. `at` omitted means now (the chef-hat button).
+  const insertPrep = async (recipe, at) => {
+    const tempId = `tmp-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    const optimistic = { id: tempId, recipe: recipe.id, at: (at || new Date()).toISOString() }
+    setCookLogs(prev => [...prev, optimistic])
     try {
       const token = await getToken();
       const res = await fetch(`${supabaseUrl}/rest/v1/cook_logs`, {
@@ -448,44 +460,57 @@ function App() {
           'apikey': supabaseKey,
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
-          'Prefer': 'return=minimal'
+          // representation, not minimal: we need the real row id back so a prep
+          // added and then removed in the same sitting deletes the right row.
+          'Prefer': 'return=representation'
         },
-        body: JSON.stringify({ user_id: user.id, recipe_id: recipe.id })
+        body: JSON.stringify({
+          user_id: user.id,
+          recipe_id: recipe.id,
+          ...(at ? { cooked_at: at.toISOString() } : {})
+        })
       });
       if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
-      fetchCookCounts(true);
+      const [saved] = await res.json();
+      setCookLogs(prev => prev.map(r => r.id === tempId
+        ? { id: saved.id, recipe: saved.recipe_id, at: saved.cooked_at }
+        : r));
+      invalidate(`cookstats4:${user.id}`);
     } catch (err) {
+      setCookLogs(prev => prev.filter(r => r.id !== tempId));
       console.error('[Data] Failed to log cook:', err.message);
       setSaveError({ message: language === 'en' ? 'Failed to log cook' : 'רישום ההכנה נכשל' });
     }
   };
 
-  // Applies the stepper's net change on save: +N inserts N cook logs in one
-  // request, -N deletes the N most recent ones
-  const applyCookCountDelta = async (recipeId, delta) => {
-    if (!delta) return
-    const token = await getToken();
-    const headers = { 'apikey': supabaseKey, 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' };
+  const handleMarkMade = (recipe) => insertPrep(recipe);
 
-    if (delta > 0) {
-      const rows = Array.from({ length: delta }, () => ({ user_id: user.id, recipe_id: recipeId }));
-      const res = await fetch(`${supabaseUrl}/rest/v1/cook_logs`, {
-        method: 'POST',
-        headers: { ...headers, 'Prefer': 'return=minimal' },
-        body: JSON.stringify(rows)
+  // Backdated prep from the history drawer. Noon local, not midnight: the grid
+  // buckets by local date, and a midnight timestamp can shift to the previous
+  // day once it round-trips through UTC.
+  const handleAddPrepOn = (recipe, y, m, d) => insertPrep(recipe, new Date(y, m, d, 12, 0, 0));
+
+  const handleRemovePrep = async (logId) => {
+    // A row still mid-insert has no server id yet — nothing to delete.
+    if (String(logId).startsWith('tmp-')) return
+    let removed
+    setCookLogs(prev => {
+      removed = prev.find(r => r.id === logId)
+      return prev.filter(r => r.id !== logId)
+    })
+    try {
+      const token = await getToken();
+      const res = await fetch(`${supabaseUrl}/rest/v1/cook_logs?id=eq.${encodeURIComponent(logId)}`, {
+        method: 'DELETE',
+        headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${token}` }
       });
       if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
-    } else {
-      const res = await fetch(
-        `${supabaseUrl}/rest/v1/cook_logs?user_id=eq.${user.id}&recipe_id=eq.${recipeId}&select=id&order=cooked_at.desc&limit=${-delta}`,
-        { headers }
-      );
-      const ids = ((await res.json()) || []).map(r => r.id);
-      if (ids.length === 0) return;
-      const delRes = await fetch(`${supabaseUrl}/rest/v1/cook_logs?id=in.(${ids.join(',')})`, { method: 'DELETE', headers });
-      if (!delRes.ok) throw new Error(`${delRes.status} ${await delRes.text()}`);
+      invalidate(`cookstats4:${user.id}`);
+    } catch (err) {
+      if (removed) setCookLogs(prev => [...prev, removed]);
+      console.error('[Data] Failed to remove prep:', err.message);
+      setSaveError({ message: language === 'en' ? 'Failed to remove prep' : 'הסרת ההכנה נכשלה' });
     }
-    fetchCookCounts(true);
   };
 
   const fetchTopLikedRecipes = async (force = false) => {
@@ -607,6 +632,70 @@ function App() {
       setRecipeLikeCount(c => wasLiked ? c + 1 : c - 1)
       console.error('[Data] Like toggle failed:', err.message)
       setSaveError({ message: language === 'en' ? 'Failed to update like' : 'עדכון הלייק נכשל' })
+    }
+  }
+
+  // Read follower/following counts + whether the current user follows this profile.
+  const fetchFollowStats = async (profileId) => {
+    const headers = { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` }
+    const countOf = async (query) => {
+      const res = await fetch(`${supabaseUrl}/rest/v1/followers?${query}&select=follower_id`,
+        { method: 'HEAD', headers: { ...headers, 'Prefer': 'count=exact' } })
+      // content-range is "0-24/137" (or "*/137" when empty) — count is after the slash
+      return parseInt(res.headers.get('content-range')?.split('/')[1] || '0', 10)
+    }
+    try {
+      const [followers, following] = await Promise.all([
+        countOf(`following_id=eq.${profileId}`),
+        countOf(`follower_id=eq.${profileId}`),
+      ])
+      setProfileFollowerCount(followers)
+      setProfileFollowingCount(following)
+      if (user) {
+        const res = await fetch(
+          `${supabaseUrl}/rest/v1/followers?follower_id=eq.${user.id}&following_id=eq.${profileId}&select=following_id`,
+          { headers })
+        setProfileIsFollowed(res.ok ? (await res.json()).length > 0 : false)
+      } else {
+        setProfileIsFollowed(false)
+      }
+    } catch (err) {
+      console.error('[Data] Failed to fetch follow stats:', err.message)
+    }
+  }
+
+  const handleToggleFollow = async (profileId) => {
+    if (!user || profileId === user.id) return
+    // Ignore new clicks while a request is in flight — prevents racing POST/DELETE
+    // pairs that desync the DB and drift the follower count.
+    if (followInFlightRef.current) return
+    followInFlightRef.current = true
+    const wasFollowed = profileIsFollowed
+    setProfileIsFollowed(!wasFollowed)
+    setProfileFollowerCount(c => wasFollowed ? c - 1 : c + 1)
+    try {
+      const token = await getToken();
+      if (wasFollowed) {
+        const res = await fetch(
+          `${supabaseUrl}/rest/v1/followers?follower_id=eq.${user.id}&following_id=eq.${profileId}`,
+          { method: 'DELETE', headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${token}` } }
+        )
+        if (!res.ok) throw new Error(await res.text())
+      } else {
+        const res = await fetch(`${supabaseUrl}/rest/v1/followers`, {
+          method: 'POST',
+          headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+          body: JSON.stringify({ follower_id: user.id, following_id: profileId })
+        })
+        if (!res.ok) throw new Error(await res.text())
+      }
+    } catch (err) {
+      setProfileIsFollowed(wasFollowed)
+      setProfileFollowerCount(c => wasFollowed ? c + 1 : c - 1)
+      console.error('[Data] Follow toggle failed:', err.message)
+      setSaveError({ message: language === 'en' ? 'Failed to update follow' : 'עדכון המעקב נכשל' })
+    } finally {
+      followInFlightRef.current = false
     }
   }
 
@@ -926,12 +1015,14 @@ function App() {
           if (!res.ok) {
             console.warn('[Data] Profile not found:', profileId);
             window.history.replaceState({}, '', window.location.pathname);
+            setViewMode('home');
             return null;
           }
           return res.json();
         })
         .then(data => {
-          if (!data || data.length === 0) return;
+          // PostgREST answers an unknown handle with 200 [], not 404 — fall back home
+          if (!data || data.length === 0) { window.history.replaceState({}, '', window.location.pathname); setViewMode('home'); return; }
           const profile = data[0];
           if (user && profile.id === user.id) {
             setViewingProfile(null);
@@ -943,6 +1034,7 @@ function App() {
         .catch(err => {
           console.warn('[Data] Error loading profile from URL:', err.message);
           window.history.replaceState({}, '', window.location.pathname);
+          setViewMode('home');
         });
       return; // Don't process recipe parameters if viewing a profile
     }
@@ -973,6 +1065,17 @@ function App() {
       }
     }
   }, [selectedRecipe?.id])
+
+  // Load follower/following counts whenever a profile view opens (own or someone else's).
+  useEffect(() => {
+    if (viewMode !== 'profile') return
+    const profileId = viewingProfile?.id || user?.id
+    if (!profileId) return
+    setProfileFollowerCount(0)
+    setProfileFollowingCount(0)
+    setProfileIsFollowed(false)
+    fetchFollowStats(profileId)
+  }, [viewMode, viewingProfile?.id, user?.id])
 
   const navigateToProfile = async (userId) => {
     try {
@@ -1160,7 +1263,6 @@ function App() {
         );
         if (!res.ok) throw new Error(`Update failed: ${res.status} ${await res.text()}`);
         await syncRecipeCategories(editing.id, newRecipe.categoryIds, userToken)
-        await applyCookCountDelta(editing.id, newRecipe.cookCountDelta)
       } else {
         const res = await fetch(
           `${supabaseUrl}/rest/v1/recipes`,
@@ -1747,8 +1849,9 @@ function App() {
                 const [top, ...runners] = mostPrepped;
                 // "last made 3 days ago" — Intl handles the wording in both languages
                 let lastMade = null;
-                if (lastCooked[top.id]) {
-                  const days = Math.max(0, Math.floor((Date.now() - new Date(lastCooked[top.id])) / 86400000));
+                const lastMadeTs = lastCooked[top.id] ? new Date(lastCooked[top.id]).getTime() : NaN;
+                if (Number.isFinite(lastMadeTs)) {
+                  const days = Math.max(0, Math.floor((Date.now() - lastMadeTs) / 86400000));
                   lastMade = new Intl.RelativeTimeFormat(language === 'he' ? 'he' : 'en', { numeric: 'auto' }).format(-days, 'day');
                 }
 
@@ -1847,6 +1950,11 @@ function App() {
             onRenameCategory={handleRenameCategory}
             onRecolorCategory={handleRecolorCategory}
             onHandleChange={setUserHandle}
+            followerCount={profileFollowerCount}
+            followingCount={profileFollowingCount}
+            isFollowed={profileIsFollowed}
+            onToggleFollow={user ? handleToggleFollow : undefined}
+            onOpenFollowList={(mode) => setFollowList({ profileId: viewingProfile?.id || user?.id, mode })}
             openSettings={openProfileSettings}
             onSettingsOpened={() => setOpenProfileSettings(false)}
             onError={(message) => setSaveError({ message })}
@@ -1907,6 +2015,9 @@ function App() {
               onDelete={user ? handleDeleteRecipe : undefined}
               onMarkMade={user ? handleMarkMade : undefined}
               cookCount={cookCounts[selectedRecipe?.id] || 0}
+              cookDates={cookDates[selectedRecipe?.id] || []}
+              onAddPrepOn={user ? handleAddPrepOn : undefined}
+              onRemovePrep={user ? handleRemovePrep : undefined}
               likeCount={recipeLikeCount}
               isLiked={recipeIsLiked}
               onToggleLike={user ? handleToggleLike : undefined}
@@ -1938,11 +2049,20 @@ function App() {
                 userCategories={userCategories}
                 currentCategoryIds={recipeCategories[editingRecipe?.id] || []}
                 onCreateCategory={handleCreateCategory}
-                cookCount={cookCounts[editingRecipe?.id] || 0}
               />
             </div>
           </div>
         </>
+      )}
+
+      {followList && (
+        <FollowListModal
+          profileId={followList.profileId}
+          mode={followList.mode}
+          language={language}
+          onClose={() => setFollowList(null)}
+          onNavigate={(u) => navigateToProfile(u.id)}
+        />
       )}
 
       {/* URL Import Modal - Rendered at App level for full-screen overlay */}

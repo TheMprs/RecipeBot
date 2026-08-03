@@ -1,4 +1,4 @@
-import { User, BookOpen, Search, Filter, X, Settings, Plus, ChevronLeft, ChevronRight, LogOut, Pencil, Trash2, Check, Globe, Lock, LayoutGrid } from 'lucide-react';
+import { User, BookOpen, Search, Filter, X, Settings, Plus, ChevronLeft, ChevronRight, LogOut, Pencil, Trash2, Check, Globe, Lock, LayoutGrid, UserPlus, UserCheck } from 'lucide-react';
 import { RecipeCard, RecipeCardSkeleton } from './RecipeCard';
 import { ConfirmDialog } from './ConfirmDialog';
 import { useState, useEffect, useLayoutEffect, useRef } from 'react';
@@ -34,6 +34,11 @@ export function UserProfile({
   onRenameCategory,
   onRecolorCategory,
   onHandleChange,
+  followerCount = 0,
+  followingCount = 0,
+  isFollowed = false,
+  onToggleFollow,
+  onOpenFollowList,
   openSettings = false,
   onSettingsOpened,
   onError,
@@ -301,6 +306,38 @@ export function UserProfile({
             <Settings className="w-5 h-5" />
           </button>
         )}
+        {/* Follow button — only on someone else's profile, when signed in.
+            Following state flips to a red "Unfollow" on hover via the `group`. */}
+        {!isOwnProfile && onToggleFollow && (
+          <button
+            onClick={() => onToggleFollow(viewingProfile.id)}
+            className={`group absolute top-4 right-4 inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-semibold shadow-sm ring-1 transition-all duration-200 active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-brand/50 ${
+              isFollowed
+                ? 'bg-white text-ink ring-border hover:bg-red-50 hover:text-red-600 hover:ring-red-200'
+                : 'bg-white text-brand-dark ring-border hover:bg-cream-dark hover:ring-muted/40'
+            }`}
+          >
+            {isFollowed ? (
+              // Both label/icon variants are stacked in one grid cell so the pill width
+              // stays fixed while the hover swaps Following <-> Unfollow.
+              <>
+                <span className="grid place-items-center">
+                  <UserCheck className="w-4 h-4 col-start-1 row-start-1 transition-opacity group-hover:opacity-0" />
+                  <X className="w-4 h-4 col-start-1 row-start-1 opacity-0 transition-opacity group-hover:opacity-100" />
+                </span>
+                <span className="grid place-items-center">
+                  <span className="col-start-1 row-start-1 transition-opacity group-hover:opacity-0">{language === 'en' ? 'Following' : 'עוקב'}</span>
+                  <span className="col-start-1 row-start-1 opacity-0 transition-opacity group-hover:opacity-100">{language === 'en' ? 'Unfollow' : 'הסר'}</span>
+                </span>
+              </>
+            ) : (
+              <>
+                <UserPlus className="w-4 h-4" />
+                <span>{language === 'en' ? 'Follow' : 'עקוב'}</span>
+              </>
+            )}
+          </button>
+        )}
         {/* Header stays LTR in both languages — name/handle are English-only */}
         <div className="flex flex-row items-center sm:items-stretch gap-4 sm:gap-6" style={{ direction: 'ltr' }}>
           {/* Avatar */}
@@ -353,18 +390,18 @@ export function UserProfile({
                   {language === 'en' ? 'recipes' : 'מתכונים'}
                 </div>
               </div>
-              <div className="text-center">
-                <div className="text-lg sm:text-2xl font-bold text-brand leading-none">0</div>
+              <button type="button" onClick={() => onOpenFollowList?.('followers')} className="text-center hover:opacity-70 transition-opacity rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/40">
+                <div className="text-lg sm:text-2xl font-bold text-brand leading-none">{followerCount}</div>
                 <div className={`${isRtl ? 'text-xs' : 'text-[11px]'} text-muted mt-1`}>
                   {language === 'en' ? 'followers' : 'עוקבים'}
                 </div>
-              </div>
-              <div className="text-center">
-                <div className="text-lg sm:text-2xl font-bold text-brand leading-none">0</div>
+              </button>
+              <button type="button" onClick={() => onOpenFollowList?.('following')} className="text-center hover:opacity-70 transition-opacity rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/40">
+                <div className="text-lg sm:text-2xl font-bold text-brand leading-none">{followingCount}</div>
                 <div className={`${isRtl ? 'text-xs' : 'text-[11px]'} text-muted mt-1`}>
                   {language === 'en' ? 'following' : 'נעקבים'}
                 </div>
-              </div>
+              </button>
             </div>
           </div>
         </div>
