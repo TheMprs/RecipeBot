@@ -4,7 +4,8 @@ import assert from 'node:assert/strict'
 import {
   deriveCookStats, groupByDay, monthMatrix, dayKey, newestFirst,
   oldestAllowed, stepMonth, canStep, isEditableDay, sameMonth, recentDays,
-  stripDualNumeral, tidyRelative, HISTORY_MONTHS, monthsBetween, relativeUnit
+  stripDualNumeral, tidyRelative, HISTORY_MONTHS, monthsBetween, relativeUnit,
+  historyMonths, historyStats, timelineDays, HISTORY_PANEL_MONTHS
 } from './cookStats.js'
 
 const NOW = new Date('2026-07-29T12:00:00') // a Wednesday
@@ -226,5 +227,105 @@ const rows = (...specs) => specs.map(([recipe, when], i) => ({ id: i + 1, recipe
 
 assert.ok(sameMonth(new Date(2026, 6, 1), NOW))
 assert.ok(!sameMonth(new Date(2026, 5, 1), NOW))
+
+// --- historyMonths -------------------------------------------------------
+{
+  // always six calendars ending on the current month, whatever the account age
+  const { months } = historyMonths([], new Date('2026-07-15'), NOW)
+  assert.equal(months.length, HISTORY_PANEL_MONTHS)
+  assert.deepEqual(months.map(m => m.m), [3, 4, 5, 6], 'Apr through Jul, oldest first')
+  assert.equal(months.at(-1).first.getDate(), 1)
+  assert.equal(months[0].cells.length, 42, 'fixed height, same as the recipe drawer')
+}
+{
+  const { months, since } = historyMonths(
+    rows(['r1', '2026-07-24T18:00'], ['r1', '2026-07-24T21:00'], ['r2', '2026-07-16T08:00']),
+    new Date('2026-07-15T09:00'), NOW
+  )
+  const july = months.at(-1)
+  const cell = (d) => july.cells.find(c => c && c.date.getDate() === d)
+  assert.equal(cell(24).count, 2, 'two preps on one day stack into one tile')
+  assert.equal(cell(24).level, 2)
+  assert.equal(cell(16).count, 1)
+  assert.equal(cell(20).count, 0)
+  assert.equal(since.getDate(), 15)
+
+  // three states: lived-through, not-yet-signed-up, not-yet-happened
+  assert.equal(cell(16).inWindow, true)
+  assert.equal(cell(14).inWindow, false, 'before the account existed')
+  assert.equal(cell(31).inWindow, false, 'still to come')
+  // whole months before signup are drawn, just entirely out of window
+  assert.equal(months[0].cells.filter(c => c && c.inWindow).length, 0, 'February is all quiet')
+}
+{
+  // a log older than the account (backdated import) counts as inside the window
+  const { months, since } = historyMonths(rows(['r1', '2026-06-20T18:00']), new Date('2026-07-15'), NOW)
+  assert.equal(since.getMonth(), 5, 'window opens at the oldest log')
+  const june = months.find(m => m.m === 5)
+  assert.equal(june.cells.find(c => c && c.date.getDate() === 20).inWindow, true)
+  assert.equal(june.cells.find(c => c && c.date.getDate() === 19).inWindow, false)
+}
+{
+  // logs older than the six-month span simply have no calendar to land on
+  const { months } = historyMonths(rows(['r1', '2025-03-01T18:00']), new Date('2024-01-01'), NOW)
+  assert.equal(months.length, HISTORY_PANEL_MONTHS)
+  assert.equal(months.flatMap(m => m.cells).filter(c => c && c.count > 0).length, 0)
+}
+{
+  // no account date: nothing is greyed out, the six months just show the logs
+  const { months } = historyMonths(rows(['r1', '2026-05-04T18:00']), null, NOW)
+  assert.equal(months.find(m => m.m === 4).cells.find(c => c && c.date.getDate() === 4).inWindow, true)
+  assert.equal(months.at(-1).cells.find(c => c && c.date.getDate() === 31).inWindow, false, 'the future still is')
+}
+{
+  // level caps at 4 so one frantic day cannot invent a new colour
+  const many = Array.from({ length: 9 }, (_, i) => ({ id: i, recipe: 'r1', at: at('2026-07-27T10:00') }))
+  const day = historyMonths(many, new Date('2026-07-26'), NOW)
+    .months.at(-1).cells.find(c => c && c.date.getDate() === 27)
+  assert.equal(day.count, 9)
+  assert.equal(day.level, 4)
+}
+{
+  // the window spans a year boundary without losing a month
+  const { months } = historyMonths([], new Date('2025-01-01'), new Date('2026-02-10T12:00'))
+  assert.deepEqual(months.map(m => [m.y, m.m]),
+    [[2025, 10], [2025, 11], [2026, 0], [2026, 1]])
+}
+
+// --- historyStats --------------------------------------------------------
+{
+  const { month, all, busiestDay } = historyStats(rows(
+    ['r1', '2026-07-24T18:00'], // Friday
+    ['r2', '2026-07-17T18:00'], // Friday
+    ['r3', '2026-07-20T18:00'], // Monday
+    ['r4', '2026-05-02T18:00']  // outside the month window
+  ), NOW)
+  assert.equal(month, 3, 'last calendar month only')
+  assert.equal(all, 4)
+  assert.equal(busiestDay, 5, 'Friday')
+}
+{
+  const { month, all, busiestDay } = historyStats([], NOW)
+  assert.equal(month, 0); assert.equal(all, 0)
+  assert.equal(busiestDay, null, 'no busiest day with no logs — not a bogus Sunday')
+}
+
+// --- timelineDays --------------------------------------------------------
+{
+  const days = timelineDays(rows(
+    ['r1', '2026-07-29T09:00'],
+    ['r2', '2026-07-29T19:00'],
+    ['r3', '2026-07-27T12:00'],
+    ['r4', '2026-07-20T12:00']
+  ))
+  assert.equal(days.length, 3, 'grouped by day')
+  assert.equal(days[0].rows.length, 2, 'both of today\'s preps')
+  assert.equal(days[0].rows[0].at, at('2026-07-29T19:00'), 'newest prep first within a day')
+  assert.deepEqual(days.map(d => d.date.getDate()), [29, 27, 20], 'newest day first')
+  assert.equal(timelineDays(rows(
+    ['r1', '2026-07-29T09:00'], ['r2', '2026-07-27T09:00'], ['r3', '2026-07-25T09:00']
+  ), 2).length, 2, 'limit counts days, not rows')
+  assert.deepEqual(timelineDays([]), [])
+}
 
 console.log('cookStats: all checks passed')

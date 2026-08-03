@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef, useMemo } from 'react'
+﻿import { useState, useEffect, useRef, useMemo } from 'react'
 import { createPortal, flushSync } from 'react-dom'
-import { BookOpen, Plus, Search, Filter, X, Link as LinkIcon, User as UserIcon, ChevronLeft, ChevronRight, Heart, RotateCcw, Pencil, Menu, Settings, LogOut, Check, Trash2, Sparkles, AtSign, ChefHat } from 'lucide-react'
+import { BookOpen, Plus, Search, Filter, X, Link as LinkIcon, User as UserIcon, ChevronLeft, ChevronRight, Heart, RotateCcw, Pencil, Menu, Settings, LogOut, Check, Trash2, Sparkles, AtSign, ChefHat, AlignJustify } from 'lucide-react'
 import { RecipeCard, RecipeCardSkeleton } from './components/RecipeCard'
 import { CATEGORY_PALETTE } from './utils/categoryColor'
 import { RecipeDetail } from './components/RecipeDetail'
@@ -8,6 +8,7 @@ import { RecipeForm } from './components/RecipeForm'
 import { UserProfile } from './components/UserProfile'
 import { FollowListModal } from './components/FollowListModal'
 import { ConfirmDialog } from './components/ConfirmDialog'
+import { ScrollToTop } from './components/ScrollToTop'
 import Login from './components/Login'
 import { supabase, supabaseUrl, supabaseKey } from './supabaseClient'
 import { swr, invalidate, clearCache, peekCache, currentUserIdSync, purgeCacheVersions } from './utils/cache'
@@ -15,7 +16,35 @@ import { getToken } from './utils/auth'
 import { formatRecipe } from './utils/formatRecipe'
 import { useWheelScroll } from './utils/useWheelScroll'
 import { useOutsideClick } from './utils/useOutsideClick'
-import { deriveCookStats } from './utils/cookStats'
+import { deriveCookStats, historyMonths, historyStats, timelineDays, groupByDay, dayKey } from './utils/cookStats'
+
+// Heatmap tints, index = cell level (0 = nothing cooked). Tailwind needs the
+// class names spelled out, so these are literals rather than a computed opacity.
+const HEAT_LEVELS = [
+  'bg-[#edeae3]', 'bg-[#f7dcc2]', 'bg-[#f0b981]', 'bg-[#e6934a]', 'bg-[#cf711f]'
+]
+
+// Sun-first column headers for the little month calendars. Intl knows the
+// narrow forms in both languages; 2026-02-01 is a Sunday, so the offset is the
+// weekday index. Memoised per locale — this runs once per month block.
+const WEEKDAY_INITIALS = (() => {
+  const cache = {}
+  return (locale) => (cache[locale] ||= Array.from({ length: 7 }, (_, i) =>
+    new Date(2026, 1, 1 + i).toLocaleDateString(locale, { weekday: 'narrow' })))
+})()
+
+// Same recipe cooked twice in one evening is one line with a ×2, not two lines.
+function collapseByRecipe(rows) {
+  const out = []
+  const seen = {}
+  for (const row of rows) {
+    const hit = seen[row.recipe]
+    if (hit) { hit.count++; continue }
+    seen[row.recipe] = { ...row, count: 1 }
+    out.push(seen[row.recipe])
+  }
+  return out
+}
 
 // Cached own-recipes for the stored session, read synchronously so they paint
 // on the first render (no skeleton flash on reload).
@@ -94,6 +123,31 @@ function App() {
   const [cookLogs, setCookLogs] = useState(seedCookLogs)
   const { counts: cookCounts, dates: cookDates, last: lastCooked, week: weekCooks } =
     useMemo(() => deriveCookStats(cookLogs), [cookLogs])
+  // Cooking-history panel: the last 6 months as small calendars, floored at the
+  // account's creation month so a new account shows two, not six with four empty.
+  const accountCreated = user?.created_at
+  const cookYear = useMemo(() => historyMonths(cookLogs, accountCreated), [cookLogs, accountCreated])
+  const cookTotals = useMemo(() => historyStats(cookLogs), [cookLogs])
+  const [historyDayCount, setHistoryDayCount] = useState(4)
+  // A day picked in the calendars; the timeline below narrows to it. dayKey, not
+  // a Date, so it survives re-renders without identity games.
+  const [selectedDay, setSelectedDay] = useState(null)
+  const timelineRef = useRef(null)
+  // On a phone the calendars stack, so the timeline is usually below the fold —
+  // without this a tap on a date looks like it did nothing.
+  useEffect(() => {
+    if (selectedDay) timelineRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  }, [selectedDay])
+  // Leaving home resets the panel: coming back to a page-3 timeline (or a day
+  // you drilled into ten minutes ago) reads as the app having lost its place.
+  useEffect(() => {
+    if (viewMode !== 'home') {
+      setHistoryDayCount(4)
+      setSelectedDay(null)
+    }
+  }, [viewMode])
+  const historyTimeline = useMemo(
+    () => timelineDays(cookLogs, historyDayCount), [cookLogs, historyDayCount])
   const [carouselLoading, setCarouselLoading] = useState(true)
   const [globalQuery, setGlobalQuery] = useState('')
   const [globalResults, setGlobalResults] = useState({ users: [], recipes: [] })
@@ -1855,6 +1909,41 @@ function App() {
                   lastMade = new Intl.RelativeTimeFormat(language === 'he' ? 'he' : 'en', { numeric: 'auto' }).format(-days, 'day');
                 }
 
+                // --- cooking-year + timeline labels ---
+                const locale = language === 'he' ? 'he-IL' : 'en-US';
+                const recipeById = Object.fromEntries(recipes.map(r => [r.id, r]));
+                // A day picked in the calendars replaces the timeline's paged list.
+                // Falls back to the list if the day's last prep was just removed.
+                const pickedRows = selectedDay ? groupByDay(cookLogs)[selectedDay] : null;
+                const pickedDay = pickedRows
+                  ? { key: selectedDay, date: new Date(pickedRows[0].at), rows: pickedRows }
+                  : null;
+                const busiestDayLabel = cookTotals.busiestDay === null ? '' :
+                  new Date(2026, 6, 5 + cookTotals.busiestDay).toLocaleDateString(locale, { weekday: 'long' });
+
+                const todayKey = dayKey(new Date());
+                const yesterday = new Date(); yesterday.setDate(yesterday.getDate() - 1);
+                const dayLabel = (d) => {
+                  const k = dayKey(d);
+                  if (k === todayKey) return language === 'en' ? 'Today' : 'היום';
+                  if (k === dayKey(yesterday)) return language === 'en' ? 'Yesterday' : 'אתמול';
+                  return d.toLocaleDateString(locale, { weekday: 'long' });
+                };
+
+                // "9th time" — Intl knows the ordinal suffixes, English has no plural rule worth hand-rolling
+                const ordinalRules = new Intl.PluralRules('en-US', { type: 'ordinal' });
+                const ORDINAL_SUFFIX = { one: 'st', two: 'nd', few: 'rd', other: 'th' };
+                const nthTime = (recipeId, iso) => {
+                  const all = cookDates[recipeId];
+                  if (!all) return '';
+                  // dates are newest first, so position from the end is the prep's number
+                  const n = all.length - all.findIndex(row => row.at === iso);
+                  if (n < 2) return language === 'en' ? 'First time' : 'פעם ראשונה';
+                  return language === 'en'
+                    ? `${n}${ORDINAL_SUFFIX[ordinalRules.select(n)]} time`
+                    : `פעם ${n}`;
+                };
+
                 return (
                   <div>
                     {/* Signature dish hero — deep-cream card with a breathing ember glow */}
@@ -1905,6 +1994,176 @@ function App() {
                         ))}
                       </div>
                     )}
+
+                    {/* Cooking year — the same logs the podium ranks, laid out in time */}
+                    <div className="bg-white border border-border rounded-3xl p-4 sm:p-5 mt-3">
+                      <div className="flex items-baseline gap-2.5 mb-3.5">
+                        <h4 className="text-sm font-bold text-espresso">
+                          {language === 'en' ? 'Last 4 months' : 'ארבעת החודשים האחרונים'}
+                        </h4>
+                        <span className="text-xs text-faint">
+                          {language === 'en'
+                            ? `${cookTotals.all} prep${cookTotals.all === 1 ? '' : 's'}`
+                            : `${cookTotals.all} בישולים`}
+                        </span>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2.5">
+                        <div className="flex-1 min-w-[7rem] rounded-2xl px-3.5 py-2.5 bg-brand/10 border border-brand/30">
+                          <p dir="ltr" className={`text-xl font-extrabold text-brand-deep tabular-nums leading-tight ${isRtl ? 'text-end' : ''}`}>{weekCooks}</p>
+                          <p className="text-[0.7rem] text-muted">{language === 'en' ? 'this week' : 'השבוע'}</p>
+                        </div>
+                        <div className="flex-1 min-w-[7rem] rounded-2xl px-3.5 py-2.5 bg-cream-dark border border-border">
+                          <p dir="ltr" className={`text-xl font-extrabold text-ink tabular-nums leading-tight ${isRtl ? 'text-end' : ''}`}>{cookTotals.month}</p>
+                          <p className="text-[0.7rem] text-muted">{language === 'en' ? 'this month' : 'החודש'}</p>
+                        </div>
+                        <div className="flex-1 min-w-[7rem] rounded-2xl px-3.5 py-2.5 bg-cream-dark border border-border">
+                          <p dir="ltr" className={`text-xl font-extrabold text-ink tabular-nums leading-tight ${isRtl ? 'text-end' : ''}`}>{cookTotals.all}</p>
+                          <p className="text-[0.7rem] text-muted">{language === 'en' ? 'all time' : 'סך הכל'}</p>
+                        </div>
+                        {cookTotals.busiestDay !== null && (
+                          <div className="flex-1 min-w-[7rem] rounded-2xl px-3.5 py-2.5 bg-cream-dark border border-border">
+                            <p className="text-xl font-extrabold text-ink leading-tight truncate">{busiestDayLabel}</p>
+                            <p className="text-[0.7rem] text-muted">{language === 'en' ? 'your busiest day' : 'היום האהוב עליך'}</p>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* A calendar per month. The row flows in reading order (oldest
+                          month first), but each calendar stays Sun→Sat (dir=ltr) in both
+                          languages, same as the recipe cook-history drawer. */}
+                      <div dir={isRtl ? 'rtl' : 'ltr'} className="flex flex-wrap gap-x-5 gap-y-4 mt-4">
+                        {cookYear.months.map(month => (
+                          <div key={`${month.y}-${month.m}`} dir="ltr" className="flex-1 basis-[150px] min-w-[140px]">
+                            {/* the calendar itself is dir=ltr (Sun→Sat), so in Hebrew the
+                                month name has to be pushed back to the right edge */}
+                            <h5 className={`text-xs font-bold text-espresso mb-1.5 ${isRtl ? 'text-end' : ''}`}>
+                              {month.first.toLocaleDateString(locale, { month: 'long', year: 'numeric' })}
+                            </h5>
+                            <div className="grid grid-cols-7 gap-1 mb-1 text-center text-[0.6rem] text-fainter">
+                              {WEEKDAY_INITIALS(locale).map((d, i) => <span key={i}>{d}</span>)}
+                            </div>
+                            <div className="grid grid-cols-7 gap-1">
+                              {month.cells.map((cell, i) => {
+                                if (cell === null) return <span key={i} className="aspect-square" />
+                                // only days with something to show are pressable — an
+                                // empty day would open an empty panel
+                                const pickable = cell.count > 0
+                                const key = dayKey(cell.date)
+                                return (
+                                  <button key={i} type="button" disabled={!pickable}
+                                    aria-pressed={pickable ? key === selectedDay : undefined}
+                                    onClick={() => setSelectedDay(d => (d === key ? null : key))}
+                                    title={`${cell.date.toLocaleDateString(locale, { weekday: 'short', day: 'numeric', month: 'short' })} — ${cell.count
+                                      ? (language === 'en' ? `${cell.count} prep${cell.count > 1 ? 's' : ''}` : `${cell.count} בישולים`)
+                                      : (language === 'en' ? 'nothing' : 'כלום')}`}
+                                    className={`aspect-square rounded-md flex items-center justify-center text-[0.6rem] tabular-nums transition-transform
+                                      ${cell.inWindow ? HEAT_LEVELS[cell.level] : ''}
+                                      ${cell.level > 2 ? 'text-white' : cell.level > 0 ? 'text-espresso' : 'text-fainter'}
+                                      ${pickable ? 'cursor-pointer' : 'cursor-default'}
+                                      ${pickable && key !== selectedDay ? 'hover:scale-110' : ''}
+                                      ${key === selectedDay ? 'scale-125 font-bold relative z-10' : ''}`}
+                                  >{cell.date.getDate()}</button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* The scale runs less→more in reading order, so in Hebrew the whole
+                          row mirrors: פחות and the palest swatch sit on the right. */}
+                      <div dir={isRtl ? 'rtl' : 'ltr'}
+                        className={`flex items-center gap-1.5 mt-3.5 text-[0.7rem] text-faint justify-end`}>
+                        <span>{language === 'en' ? 'Less' : 'מעט'}</span>
+                        <span className="flex items-center gap-1.5">
+                          {HEAT_LEVELS.map((c, i) => <span key={i} className={`w-[11px] h-[11px] rounded-[3px] ${c}`} />)}
+                        </span>
+                        <span>{language === 'en' ? 'More' : 'הרבה'}</span>
+                      </div>
+                    </div>
+
+                    {/* Recently — every prep, newest first (or one picked day) */}
+                    <div ref={timelineRef} className="bg-white border border-border rounded-3xl p-4 sm:p-5 mt-3">
+                      <div className="flex items-baseline gap-2.5 mb-1">
+                        <h4 className="text-sm font-bold text-espresso">
+                          {pickedDay
+                            ? pickedDay.date.toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long' })
+                            : (language === 'en' ? 'Recently' : 'לאחרונה')}
+                        </h4>
+                        {pickedDay ? (
+                          <button onClick={() => setSelectedDay(null)}
+                            className="text-xs font-semibold text-brand-dark hover:underline">
+                            {language === 'en' ? 'Show all' : 'הצג הכל'}
+                          </button>
+                        ) : (
+                          <span className="text-xs text-faint">
+                            {language === 'en' ? 'every prep, newest first' : 'כל הבישולים, מהחדש לישן'}
+                          </span>
+                        )}
+                      </div>
+
+                      {(pickedDay ? [pickedDay] : historyTimeline).map(day => (
+                        <div key={day.key} className="flex flex-col gap-2 py-3.5 border-t border-border first-of-type:border-t-0 first-of-type:pt-1">
+                          <div className="flex items-baseline gap-2">
+                            <span className="text-[0.8rem] font-bold text-espresso">{dayLabel(day.date)}</span>
+                            <span className="text-xs text-faint tabular-nums">
+                              {day.date.toLocaleDateString(locale, { day: 'numeric', month: 'short' })}
+                            </span>
+                            <span className="ms-auto text-[0.7rem] text-muted">
+                              {language === 'en'
+                                ? `${day.rows.length} prep${day.rows.length > 1 ? 's' : ''}`
+                                : `${day.rows.length} בישולים`}
+                            </span>
+                          </div>
+                          {collapseByRecipe(day.rows).map(entry => {
+                            const r = recipeById[entry.recipe]
+                            const isSignature = entry.recipe === top.id
+                            return (
+                              <button key={entry.id} disabled={!r} onClick={() => r && handleSelectRecipe(r)}
+                                className="flex items-center gap-3 w-full px-2.5 py-2 rounded-2xl text-start enabled:hover:bg-cream-dark transition-colors disabled:cursor-default">
+                                <span className={`w-9 h-9 rounded-xl flex-none flex items-center justify-center ${isSignature ? 'sig-tile' : 'bg-brand/10'}`}>
+                                  <ChefHat className={`w-4 h-4 ${isSignature ? 'text-brand-deep' : 'text-brand-dark'}`} />
+                                </span>
+                                <span className="min-w-0 flex flex-col">
+                                  <span className="text-sm font-semibold text-ink truncate">
+                                    {r ? r.title : (language === 'en' ? 'Deleted recipe' : 'מתכון שנמחק')}
+                                    {entry.count > 1 && (
+                                      <span dir="ltr" className="ms-2 text-[0.7rem] font-bold text-brand-deep bg-brand/10 rounded-full px-1.5 py-0.5">×{entry.count}</span>
+                                    )}
+                                  </span>
+                                  <span className="text-[0.72rem] text-muted">
+                                    {isSignature
+                                      ? (language === 'en' ? 'Your signature dish' : 'מנת הדגל שלך')
+                                      : nthTime(entry.recipe, entry.at)}
+                                  </span>
+                                </span>
+                                <span dir="ltr" className="ms-auto text-xs text-faint tabular-nums flex-none">
+                                  {new Date(entry.at).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ))}
+
+                      {/* Hairlines either side, same device as the section eyebrows —
+                          reads as "the list keeps going" rather than a stray button. */}
+                      {!pickedDay && historyTimeline.length === historyDayCount && (
+                        <div className="flex items-center gap-3 mt-3">
+                          <span className="flex-1 h-px bg-border" />
+                          <button onClick={() => setHistoryDayCount(n => n + 6)}
+                            title={language === 'en' ? 'Show earlier' : 'הצג קודמים'}
+                            aria-label={language === 'en' ? 'Show earlier' : 'הצג קודמים'}
+                            className="w-8 h-8 rounded-full bg-cream-dark border border-border text-faint flex items-center justify-center
+                              transition-all duration-200 hover:bg-brand/10 hover:border-brand/40 hover:text-brand-dark hover:scale-110
+                              focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand">
+                            <AlignJustify className="w-3.5 h-3.5" />
+                          </button>
+                          <span className="flex-1 h-px bg-border" />
+                        </div>
+                      )}
+                    </div>
                   </div>
                 );
               })()}
@@ -2203,6 +2462,8 @@ function App() {
           </div>
         </div>
       </footer>
+
+      <ScrollToTop language={language} />
 
       {/* Confirm Dialog */}
       {confirmDialog && (

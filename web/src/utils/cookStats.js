@@ -98,6 +98,86 @@ export function recentDays(rows, limit = 3) {
   return out
 }
 
+// --- home cooking-history panel ------------------------------------------
+// A row of small month calendars: always the current month plus the three
+// before it, whatever the account's age. Months that predate the account still
+// render, with their days marked out-of-window so "you weren't here" looks
+// different from "cooked nothing".
+export const HISTORY_PANEL_MONTHS = 4
+
+export const startOfDay = (d) => {
+  const s = new Date(d)
+  s.setHours(0, 0, 0, 0)
+  return s
+}
+
+// [{ y, m, first, cells }], six of them, oldest first. `cells` is monthMatrix's
+// fixed 42 slots so every calendar is the same height; each real day carries its
+// prep count and `inWindow` — false before the account existed (or after today),
+// which the UI draws as a bare number instead of a tile.
+// `since` is the account-creation date; a log older than it (backdated import)
+// counts as inside the window rather than being greyed out.
+export function historyMonths(rows, since, now = new Date()) {
+  const perDay = {}
+  let earliest = null
+  for (const row of rows) {
+    const d = new Date(row.at)
+    perDay[dayKey(d)] = (perDay[dayKey(d)] || 0) + 1
+    if (!earliest || d < earliest) earliest = d
+  }
+
+  const opened = [since ? new Date(since) : null, earliest]
+    .filter((d) => d && !isNaN(d))
+    .reduce((a, b) => (a && a < b ? a : b), null)
+  const from = opened ? startOfDay(opened) : null // null = no account date, treat every past day as live
+
+  const today = startOfDay(now)
+  const months = []
+  for (let i = HISTORY_PANEL_MONTHS - 1; i >= 0; i--) {
+    const first = new Date(now.getFullYear(), now.getMonth() - i, 1)
+    const y = first.getFullYear()
+    const m = first.getMonth()
+    months.push({
+      y, m, first,
+      cells: monthMatrix(y, m).map((date) => {
+        if (!date) return null
+        const n = perDay[dayKey(date)] || 0
+        return {
+          date, count: n, level: n > 4 ? 4 : n,
+          inWindow: date <= today && (!from || date >= from)
+        }
+      })
+    })
+  }
+
+  return { months, since: from ?? today }
+}
+
+// Totals the hero doesn't already say. `week` stays in deriveCookStats.
+export function historyStats(rows, now = new Date()) {
+  const monthAgo = new Date(now)
+  monthAgo.setMonth(monthAgo.getMonth() - 1)
+  let month = 0
+  const perWeekday = [0, 0, 0, 0, 0, 0, 0]
+  for (const row of rows) {
+    const d = new Date(row.at)
+    if (d > monthAgo && d <= now) month++
+    perWeekday[d.getDay()]++
+  }
+  const top = perWeekday.reduce((best, n, i) => (n > perWeekday[best] ? i : best), 0)
+  return { month, all: rows.length, busiestDay: perWeekday[top] > 0 ? top : null }
+}
+
+// Newest-first days, each with that day's preps (newest first). `limit` days,
+// not `limit` rows — a day is the unit the timeline renders.
+export function timelineDays(rows, limit = 8) {
+  const byDay = groupByDay(rows)
+  return Object.keys(byDay)
+    .sort((a, b) => (byDay[a][0].at < byDay[b][0].at ? 1 : -1))
+    .slice(0, limit)
+    .map((key) => ({ key, date: new Date(byDay[key][0].at), rows: byDay[key] }))
+}
+
 // Always 42 cells (6 rows) so the panel does not change height between months.
 // Days outside the month are null rather than greyed neighbours — the point of
 // the grid is this month, and blanks read faster than dimmed numbers.
