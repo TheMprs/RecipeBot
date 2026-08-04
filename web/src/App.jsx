@@ -1660,12 +1660,8 @@ function App() {
   // Shared nav-menu items (desktop dropdown + mobile panel)
   const navItems = (
     <>
-      {/* ponytail: desktop shows Add recipe as its own button (below), so hide it here on sm+ */}
-      <button onClick={() => { closeNavMenu(); setEditingRecipe(null); setShowRecipeForm(true); }}
-        className="w-full flex items-center gap-3 px-4 py-4 text-base text-ink hover:bg-cream-dark transition-colors text-start sm:hidden">
-        <Plus className="w-5 h-5 text-muted"/>
-        {language === 'en' ? 'Add recipe' : 'הוסף מתכון'}
-      </button>
+      {/* Add recipe is a header button at every width now — adding a recipe is the
+          thing you came to do, so it shouldn't be a menu away on the smaller screen. */}
       <button onClick={() => { closeNavMenu(); handleNavigate('profile'); }}
         className="w-full flex items-center gap-3 px-4 py-4 text-base text-ink hover:bg-cream-dark transition-colors text-start sm:py-2.5 sm:text-sm">
         <UserIcon className="w-5 h-5 text-muted sm:w-4 sm:h-4"/>
@@ -1748,11 +1744,15 @@ function App() {
               </div>
             </button>
 
-            <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0">
+            {/* No gap on mobile: both icon buttons already carry p-2, so their padding
+                is the spacing — a gap on top of that reads as two unrelated controls. */}
+            <div className="flex items-center gap-0 sm:gap-4 flex-shrink-0">
               {user ? (
                 <>
                 <button onClick={() => { setEditingRecipe(null); setShowRecipeForm(true); }}
-                  className="hidden sm:flex items-center text-muted hover:text-ink transition-colors p-2 sm:-me-3">
+                  title={language === 'en' ? 'Add recipe' : 'הוסף מתכון'}
+                  aria-label={language === 'en' ? 'Add recipe' : 'הוסף מתכון'}
+                  className="flex items-center text-muted hover:text-ink transition-colors p-2 sm:-me-3">
                   <Plus className="w-5 h-5" />
                 </button>
                 <div className="relative" ref={navMenuRef}>

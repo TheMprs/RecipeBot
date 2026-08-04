@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
-import { LinkIcon, ChevronDown, Check, Plus, ChefHat, Globe, Lock, Type, AlignLeft, Tag, Flame, List, ListOrdered, X } from 'lucide-react'
+import { createPortal } from 'react-dom'
+import { LinkIcon, ChevronDown, Check, Plus, ChefHat, Globe, Lock, Type, AlignLeft, Tag, Flame, List, ListOrdered, X, ClipboardList, Sparkles } from 'lucide-react'
 import { categoryColor } from '../utils/categoryColor'
+import { parseRecipeText, isLanded, landedDelay } from '../utils/parseRecipeText'
 
 const FieldLabel = ({ icon: Icon, children, hint, trailing }) => (
   <div className="mb-2">
@@ -35,6 +37,12 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
   const [calories, setCalories] = useState('')
   const [visibility, setVisibility] = useState(() => localStorage.getItem('defaultRecipeVisibility') || 'public')
   const [errors, setErrors] = useState({})
+  const [showPaste, setShowPaste] = useState(false)
+  const [pasteText, setPasteText] = useState('')
+  // How many rows at the end of each list just arrived from a paste, so they can
+  // be tinted. A count rather than ids: the rows are plain strings and the fresh
+  // ones are always the tail, since a paste appends.
+  const [landed, setLanded] = useState({ ing: 0, inst: 0 })
   const [showNewCatInput, setShowNewCatInput] = useState(false)
   const [newCatName, setNewCatName] = useState('')
   const [catOpen, setCatOpen] = useState(false)
@@ -62,6 +70,37 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
 
   const selectedCats = userCategories.filter(c => selectedCatIds.includes(c.id))
   const toggleCat = (id) => setSelectedCatIds(ids => ids.includes(id) ? ids.filter(x => x !== id) : [...ids, id])
+
+  // Pour a pasted blob into the form. Appending rather than replacing: whatever is
+  // already typed is the user's, and a parse is only a suggestion. The title is the
+  // one exception — it's a single value, so it fills only when empty.
+  const applyPaste = () => {
+    const parsed = parseRecipeText(pasteText)
+    if (!parsed.title && !parsed.ingredients.length && !parsed.instructions.length) return
+    if (parsed.title && !title.trim()) setTitle(parsed.title)
+    setIngredients(list => [...list, ...parsed.ingredients])
+    setInstructions(list => [...list, ...parsed.instructions])
+    setLanded({ ing: parsed.ingredients.length, inst: parsed.instructions.length })
+    setErrors({})
+    setShowPaste(false)
+    setPasteText('')
+  }
+
+  // The textarea takes focus on open, so Escape is the reflex for backing out of it.
+  useEffect(() => {
+    if (!showPaste) return
+    const onKey = (e) => { if (e.key === 'Escape') setShowPaste(false) }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [showPaste])
+
+  // The tint is a one-off cue, not a state the row lives in — drop it once the
+  // animation has run so a later re-render doesn't replay it.
+  useEffect(() => {
+    if (!landed.ing && !landed.inst) return
+    const t = setTimeout(() => setLanded({ ing: 0, inst: 0 }), 2400)
+    return () => clearTimeout(t)
+  }, [landed])
 
   // Add the draft line(s) to the list; multi-line pastes become one item per line
   const addIngredient = () => {
@@ -185,17 +224,7 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
             <div className="absolute left-1/2 -translate-x-1/2 translate-y-5 w-11 h-11 sm:w-14 sm:h-14 band-badge">
               <ChefHat className="w-6 h-6 sm:w-8 sm:h-8 text-white" />
             </div>
-            {editingRecipe?.id ? <span /> : (
-              <button
-                type="button"
-                onClick={onOpenUrlModal}
-                className={`flex items-center gap-2 px-3.5 py-2 rounded-full bg-white/15 hover:bg-white/25 text-white ring-1 ring-white/25 backdrop-blur transition-colors ${isRtl ? 'flex-row-reverse' : ''}`}
-                title="Import recipe from link"
-              >
-                <LinkIcon className="w-4 h-4" />
-                <span className="hidden sm:inline font-semibold text-sm">{language === 'en' ? 'Import from link' : 'יבוא מקישור'}</span>
-              </button>
-            )}
+            <span />
           </div>
           <h1 className="relative text-center text-2xl font-bold tracking-tight text-white mt-10">
             {editingRecipe?.id ? (language === 'en' ? 'Edit Recipe' : 'עריכת מתכון')
@@ -211,6 +240,42 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
         <div style={{ direction: isRtl ? 'rtl' : 'ltr' }} className="relative bg-white pt-3">
 
         <div className="space-y-4">
+          {/* Two doorways into the same form, above the first field where a shortcut is
+              still a shortcut — inside the band they read as chrome and got skipped. */}
+          {!editingRecipe?.id && (
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setShowPaste(true)}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-white border border-border-dark rounded-full text-sm font-semibold text-muted hover:text-brand-dark hover:border-brand/50 transition-colors"
+              >
+                <ClipboardList className="w-4 h-4" />
+                {language === 'en' ? 'Paste text' : 'הדבק טקסט'}
+              </button>
+              <button
+                type="button"
+                onClick={onOpenUrlModal}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-white border border-border-dark rounded-full text-sm font-semibold text-muted hover:text-brand-dark hover:border-brand/50 transition-colors"
+              >
+                <LinkIcon className="w-4 h-4" />
+                {language === 'en' ? 'From link' : 'מקישור'}
+              </button>
+            </div>
+          )}
+
+          {/* Fades out with the row tint — a paste is a suggestion, and this says so
+              without a confirm screen standing between the paste and the form. */}
+          {(landed.ing > 0 || landed.inst > 0) && (
+            <div className="flex items-start gap-2 px-4 py-3 rounded-2xl bg-brand/10 border border-brand/25 text-brand-deep text-sm">
+              <Sparkles className="w-4 h-4 flex-shrink-0 mt-0.5" />
+              <span>
+                {language === 'en'
+                  ? 'Landed in the form — give it a glance. Tap any line to edit it, drag steps to reorder.'
+                  : 'הכל בטופס — כדאי לעבור על זה. אפשר ללחוץ על כל שורה לעריכה ולגרור שלבים לשינוי סדר.'}
+              </span>
+            </div>
+          )}
+
           {/* Title */}
           <div>
             <FieldLabel icon={Type}>{language === 'en' ? 'Recipe Title' : 'שם המתכון'}</FieldLabel>
@@ -384,7 +449,9 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
             {ingredients.length > 0 && (
               <ul className="mb-2 space-y-1.5">
                 {ingredients.map((item, i) => (
-                  <li key={i} className="flex items-center gap-2 px-4 py-2 bg-cream border border-border rounded-2xl">
+                  <li key={i} style={landedDelay(i, ingredients.length, landed.ing)}
+                    className={`flex items-center gap-2 px-4 py-2 bg-cream border border-border rounded-2xl
+                      ${isLanded(i, ingredients.length, landed.ing) ? 'item-landed' : ''}`}>
                     <span className="w-1.5 h-1.5 rounded-full bg-brand flex-shrink-0" />
                     {editIng?.i === i ? (
                       <input
@@ -457,7 +524,10 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
               <ol className="mb-2 space-y-1.5">
                 {instructions.map((item, i) => (
                   <li key={i} data-step-idx={i}
-                    className={`flex items-center gap-2.5 px-4 py-2 bg-cream border rounded-2xl transition-shadow ${dragIdx === i ? 'border-brand shadow-md select-none' : 'border-border'}`}>
+                    style={landedDelay(i, instructions.length, landed.inst)}
+                    className={`flex items-center gap-2.5 px-4 py-2 bg-cream border rounded-2xl transition-shadow
+                      ${dragIdx === i ? 'border-brand shadow-md select-none' : 'border-border'}
+                      ${isLanded(i, instructions.length, landed.inst) ? 'item-landed' : ''}`}>
                     <button type="button" onPointerDown={e => startStepDrag(e, i)}
                       style={{ touchAction: 'none' }}
                       className="flex-shrink-0 cursor-grab active:cursor-grabbing text-faint hover:text-brand-dark transition-colors"
@@ -553,6 +623,75 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
         </div>
       </div>
       </div>
+
+      {/* Paste sheet — portaled so the form's own stacking and the fixed action bar
+          can't trap it. Orange band: adding a recipe is a cooking action. */}
+      {showPaste && createPortal(
+        <>
+          <div className="fixed inset-0 z-[60] backdrop-blur-sm bg-black/30" onClick={() => setShowPaste(false)} />
+          <div className="fixed inset-0 z-[70] flex items-start justify-center px-4 py-12 overflow-y-auto"
+            onClick={() => setShowPaste(false)}>
+            <div onClick={e => e.stopPropagation()}
+              className="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-lg overflow-hidden"
+              style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
+              <div className="relative -mx-6 -mt-6 sm:-mx-8 sm:-mt-8 px-6 sm:px-8 pt-7 pb-7 mb-6 band-brand">
+                <button type="button" onClick={() => setShowPaste(false)}
+                  title={language === 'en' ? 'Close' : 'סגור'}
+                  className="absolute top-4 end-4 text-white/85 hover:text-white transition-colors">
+                  <X className="w-5 h-5" />
+                </button>
+                <div className="flex flex-col items-center gap-3">
+                  <div className="w-14 h-14 band-badge">
+                    <ClipboardList className="w-7 h-7 text-white" />
+                  </div>
+                  <div>
+                    <h2 className="text-center text-2xl font-bold tracking-tight text-white">
+                      {language === 'en' ? 'Paste a recipe' : 'הדבקת מתכון'}
+                    </h2>
+                    <p className="text-center text-sm text-white/85 mt-1">
+                      {language === 'en'
+                        ? "Anything goes — a page, a message, your notes"
+                        : 'הכל הולך — אתר, הודעה או פתק'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <textarea
+                  autoFocus
+                  value={pasteText}
+                  onChange={e => setPasteText(e.target.value)}
+                  rows={9}
+                  placeholder={language === 'en'
+                    ? 'Shakshuka\n\nIngredients\n2 tbsp olive oil\n1 onion, diced\n\nInstructions\nHeat the oil in a wide pan...'
+                    : 'שקשוקה\n\nמצרכים\n2 כפות שמן זית\nבצל אחד\n\nאופן ההכנה\nמחממים את השמן במחבת...'}
+                  className="w-full px-4 py-3 bg-cream border border-border rounded-2xl text-sm text-ink placeholder:text-muted/70 focus:outline-none focus:ring-2 focus:ring-brand-dark/20 focus:border-brand-dark transition-all resize-none"
+                />
+                <p className="flex items-start gap-1.5 text-xs text-muted text-start">
+                  <Sparkles className="w-3.5 h-3.5 text-brand-dark flex-shrink-0 mt-0.5" />
+                  <span>
+                    {language === 'en'
+                      ? "It sorts the ingredients from the steps as best it can — you'll land in the form to fix anything it got wrong."
+                      : 'הוא מפריד בין הרכיבים לשלבים כמיטב יכולתו — תמיד אפשר לתקן אחר כך בטופס.'}
+                  </span>
+                </p>
+
+                <div className="flex gap-3 pt-2">
+                  <button type="button" onClick={() => setShowPaste(false)} className="flex-1 btn-modal btn-ghost">
+                    {language === 'en' ? 'Cancel' : 'בטל'}
+                  </button>
+                  <button type="button" onClick={applyPaste} disabled={!pasteText.trim()}
+                    className="flex-1 btn-modal btn-brand disabled:bg-brand/50 disabled:cursor-not-allowed">
+                    {language === 'en' ? 'Fill the form' : 'מלא את הטופס'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>,
+        document.body
+      )}
     </>
   )
 }

@@ -8,7 +8,7 @@ export default {
   ],
   theme: {
     extend: {
-      // Heebo carries Hebrew glyphs only (see ui.css unicode-range); Latin uses the system stack
+      // Heebo now carries both scripts (see global.css); the system stack is fallback only
       fontFamily: {
         sans: ['Heebo', ...defaultTheme.fontFamily.sans],
       },

@@ -9,8 +9,10 @@
    the file with the @tailwind directives.)
    ============================================================ */
 
-/* Heebo, Hebrew glyphs only: unicode-range means Hebrew text renders Heebo while
-   Latin falls through to the system stack untouched. Self-hosted variable 400–700. */
+/* Heebo for both scripts — it is a Hebrew extension of Roboto, so its Latin is
+   Roboto's: one skeleton, one x-height, no seam where a sentence switches
+   language. Two subsets so a page only pulls the script it shows; the system
+   stack stays behind them as the fallback. Self-hosted variable 400–700. */
 @font-face {
   font-family: 'Heebo';
   font-style: normal;
@@ -18,6 +20,14 @@
   font-display: swap;
   src: url('/fonts/heebo-hebrew.woff2') format('woff2');
   unicode-range: U+0307-0308, U+0590-05FF, U+200C-2010, U+20AA, U+25CC, U+FB1D-FB4F;
+}
+@font-face {
+  font-family: 'Heebo';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('/fonts/heebo-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
 @layer components {
@@ -296,6 +306,24 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   .day-in, .day-out { animation: none; }
+}
+
+/* Rows that just arrived from a paste — they settle from a brand tint back to the
+   ordinary row so you can see what landed without a separate preview screen. The
+   fade is slow on purpose: it has to survive a glance down a list of fifteen.
+
+   An inset shadow rather than background-color, so the tint lies OVER the row's own
+   background and fades to nothing. Animating the background would mean naming the
+   colour it has to end on — a second copy of `bg-cream` that silently goes wrong the
+   day the token moves. Leaving the border alone also keeps the drag state's
+   border-brand intact if a step is grabbed mid-fade. */
+@keyframes item-landed {
+  from { box-shadow: inset 0 0 0 999px rgba(230, 126, 34, 0.16); }
+  to   { box-shadow: inset 0 0 0 999px rgba(230, 126, 34, 0); }
+}
+.item-landed { animation: item-landed 2.2s ease-out both; }
+@media (prefers-reduced-motion: reduce) {
+  .item-landed { animation: none; }
 }
 
 /* Confirm dialog pop-in */
