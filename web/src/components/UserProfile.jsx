@@ -667,7 +667,7 @@ export function UserProfile({
       {showSettings && (
         <>
           <div className="fixed inset-0 z-40 backdrop-blur-sm bg-black/30" onClick={closeSettings} />
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={closeSettings}>
+          <div className="fixed inset-0 z-50 flex items-start justify-center px-4 py-12 overflow-y-auto" onClick={closeSettings}>
             <div
               onClick={e => e.stopPropagation()}
               className="bg-white rounded-3xl shadow-xl w-full max-w-md overflow-hidden"

@@ -2464,7 +2464,7 @@ function App() {
       {showUrlModal && (
         <>
           <div className="fixed inset-0 z-[60] backdrop-blur-sm bg-black/30" onClick={() => setShowUrlModal(false)}></div>
-          <div className="fixed inset-0 flex items-center justify-center z-[70] p-4" onClick={() => setShowUrlModal(false)}>
+          <div className="fixed inset-0 flex items-start justify-center z-[70] px-4 py-12 overflow-y-auto" onClick={() => setShowUrlModal(false)}>
             <div onClick={(e) => e.stopPropagation()} className="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-lg overflow-hidden" style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
               {/* Branded header band — orange: importing is a cooking action */}
               <div className="relative -mx-6 -mt-6 sm:-mx-8 sm:-mt-8 px-6 sm:px-8 pt-7 pb-7 mb-6 band-brand">
@@ -2709,7 +2709,7 @@ function App() {
       {showLinkSuccess && (
         <>
           <div className="fixed inset-0 z-[90] backdrop-blur-sm bg-black/30" onClick={() => setShowLinkSuccess(false)} />
-          <div className="fixed inset-0 z-[95] flex items-center justify-center p-4" onClick={() => setShowLinkSuccess(false)}>
+          <div className="fixed inset-0 z-[95] flex items-start justify-center px-4 py-12 overflow-y-auto" onClick={() => setShowLinkSuccess(false)}>
             <div className="bg-white rounded-3xl shadow-xl max-w-sm w-full text-center overflow-hidden" onClick={e => e.stopPropagation()}>
               {/* System band — espresso */}
               <div className="band-espresso px-8 pt-7 pb-7">
@@ -2740,7 +2740,7 @@ function App() {
       {user && needsHandle && (
         <>
           <div className="fixed inset-0 z-[90] backdrop-blur-sm bg-black/30" />
-          <div className="fixed inset-0 z-[95] flex items-center justify-center p-4">
+          <div className="fixed inset-0 z-[95] flex items-start justify-center px-4 py-12 overflow-y-auto">
             <div className="bg-white rounded-3xl shadow-2xl w-96 max-w-[90vw] overflow-hidden" dir="ltr">
               {/* System band — espresso */}
               <div className="relative band-espresso px-8 pt-9 pb-9 text-center">
@@ -2801,7 +2801,7 @@ function App() {
       {!user && showLoginModal && (
         <>
           <div className="fixed inset-0 z-40 backdrop-blur-sm bg-black/30" onClick={() => setShowLoginModal(false)} />
-          <div className="fixed inset-0 flex items-center justify-center z-50 p-4" onClick={() => setShowLoginModal(false)}>
+          <div className="fixed inset-0 flex items-start justify-center z-50 px-4 py-12 overflow-y-auto" onClick={() => setShowLoginModal(false)}>
             <div onClick={(e) => e.stopPropagation()}>
               <Login onLoginSuccess={() => { setShowLoginModal(false); setViewMode('profile'); }} />
             </div>

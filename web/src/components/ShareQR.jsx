@@ -11,7 +11,7 @@ export function ShareQR({ recipe, language = 'en', copied = false, onShare, onCl
   const accent = recipe.categoryColor || '#e67e22'
 
   return createPortal(
-    <div className="fixed inset-0 z-50 backdrop-blur-sm bg-black/40 flex items-center justify-center p-4"
+    <div className="fixed inset-0 z-50 backdrop-blur-sm bg-black/40 flex items-start justify-center px-4 py-12 overflow-y-auto"
          onClick={e => { e.stopPropagation(); onClose(); }} style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
       <div className="relative bg-white rounded-3xl shadow-2xl max-w-sm w-full overflow-hidden" onClick={e => e.stopPropagation()}>
         <button

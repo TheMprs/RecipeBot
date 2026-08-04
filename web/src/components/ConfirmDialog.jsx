@@ -5,7 +5,7 @@ export function ConfirmDialog({ title, message, confirmLabel, onConfirm, onCance
   return (
     <>
       <div className="fixed inset-0 z-[80] backdrop-blur-sm bg-black/30" onClick={onCancel} />
-      <div className="fixed inset-0 z-[90] flex items-center justify-center p-4" onClick={onCancel}>
+      <div className="fixed inset-0 z-[90] flex items-start justify-center px-4 py-12 overflow-y-auto" onClick={onCancel}>
         <div
           className="confirm-pop bg-white rounded-3xl shadow-xl w-full max-w-sm overflow-hidden flex flex-col"
           dir={language === 'he' ? 'rtl' : 'ltr'}
