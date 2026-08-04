@@ -84,12 +84,38 @@ function ToolbarButton({ icon: Icon, label, onClick, danger }) {
   )
 }
 
-// Cook history, shown in the page margin on xl+ (max-w-3xl leaves ~256px a side
-// at 1280px, so the panel fits without touching the layout). Anchored to the
-// same inline side as the Back button, so trigger and panel stay together in
-// both directions. Below xl there is no margin to borrow — the button hides.
-function CookHistoryDrawer({ dates, language, accent, open, recipe, onAddPrepOn, onRemovePrep }) {
+// Cook history. On xl+ it floats in the page margin (max-w-3xl leaves ~256px a
+// side at 1280px), anchored to the reading-end side so trigger and panel stay
+// together in both directions. Below xl there is no margin to borrow, so it
+// drops in-flow above the header card at full width.
+function CookHistoryDrawer({ dates, language, accent, open, onClose, triggerRef, recipe, onAddPrepOn, onRemovePrep }) {
   const [editing, setEditing] = useState(false)
+  const panelRef = useRef(null)
+
+  // Any click off the panel closes it — the backdrop only covers the page below
+  // xl, and the trigger has to be exempt or its own click would re-open it.
+  useEffect(() => {
+    if (!open) return
+    const onDown = (e) => {
+      if (panelRef.current?.contains(e.target) || triggerRef?.current?.contains(e.target)) return
+      onClose?.()
+    }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('touchstart', onDown)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('touchstart', onDown)
+    }
+  })
+
+  // The sheet overlays the page below xl, so the page behind it must not
+  // scroll. ponytail: read once on open — resizing across xl while open is not
+  // worth a listener.
+  useEffect(() => {
+    if (!open || window.matchMedia('(min-width: 1280px)').matches) return
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = '' }
+  }, [open])
   const canEdit = !!(onAddPrepOn && onRemovePrep)
   const isRtlLang = language === 'he'
   const locale = language === 'en' ? 'en-GB' : 'he-IL'
@@ -123,7 +149,7 @@ function CookHistoryDrawer({ dates, language, accent, open, recipe, onAddPrepOn,
       : { backgroundColor: '#f5f3ef', color: '#a39b8d' }
     const label = `${shortFmt.format(day)}${n ? ` ×${n}` : ''}`
 
-    const base = `block w-full aspect-square rounded-md text-[0.6rem] leading-none flex items-center justify-center tabular-nums ${
+    const base = `block w-full aspect-square rounded-lg xl:rounded-md text-xs xl:text-[0.6rem] leading-none flex items-center justify-center tabular-nums ${
       isToday ? 'ring-1 ring-inset' : ''
     }`
     const ring = isToday ? { boxShadow: `inset 0 0 0 1px ${accent}` } : null
@@ -170,26 +196,35 @@ function CookHistoryDrawer({ dates, language, accent, open, recipe, onAddPrepOn,
   const NewerIcon = isRtlLang ? ChevronLeft : ChevronRight
 
   return (
+    <>
+      {/* Backdrop belongs to the mobile sheet only — the xl drawer sits in the
+          margin and never covers the page. */}
+      <div
+        aria-hidden="true"
+        className={`xl:hidden fixed inset-0 z-40 bg-ink/30 transition-opacity duration-300 ${
+          open ? 'opacity-100' : 'opacity-0 pointer-events-none'
+        }`}
+      />
     <div
       aria-hidden={!open}
-      // Physical side, not logical: the drawer sits in the page margin on the
-      // reading-end side — left in Hebrew, right in English. Explicit left/
-      // right avoids the logical-inset ambiguity once the element sets its own
-      // direction.
-      className={`hidden xl:block absolute top-0 w-60 transition-all duration-300 ease-out ${
-        open ? 'opacity-100' : 'opacity-0 pointer-events-none'
-      }`}
-      style={{
-        direction: isRtlLang ? 'rtl' : 'ltr',
-        ...(isRtlLang
-          ? { right: '100%', marginRight: '0.75rem' }
-          : { left: '100%', marginLeft: '0.75rem' })
-      }}
+      // Below xl: a sheet sliding in from the left over the page. At xl the
+      // page margin opens up, so it becomes a static panel there — physical
+      // side, not logical: it hugs the reading-end side (left in Hebrew, right
+      // in English), which explicit left/right keeps unambiguous once the
+      // element sets its own direction.
+      className={`fixed z-50 inset-y-0 left-0 w-[85%] max-w-sm overflow-y-auto overscroll-contain p-3 transition-transform duration-300 ease-out ${
+        open ? 'translate-x-0' : '-translate-x-full'
+      } xl:absolute xl:inset-y-auto xl:top-0 xl:z-auto xl:w-60 xl:max-w-none xl:p-0 xl:translate-x-0 xl:overflow-visible xl:transition-all ${
+        open ? 'xl:opacity-100' : 'xl:opacity-0 xl:pointer-events-none'
+      } ${isRtlLang ? 'xl:right-full xl:left-auto xl:mr-3' : 'xl:left-full xl:ml-3'}`}
+      style={{ direction: isRtlLang ? 'rtl' : 'ltr' }}
     >
-      <div className="bg-white rounded-3xl border border-border/60 shadow-sm p-5">
+      {/* Ref is on the card, not the sheet column: the empty strip below the
+          card counts as outside, so tapping there closes. */}
+      <div ref={panelRef} className="bg-white rounded-3xl border border-border/60 shadow-sm p-5">
         <div className="flex items-center gap-2 mb-4">
           <IconChip icon={CalendarDays} accent={accent} size={7} />
-          <h2 className="text-sm font-semibold text-ink flex-1 whitespace-nowrap">
+          <h2 className="text-base xl:text-sm font-semibold text-ink flex-1 whitespace-nowrap">
             {language === 'en' ? 'Cook history' : 'היסטוריית הכנות'}
           </h2>
           {canEdit && (
@@ -200,11 +235,11 @@ function CookHistoryDrawer({ dates, language, accent, open, recipe, onAddPrepOn,
               title={editing
                 ? (language === 'en' ? 'Done' : 'סיום')
                 : (language === 'en' ? 'Edit history' : 'עריכת ההיסטוריה')}
-              className={`p-1 rounded-lg transition-colors ${
+              className={`p-2 xl:p-1 rounded-lg transition-colors ${
                 editing ? 'text-brand-dark bg-cream-dark' : 'text-faint hover:text-brand-dark hover:bg-cream-dark'
               }`}
             >
-              {editing ? <Check className="w-3.5 h-3.5" /> : <Pencil className="w-3.5 h-3.5" />}
+              {editing ? <Check className="w-4 h-4 xl:w-3.5 xl:h-3.5" /> : <Pencil className="w-4 h-4 xl:w-3.5 xl:h-3.5" />}
             </button>
           )}
         </div>
@@ -227,11 +262,11 @@ function CookHistoryDrawer({ dates, language, accent, open, recipe, onAddPrepOn,
                 onClick={() => go(-1)}
                 disabled={!canStep(view, -1, now)}
                 aria-label={language === 'en' ? 'Previous month' : 'החודש הקודם'}
-                className="p-1 rounded-lg text-faint hover:text-brand-dark hover:bg-cream-dark disabled:opacity-25 disabled:hover:bg-transparent disabled:hover:text-faint transition-colors"
+                className="p-2 xl:p-1 rounded-lg text-faint hover:text-brand-dark hover:bg-cream-dark disabled:opacity-25 disabled:hover:bg-transparent disabled:hover:text-faint transition-colors"
               >
-                <OlderIcon className="w-3.5 h-3.5" />
+                <OlderIcon className="w-4 h-4 xl:w-3.5 xl:h-3.5" />
               </button>
-              <span className="text-[0.7rem] font-medium text-ink text-center flex-1">
+              <span className="text-sm xl:text-[0.7rem] font-medium text-ink text-center flex-1">
                 {monthFmt.format(new Date(view.y, view.m, 1))}
               </span>
               <button
@@ -239,15 +274,15 @@ function CookHistoryDrawer({ dates, language, accent, open, recipe, onAddPrepOn,
                 onClick={() => go(1)}
                 disabled={!canStep(view, 1, now)}
                 aria-label={language === 'en' ? 'Next month' : 'החודש הבא'}
-                className="p-1 rounded-lg text-faint hover:text-brand-dark hover:bg-cream-dark disabled:opacity-25 disabled:hover:bg-transparent disabled:hover:text-faint transition-colors"
+                className="p-2 xl:p-1 rounded-lg text-faint hover:text-brand-dark hover:bg-cream-dark disabled:opacity-25 disabled:hover:bg-transparent disabled:hover:text-faint transition-colors"
               >
-                <NewerIcon className="w-3.5 h-3.5" />
+                <NewerIcon className="w-4 h-4 xl:w-3.5 xl:h-3.5" />
               </button>
             </div>
 
-            <div className="grid grid-cols-7 gap-[3px]">
+            <div className="grid grid-cols-7 gap-1 xl:gap-[3px]">
               {dows.map((d, i) => (
-                <span key={i} className="text-[0.55rem] text-fainter text-center leading-none pb-1">{d}</span>
+                <span key={i} className="text-[0.65rem] xl:text-[0.55rem] text-fainter text-center leading-none pb-1">{d}</span>
               ))}
               {cells}
             </div>
@@ -298,6 +333,7 @@ function CookHistoryDrawer({ dates, language, accent, open, recipe, onAddPrepOn,
         )}
       </div>
     </div>
+    </>
   )
 }
 
@@ -381,6 +417,7 @@ export function RecipeDetail({ recipe, language = 'en', onBack, onEdit, onDelete
   const [copied, setCopied] = useState(false)
   const [marked, setMarked] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
+  const historyBtnRef = useRef(null)
   const { checked, toggle, clearAll } = useCheckedIngredients(recipe.id)
 
   const handleMarkMade = () => {
@@ -453,15 +490,16 @@ export function RecipeDetail({ recipe, language = 'en', onBack, onEdit, onDelete
               margin for the panel to open into. */}
           {onMarkMade && (
             <button
+              ref={historyBtnRef}
               onClick={() => setShowHistory(v => !v)}
               aria-pressed={showHistory}
               dir="ltr"
-              className={`hidden xl:flex items-center gap-2 px-3 py-2 text-sm rounded-xl transition-colors ${
+              className={`flex items-center gap-2 px-3 py-2 text-sm rounded-xl transition-colors ${
                 showHistory ? 'bg-cream-dark text-brand-dark' : 'text-muted hover:text-brand hover:bg-cream'
               }`}
             >
               <CalendarDays className="w-4 h-4" />
-              <span>History</span>
+              <span className="hidden sm:inline">History</span>
             </button>
           )}
           {onDuplicate && <ToolbarButton icon={Copy} label="Dupe" onClick={() => onDuplicate(recipe)} />}
@@ -479,6 +517,8 @@ export function RecipeDetail({ recipe, language = 'en', onBack, onEdit, onDelete
           language={language}
           accent={accent}
           open={showHistory}
+          onClose={() => setShowHistory(false)}
+          triggerRef={historyBtnRef}
           recipe={recipe}
           onAddPrepOn={onAddPrepOn}
           onRemovePrep={onRemovePrep}

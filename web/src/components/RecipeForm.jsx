@@ -135,8 +135,10 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
 
   const handleSubmit = (e) => {
     e.preventDefault()
-    const ingredients2 = ingredients
-    const instructions2 = instructions
+    // Trim at the save boundary only — whitespace goes, nothing else. A line that was
+    // nothing but spaces was never content, so it drops out rather than saving blank.
+    const ingredients2 = ingredients.map(s => s.trim()).filter(Boolean)
+    const instructions2 = instructions.map(s => s.trim()).filter(Boolean)
 
     const required = language === 'en' ? 'Required field' : 'שדה חובה'
     const tooMany = language === 'en' ? 'Maximum 100 items' : 'עד 100 פריטים'
@@ -149,13 +151,20 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
     if (instructionDraft.trim()) newErrors.instructions = unsaved
     else if (instructions2.length === 0) newErrors.instructions = required
     else if (instructions2.length > 100) newErrors.instructions = tooMany
+    // Show the user what's actually being saved — if this submit fails validation or the
+    // network, the form they're left looking at is the trimmed one, not the raw typing.
+    setTitle(title.trim())
+    setDescription(description.trim())
+    setIngredients(ingredients2)
+    setInstructions(instructions2)
+
     if (Object.keys(newErrors).length) {
       setErrors(newErrors)
       document.querySelector('[data-invalid="true"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
       return
     }
 
-    onSave({ title, description, ingredients: ingredients2, instructions: instructions2, categoryIds: selectedCatIds, caloriesPerServing: calories === '' ? null : parseInt(calories, 10), visibility })
+    onSave({ title: title.trim(), description: description.trim(), ingredients: ingredients2, instructions: instructions2, categoryIds: selectedCatIds, caloriesPerServing: calories === '' ? null : parseInt(calories, 10), visibility })
   }
 
   return (

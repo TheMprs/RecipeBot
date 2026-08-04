@@ -1,7 +1,7 @@
 import { User, BookOpen, Search, Filter, X, Settings, Plus, ChevronLeft, ChevronRight, LogOut, Pencil, Trash2, Check, Globe, Lock, LayoutGrid, UserPlus, UserCheck } from 'lucide-react';
 import { RecipeCard, RecipeCardSkeleton } from './RecipeCard';
 import { ConfirmDialog } from './ConfirmDialog';
-import { useState, useEffect, useLayoutEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase, supabaseUrl, supabaseKey } from '../supabaseClient';
 import { swr, peekCache, writeCache } from '../utils/cache';
@@ -117,8 +117,6 @@ export function UserProfile({
   const [confirmDialog, setConfirmDialog] = useState(null);
   const newCategoryInputRef = useRef(null);
   const filterMenuRef = useRef(null);
-  const gridRef = useRef(null);
-  const didHideGhost = useRef(false); // Telegram-archive reveal: hide the ghost card above the fold once, on mobile
   const categoryScrollRef = useRef(null);
   const [hoveringCategoryPills, setHoveringCategoryPills] = useState(false);
 
@@ -277,22 +275,6 @@ export function UserProfile({
       else cmp = new Date(b.created_at) - new Date(a.created_at);
       return sortOrder === 'asc' ? -cmp : cmp;
     });
-
-  // Telegram-archive reveal (mobile): on first load, scroll the grid down past the
-  // Add-recipe ghost card so it starts hidden above the fold; scrolling up reveals it.
-  // Runs once; desktop keeps the card visible as the first tile.
-  useLayoutEffect(() => {
-    if (didHideGhost.current) return;
-    const el = gridRef.current;
-    if (!el || window.innerWidth >= 640) return;      // desktop: always show
-    if (!isOwnProfile || !onAddRecipe) return;
-    if (filteredRecipes.length === 0) return;          // nothing to scroll under
-    const ghost = el.firstElementChild;                // the ghost card
-    if (ghost && el.scrollHeight > el.clientHeight) {
-      el.scrollTop = ghost.offsetHeight + 16;          // 16 = grid gap
-      didHideGhost.current = true;
-    }
-  }, [filteredRecipes.length, isOwnProfile, onAddRecipe]);
 
   return (
     <div>
@@ -615,22 +597,9 @@ export function UserProfile({
         </div>
       ) : filteredRecipes.length > 0 ? (
         <>
-        {/* Cap the visible area to ~2.4 rows so the 3rd row peeks at the bottom — a visual hint
-            that there's more to scroll. px-2/-mx-2 keeps card hover shadows from being clipped. */}
-        <div ref={gridRef} style={{ direction: isRtl ? 'rtl' : 'ltr' }} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-4 max-h-[23.5rem] overflow-y-auto px-2 -mx-2">
-          {/* Add-recipe ghost card — own profile only. Telegram-archive style on mobile:
-              starts scrolled off the top (hidden), revealed by scrolling up to the top. Always visible on desktop. */}
-          {isOwnProfile && onAddRecipe && (
-            <button
-              onClick={onAddRecipe}
-              className="group w-full min-h-[8.5rem] rounded-2xl border-2 border-dashed border-border flex flex-col items-center justify-center gap-2 text-faint hover:border-brand/50 hover:text-brand-dark hover:bg-brand/5 transition-colors"
-            >
-              <span className="w-11 h-11 rounded-full bg-cream-dark group-hover:bg-brand/10 flex items-center justify-center transition-colors">
-                <Plus className="w-6 h-6" />
-              </span>
-              <span className="text-sm font-medium">{language === 'en' ? 'Add recipe' : 'הוסף מתכון'}</span>
-            </button>
-          )}
+        {/* Grows with the recipes — the page is the scroller, not the grid.
+            px-2/-mx-2 keeps card hover shadows from being clipped. */}
+        <div style={{ direction: isRtl ? 'rtl' : 'ltr' }} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-4 px-2 -mx-2">
           {filteredRecipes.map((recipe) => (
             <RecipeCard
               key={recipe.id}
@@ -645,6 +614,19 @@ export function UserProfile({
               onCreateCategory={isOwnProfile ? onCreateCategory : undefined}
             />
           ))}
+          {/* Add-recipe ghost card — own profile only, last tile: a "new item" slot belongs
+              after the list, where it doesn't compete with the recipes for the first row. */}
+          {isOwnProfile && onAddRecipe && (
+            <button
+              onClick={onAddRecipe}
+              className="group w-full min-h-[8.5rem] rounded-2xl border-2 border-dashed border-border flex flex-col items-center justify-center gap-2 text-faint hover:border-brand/50 hover:text-brand-dark hover:bg-brand/5 transition-colors"
+            >
+              <span className="w-11 h-11 rounded-full bg-cream-dark group-hover:bg-brand/10 flex items-center justify-center transition-colors">
+                <Plus className="w-6 h-6" />
+              </span>
+              <span className="text-sm font-medium">{language === 'en' ? 'Add recipe' : 'הוסף מתכון'}</span>
+            </button>
+          )}
         </div>
         </>
       ) : searchQuery ? (

@@ -1,6 +1,6 @@
 ﻿import { useState, useEffect, useRef, useMemo } from 'react'
 import { createPortal, flushSync } from 'react-dom'
-import { BookOpen, Plus, Search, Filter, X, Link as LinkIcon, User as UserIcon, ChevronLeft, ChevronRight, Heart, RotateCcw, Pencil, Menu, Settings, LogOut, Check, Trash2, Sparkles, AtSign, ChefHat, AlignJustify } from 'lucide-react'
+import { BookOpen, Plus, Search, Filter, X, Link as LinkIcon, User as UserIcon, ChevronLeft, ChevronRight, Heart, RotateCcw, Pencil, Menu, Settings, LogOut, Check, Trash2, Sparkles, AtSign, ChefHat, ChevronDown, ChevronUp } from 'lucide-react'
 import { RecipeCard, RecipeCardSkeleton } from './components/RecipeCard'
 import { CATEGORY_PALETTE } from './utils/categoryColor'
 import { RecipeDetail } from './components/RecipeDetail'
@@ -8,7 +8,6 @@ import { RecipeForm } from './components/RecipeForm'
 import { UserProfile } from './components/UserProfile'
 import { FollowListModal } from './components/FollowListModal'
 import { ConfirmDialog } from './components/ConfirmDialog'
-import { ScrollToTop } from './components/ScrollToTop'
 import Login from './components/Login'
 import { supabase, supabaseUrl, supabaseKey } from './supabaseClient'
 import { swr, invalidate, clearCache, peekCache, currentUserIdSync, purgeCacheVersions } from './utils/cache'
@@ -16,7 +15,7 @@ import { getToken } from './utils/auth'
 import { formatRecipe } from './utils/formatRecipe'
 import { useWheelScroll } from './utils/useWheelScroll'
 import { useOutsideClick } from './utils/useOutsideClick'
-import { deriveCookStats, historyMonths, historyStats, timelineDays, groupByDay, dayKey } from './utils/cookStats'
+import { deriveCookStats, historyMonths, historyStats, timelineDays, groupByDay, dayKey, HISTORY_MONTHS } from './utils/cookStats'
 
 // Heatmap tints, index = cell level (0 = nothing cooked). Tailwind needs the
 // class names spelled out, so these are literals rather than a computed opacity.
@@ -46,6 +45,14 @@ function collapseByRecipe(rows) {
   return out
 }
 
+// Days of cook history the "Recently" panel opens with, and the step it grows by.
+const HISTORY_DAYS = 4
+const HISTORY_STEP = 6
+
+// Prep counts, per language. Hebrew spells out the singular ("בישול אחד", not "1 בישולים").
+const prepCount = (n, language) =>
+  language === 'en' ? `${n} prep${n === 1 ? '' : 's'}` : (n === 1 ? 'בישול אחד' : `${n} בישולים`)
+
 // Cached own-recipes for the stored session, read synchronously so they paint
 // on the first render (no skeleton flash on reload).
 function seedOwnRecipes() {
@@ -58,14 +65,32 @@ function seedUserCategories() {
   return uid ? (peekCache(`categories:${uid}`) || []) : []
 }
 
-// cookstats cache = the raw cook_logs rows: [{ id, recipe: recipeId, at: isoDate }].
+// cookstats cache = the raw cook_logs rows: [{ id, recipe: recipeId, at: isoDate }],
+// windowed to the last HISTORY_MONTHS — that's as far back as any of this UI reaches.
 // Counts, per-recipe dates, last-cooked and the week tally are all derived from
 // this one array (see deriveCookStats) instead of being stored four times over.
 // Deriving also means the "this week" figure is recomputed on render rather than
 // frozen into the cache, so it cannot go stale as days pass.
 function seedCookLogs() {
   const uid = currentUserIdSync()
-  return uid ? (peekCache(`cookstats4:${uid}`) || []) : []
+  return uid ? (peekCache(`cookstats5:${uid}`) || []) : []
+}
+
+// cooktotals cache = lifetime per-recipe totals the window can't see:
+// { [recipeId]: { count, last } }, one row per recipe straight from the database's
+// own aggregate. null means the aggregate wasn't available and the windowed rows
+// are standing in — see fetchCookLogs.
+function seedCookLifetime() {
+  const uid = currentUserIdSync()
+  return uid ? (peekCache(`cooktotals1:${uid}`) || null) : null
+}
+
+// Oldest prep the panel can reach. Anything older is unreachable in the UI, so it
+// stays on the server and only its count comes back, via the aggregate.
+function historyWindowStart() {
+  const d = new Date()
+  d.setMonth(d.getMonth() - HISTORY_MONTHS)
+  return d.toISOString()
 }
 
 import './global.css'
@@ -121,14 +146,54 @@ function App() {
   // Single source of truth for prep history; everything below is a view of it,
   // so an optimistic edit is one splice rather than four setStates.
   const [cookLogs, setCookLogs] = useState(seedCookLogs)
-  const { counts: cookCounts, dates: cookDates, last: lastCooked, week: weekCooks } =
+  // Lifetime per-recipe totals, for the numbers that must not be windowed: the ×N
+  // badge, the most-prepped podium, the signature dish. null = aggregate unavailable.
+  const [cookLifetime, setCookLifetime] = useState(seedCookLifetime)
+  const { counts: windowCounts, dates: cookDates, last: windowLast, week: weekCooks } =
     useMemo(() => deriveCookStats(cookLogs), [cookLogs])
+  // Lifetime wins where it exists; the window fills in anything it hasn't seen
+  // (a prep just added, or every recipe if the aggregate isn't available).
+  const [cookCounts, lastCooked] = useMemo(() => {
+    if (!cookLifetime) return [windowCounts, windowLast]
+    const counts = { ...windowCounts }, last = { ...windowLast }
+    for (const id in cookLifetime) {
+      counts[id] = cookLifetime[id].count
+      last[id] = cookLifetime[id].last
+    }
+    return [counts, last]
+  }, [windowCounts, windowLast, cookLifetime])
   // Cooking-history panel: the last 6 months as small calendars, floored at the
   // account's creation month so a new account shows two, not six with four empty.
   const accountCreated = user?.created_at
   const cookYear = useMemo(() => historyMonths(cookLogs, accountCreated), [cookLogs, accountCreated])
-  const cookTotals = useMemo(() => historyStats(cookLogs), [cookLogs])
-  const [historyDayCount, setHistoryDayCount] = useState(4)
+  // `all` is a lifetime figure, so it comes from the aggregate when there is one;
+  // the rest of historyStats is about the recent window and stays as it was.
+  const cookTotals = useMemo(() => {
+    const stats = historyStats(cookLogs)
+    if (!cookLifetime) return stats
+    const all = Object.values(cookLifetime).reduce((n, r) => n + r.count, 0)
+    return { ...stats, all }
+  }, [cookLogs, cookLifetime])
+  const [historyDayCount, setHistoryDayCount] = useState(HISTORY_DAYS)
+  // The count at the time of the last render — days past it are the ones that just arrived,
+  // and those are the ones that unfold.
+  const historyShown = useRef(HISTORY_DAYS)
+  const showEarlier = () => {
+    historyShown.current = historyDayCount
+    setHistoryDayCount(n => n + HISTORY_STEP)
+  }
+  // Collapsing needs the days to survive their own exit, so the count drops only once the
+  // animation has run. Expanding needs no such delay — the days mount and unfold on the spot.
+  const [collapsing, setCollapsing] = useState(false)
+  const collapseHistory = () => {
+    if (collapsing) return
+    setCollapsing(true)
+    setTimeout(() => {
+      historyShown.current = HISTORY_DAYS   // nothing is "new" after a collapse
+      setHistoryDayCount(HISTORY_DAYS)
+      setCollapsing(false)
+    }, 300)   // matches day-out in global.css
+  }
   // A day picked in the calendars; the timeline below narrows to it. dayKey, not
   // a Date, so it survives re-renders without identity games.
   const [selectedDay, setSelectedDay] = useState(null)
@@ -142,12 +207,17 @@ function App() {
   // you drilled into ten minutes ago) reads as the app having lost its place.
   useEffect(() => {
     if (viewMode !== 'home') {
-      setHistoryDayCount(4)
+      setHistoryDayCount(HISTORY_DAYS)
+      historyShown.current = HISTORY_DAYS
       setSelectedDay(null)
     }
   }, [viewMode])
-  const historyTimeline = useMemo(
-    () => timelineDays(cookLogs, historyDayCount), [cookLogs, historyDayCount])
+  // Ask for one day more than we show: if it comes back, there really is earlier history.
+  // Comparing length to the limit can't tell "exactly this many" from "more to come".
+  const historyPage = useMemo(
+    () => timelineDays(cookLogs, historyDayCount + 1), [cookLogs, historyDayCount])
+  const historyHasMore = historyPage.length > historyDayCount
+  const historyTimeline = historyHasMore ? historyPage.slice(0, historyDayCount) : historyPage
   const [carouselLoading, setCarouselLoading] = useState(true)
   const [globalQuery, setGlobalQuery] = useState('')
   const [globalResults, setGlobalResults] = useState({ users: [], recipes: [] })
@@ -271,7 +341,7 @@ function App() {
 
   // One-time cleanup of superseded cache versions (cook-stats key bumps left
   // orphans in localStorage that only logout cleared). Runs once on mount.
-  useEffect(() => { purgeCacheVersions(['cookstats2:', 'cookstats3:']) }, [])
+  useEffect(() => { purgeCacheVersions(['cookstats2:', 'cookstats3:', 'cookstats4:']) }, [])
 
   // Check auth status on mount
   useEffect(() => {
@@ -473,23 +543,49 @@ function App() {
   // Fetch public recipes for home page when not logged in
   const fetchCookCounts = async (force = false) => {
     if (!user) return
-    const cacheKey = `cookstats4:${user.id}`
-    if (force) invalidate(cacheKey)
+    const rowsKey = `cookstats5:${user.id}`
+    const totalsKey = `cooktotals1:${user.id}`
+    if (force) { invalidate(rowsKey); invalidate(totalsKey) }
+    const auth = async () => ({ 'apikey': supabaseKey, 'Authorization': `Bearer ${await getToken()}` })
     try {
       // ttl 10min — feeds the "Most Prepped" hero, the greeting stat, and the
       // cook-history drawer. Prep edits update state directly and only invalidate
       // the cache, so this refetch is for fresh mounts, not for every tap.
-      await swr(cacheKey, async () => {
-        const token = await getToken();
-        // id comes along so the history drawer can delete an individual prep.
-        const res = await fetch(
-          `${supabaseUrl}/rest/v1/cook_logs?user_id=eq.${user.id}&select=id,recipe_id,cooked_at`,
-          { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${token}` } }
-        );
-        if (!res.ok) throw new Error(`API error: ${res.status}`);
-        const data = await res.json();
-        return data.map(r => ({ id: r.id, recipe: r.recipe_id, at: r.cooked_at }));
-      }, setCookLogs, 10 * 60 * 1000)
+      //
+      // Two requests, because they answer different questions. The rows are only
+      // fetched for the window the UI can actually show; the lifetime totals come
+      // back as one aggregated row per recipe, so a user with years of history
+      // pays for a handful of rows instead of thousands.
+      await Promise.all([
+        swr(rowsKey, async () => {
+          // id comes along so the history drawer can delete an individual prep.
+          const res = await fetch(
+            `${supabaseUrl}/rest/v1/cook_logs?user_id=eq.${user.id}` +
+            `&cooked_at=gte.${historyWindowStart()}&select=id,recipe_id,cooked_at`,
+            { headers: await auth() }
+          );
+          if (!res.ok) throw new Error(`API error: ${res.status}`);
+          const data = await res.json();
+          return data.map(r => ({ id: r.id, recipe: r.recipe_id, at: r.cooked_at }));
+        }, setCookLogs, 10 * 60 * 1000),
+
+        // db/cook_totals.sql. PostgREST's own aggregates are disabled on this project,
+        // so the aggregate lives in a function. Until that SQL is run this resolves to
+        // null and the windowed rows carry the counts — a year of history instead of
+        // all of it, which is only wrong for someone who has been here longer.
+        swr(totalsKey, async () => {
+          const res = await fetch(`${supabaseUrl}/rest/v1/rpc/cook_totals`, {
+            method: 'POST',
+            headers: { ...(await auth()), 'Content-Type': 'application/json' },
+            body: '{}'
+          });
+          if (!res.ok) return null;
+          const data = await res.json();
+          return Object.fromEntries(
+            data.map(r => [r.recipe_id, { count: r.prep_count, last: r.last_cooked }])
+          );
+        }, setCookLifetime, 10 * 60 * 1000),
+      ])
     } catch (err) {
       console.error('[Data] Failed to fetch cook counts:', err.message);
     }
@@ -501,11 +597,30 @@ function App() {
   // refetches on success — the cache is invalidated so the next mount is fresh,
   // but tapping never waits on a round trip.
 
+  // The lifetime totals are a server aggregate, so an optimistic row has to move them
+  // too or the ×N badge sits still while the timeline updates. No-op when the aggregate
+  // isn't in play, since the counts are coming from the rows we just changed.
+  // Both cook-stat caches go stale together — a prep changes the window and the totals.
+  const invalidateCookStats = () => {
+    invalidate(`cookstats5:${user.id}`)
+    invalidate(`cooktotals1:${user.id}`)
+  }
+
+  const bumpLifetime = (recipeId, delta, at) => setCookLifetime(prev => {
+    if (!prev) return prev
+    const cur = prev[recipeId] || { count: 0, last: null }
+    const count = Math.max(0, cur.count + delta)
+    if (!count) { const { [recipeId]: _gone, ...rest } = prev; return rest }
+    const last = delta > 0 && (!cur.last || at > cur.last) ? at : cur.last
+    return { ...prev, [recipeId]: { count, last } }
+  })
+
   // Insert one cook_logs row. `at` omitted means now (the chef-hat button).
   const insertPrep = async (recipe, at) => {
     const tempId = `tmp-${Date.now()}-${Math.random().toString(36).slice(2)}`
     const optimistic = { id: tempId, recipe: recipe.id, at: (at || new Date()).toISOString() }
     setCookLogs(prev => [...prev, optimistic])
+    bumpLifetime(recipe.id, +1, optimistic.at)
     try {
       const token = await getToken();
       const res = await fetch(`${supabaseUrl}/rest/v1/cook_logs`, {
@@ -529,9 +644,10 @@ function App() {
       setCookLogs(prev => prev.map(r => r.id === tempId
         ? { id: saved.id, recipe: saved.recipe_id, at: saved.cooked_at }
         : r));
-      invalidate(`cookstats4:${user.id}`);
+      invalidateCookStats();
     } catch (err) {
       setCookLogs(prev => prev.filter(r => r.id !== tempId));
+      bumpLifetime(recipe.id, -1);
       console.error('[Data] Failed to log cook:', err.message);
       setSaveError({ message: language === 'en' ? 'Failed to log cook' : 'רישום ההכנה נכשל' });
     }
@@ -552,6 +668,7 @@ function App() {
       removed = prev.find(r => r.id === logId)
       return prev.filter(r => r.id !== logId)
     })
+    if (removed) bumpLifetime(removed.recipe, -1)
     try {
       const token = await getToken();
       const res = await fetch(`${supabaseUrl}/rest/v1/cook_logs?id=eq.${encodeURIComponent(logId)}`, {
@@ -559,9 +676,9 @@ function App() {
         headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${token}` }
       });
       if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
-      invalidate(`cookstats4:${user.id}`);
+      invalidateCookStats();
     } catch (err) {
-      if (removed) setCookLogs(prev => [...prev, removed]);
+      if (removed) { setCookLogs(prev => [...prev, removed]); bumpLifetime(removed.recipe, +1, removed.at); }
       console.error('[Data] Failed to remove prep:', err.message);
       setSaveError({ message: language === 'en' ? 'Failed to remove prep' : 'הסרת ההכנה נכשלה' });
     }
@@ -1217,6 +1334,9 @@ function App() {
     setDetailOrigin(viewMode === 'profile' ? 'profile' : 'home');
     setSelectedRecipe(recipeData);
     setViewMode('detail');
+    // Opening a recipe from far down a list would otherwise land mid-page: the view swaps
+    // but the scroll offset is the browser's, and it has no idea anything happened.
+    window.scrollTo(0, 0);
     window.history.pushState({}, '', `?r=${recipeObj.id}`);
   }
 
@@ -1378,8 +1498,12 @@ function App() {
     setSelectedRecipe(null)
     setEditingRecipe(null)
     setViewingProfile(null)
+    // Swapping views is state, not navigation, so the browser keeps the old scroll offset —
+    // land at the top instead. Only on an actual view change; back/forward goes via popstate
+    // and still restores position.
+    if (mode !== viewMode) window.scrollTo(0, 0)
     setViewMode(mode)
-    
+
     // Set URL based on view mode
     if (mode === 'profile' && user) {
       // Use user ID in URL so it can be shared
@@ -1613,7 +1737,8 @@ function App() {
     <div className="min-h-screen bg-cream-dark">
       <header className="sticky top-0 z-30 bg-cream/95 backdrop-blur-md border-b border-border">
         <div className="relative max-w-6xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between gap-4">
-            <button onClick={() => handleNavigate('home')} className="flex items-center gap-2 group min-w-0">
+            {/* Already home? the logo is the back-to-top affordance — header is sticky, so no floating button needed. */}
+            <button onClick={() => viewMode === 'home' ? (setHistoryDayCount(HISTORY_DAYS), window.scrollTo({ top: 0, behavior: 'smooth' })) : handleNavigate('home')} className="flex items-center gap-2 group min-w-0">
               <div className="w-10 h-10 rounded-2xl bg-brand flex items-center justify-center flex-shrink-0">
                 <BookOpen className="w-5 h-5 text-white" />
               </div>
@@ -1930,18 +2055,22 @@ function App() {
                   return d.toLocaleDateString(locale, { weekday: 'long' });
                 };
 
-                // "9th time" — Intl knows the ordinal suffixes, English has no plural rule worth hand-rolling
-                const ordinalRules = new Intl.PluralRules('en-US', { type: 'ordinal' });
-                const ORDINAL_SUFFIX = { one: 'st', two: 'nd', few: 'rd', other: 'th' };
-                const nthTime = (recipeId, iso) => {
-                  const all = cookDates[recipeId];
-                  if (!all) return '';
-                  // dates are newest first, so position from the end is the prep's number
-                  const n = all.length - all.findIndex(row => row.at === iso);
-                  if (n < 2) return language === 'en' ? 'First time' : 'פעם ראשונה';
-                  return language === 'en'
-                    ? `${n}${ORDINAL_SUFFIX[ordinalRules.select(n)]} time`
-                    : `פעם ${n}`;
+                // The two timeline chevrons are the same control pointing opposite ways, so they
+                // stay one definition — same target size, same hover, nudging the way they mean.
+                const historyChevron = (dir) => {
+                  const down = dir === 'down';
+                  const label = down
+                    ? (language === 'en' ? 'Show earlier' : 'הצג קודמים')
+                    : (language === 'en' ? 'Show less' : 'הצג פחות');
+                  const Icon = down ? ChevronDown : ChevronUp;
+                  return (
+                    <button onClick={down ? showEarlier : collapseHistory} title={label} aria-label={label}
+                      className="group pointer-events-auto w-16 h-11 flex items-end justify-center pb-1
+                        focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand rounded-xl">
+                      <Icon className={`w-5 h-5 text-faint transition-all duration-200 group-hover:text-brand-dark
+                        ${down ? 'group-hover:translate-y-0.5' : 'group-hover:-translate-y-0.5'}`} />
+                    </button>
+                  );
                 };
 
                 return (
@@ -2002,9 +2131,7 @@ function App() {
                           {language === 'en' ? 'Last 4 months' : 'ארבעת החודשים האחרונים'}
                         </h4>
                         <span className="text-xs text-faint">
-                          {language === 'en'
-                            ? `${cookTotals.all} prep${cookTotals.all === 1 ? '' : 's'}`
-                            : `${cookTotals.all} בישולים`}
+                          {prepCount(cookTotals.all, language)}
                         </span>
                       </div>
 
@@ -2055,7 +2182,7 @@ function App() {
                                     aria-pressed={pickable ? key === selectedDay : undefined}
                                     onClick={() => setSelectedDay(d => (d === key ? null : key))}
                                     title={`${cell.date.toLocaleDateString(locale, { weekday: 'short', day: 'numeric', month: 'short' })} — ${cell.count
-                                      ? (language === 'en' ? `${cell.count} prep${cell.count > 1 ? 's' : ''}` : `${cell.count} בישולים`)
+                                      ? prepCount(cell.count, language)
                                       : (language === 'en' ? 'nothing' : 'כלום')}`}
                                     className={`aspect-square rounded-md flex items-center justify-center text-[0.6rem] tabular-nums transition-transform
                                       ${cell.inWindow ? HEAT_LEVELS[cell.level] : ''}
@@ -2084,7 +2211,7 @@ function App() {
                     </div>
 
                     {/* Recently — every prep, newest first (or one picked day) */}
-                    <div ref={timelineRef} className="bg-white border border-border rounded-3xl p-4 sm:p-5 mt-3">
+                    <div ref={timelineRef} className="bg-surface border border-border rounded-3xl p-4 sm:p-5 mt-3">
                       <div className="flex items-baseline gap-2.5 mb-1">
                         <h4 className="text-sm font-bold text-espresso">
                           {pickedDay
@@ -2103,17 +2230,24 @@ function App() {
                         )}
                       </div>
 
-                      {(pickedDay ? [pickedDay] : historyTimeline).map(day => (
-                        <div key={day.key} className="flex flex-col gap-2 py-3.5 border-t border-border first-of-type:border-t-0 first-of-type:pt-1">
+                      <div className="relative">
+                      {(pickedDay ? [pickedDay] : historyTimeline).map((day, i, arr) => {
+                        // Days past the count we last rendered are the ones that just arrived;
+                        // they unfold instead of appearing. The divider is keyed off the index
+                        // rather than first-of-type, since the unfold wrapper would break that.
+                        const isNew = !pickedDay && !collapsing && i >= historyShown.current
+                        const isGoing = !pickedDay && collapsing && i >= HISTORY_DAYS
+                        const body = (
+                        <div className={`flex flex-col gap-2 py-3.5 transition-opacity duration-300
+                          ${i === 0 ? 'pt-1' : 'border-t border-border'}
+                          ${!pickedDay && historyHasMore && i === arr.length - 1 ? 'opacity-[0.55]' : ''}`}>
                           <div className="flex items-baseline gap-2">
                             <span className="text-[0.8rem] font-bold text-espresso">{dayLabel(day.date)}</span>
                             <span className="text-xs text-faint tabular-nums">
                               {day.date.toLocaleDateString(locale, { day: 'numeric', month: 'short' })}
                             </span>
                             <span className="ms-auto text-[0.7rem] text-muted">
-                              {language === 'en'
-                                ? `${day.rows.length} prep${day.rows.length > 1 ? 's' : ''}`
-                                : `${day.rows.length} בישולים`}
+                              {prepCount(day.rows.length, language)}
                             </span>
                           </div>
                           {collapseByRecipe(day.rows).map(entry => {
@@ -2125,17 +2259,13 @@ function App() {
                                 <span className={`w-9 h-9 rounded-xl flex-none flex items-center justify-center ${isSignature ? 'sig-tile' : 'bg-brand/10'}`}>
                                   <ChefHat className={`w-4 h-4 ${isSignature ? 'text-brand-deep' : 'text-brand-dark'}`} />
                                 </span>
-                                <span className="min-w-0 flex flex-col">
+                                <span className="min-w-0">
                                   <span className="text-sm font-semibold text-ink truncate">
                                     {r ? r.title : (language === 'en' ? 'Deleted recipe' : 'מתכון שנמחק')}
+                                    {/* mx, not ms: dir="ltr" flips what "start" means, so in Hebrew the gap landed on the far side */}
                                     {entry.count > 1 && (
-                                      <span dir="ltr" className="ms-2 text-[0.7rem] font-bold text-brand-deep bg-brand/10 rounded-full px-1.5 py-0.5">×{entry.count}</span>
+                                      <span dir="ltr" className="mx-1.5 text-[0.7rem] font-bold text-brand-deep bg-brand/10 rounded-full px-1.5 py-0.5">×{entry.count}</span>
                                     )}
-                                  </span>
-                                  <span className="text-[0.72rem] text-muted">
-                                    {isSignature
-                                      ? (language === 'en' ? 'Your signature dish' : 'מנת הדגל שלך')
-                                      : nthTime(entry.recipe, entry.at)}
                                   </span>
                                 </span>
                                 <span dir="ltr" className="ms-auto text-xs text-faint tabular-nums flex-none">
@@ -2145,23 +2275,29 @@ function App() {
                             );
                           })}
                         </div>
-                      ))}
+                        );
+                        return isNew || isGoing
+                          ? <div key={day.key} className={isNew ? 'day-in' : 'day-out'}><div>{body}</div></div>
+                          : <div key={day.key}>{body}</div>
+                      })}
 
-                      {/* Hairlines either side, same device as the section eyebrows —
-                          reads as "the list keeps going" rather than a stray button. */}
-                      {!pickedDay && historyTimeline.length === historyDayCount && (
-                        <div className="flex items-center gap-3 mt-3">
-                          <span className="flex-1 h-px bg-border" />
-                          <button onClick={() => setHistoryDayCount(n => n + 6)}
-                            title={language === 'en' ? 'Show earlier' : 'הצג קודמים'}
-                            aria-label={language === 'en' ? 'Show earlier' : 'הצג קודמים'}
-                            className="w-8 h-8 rounded-full bg-cream-dark border border-border text-faint flex items-center justify-center
-                              transition-all duration-200 hover:bg-brand/10 hover:border-brand/40 hover:text-brand-dark hover:scale-110
-                              focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand">
-                            <AlignJustify className="w-3.5 h-3.5" />
-                          </button>
-                          <span className="flex-1 h-px bg-border" />
+                      {/* The list visibly runs under the card edge: last day dims beneath a fade
+                          to the card's white, chevron floating in it. The gradient is decoration —
+                          pointer-events-none so the rows underneath stay tappable — and only the
+                          64px strip around the chevron is the button. */}
+                      {!pickedDay && historyHasMore && (
+                        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-11 flex items-end justify-center
+                          bg-gradient-to-b from-transparent to-surface rounded-b-2xl">
+                          {historyDayCount > HISTORY_DAYS && historyChevron('up')}
+                          {historyChevron('down')}
                         </div>
+                      )}
+                      </div>
+
+                      {/* Once there's nothing left to expand the fade goes, but collapsing back is
+                          still worth offering — same chevron, now on its own line under the list. */}
+                      {!pickedDay && !historyHasMore && historyDayCount > HISTORY_DAYS && (
+                        <div className="flex justify-center pt-1">{historyChevron('up')}</div>
                       )}
                     </div>
                   </div>
@@ -2265,7 +2401,8 @@ function App() {
         )}
 
         {viewMode === 'detail' && selectedRecipe && (
-          <div className="transition-all duration-300 ease-out opacity-100 translate-y-0">
+          // Deliberately no wrapper div: a transform on one would become the
+          // containing block for the recipe's fixed history sheet.
             <RecipeDetail
               recipe={selectedRecipe}
               onBack={handleBack}
@@ -2286,7 +2423,6 @@ function App() {
               currentRecipeCategories={recipeCategories[selectedRecipe?.id] || []}
               onToggleRecipeCategory={user && selectedRecipe?.authorId === user.id ? handleToggleRecipeCategory : undefined}
               onCreateCategory={user && selectedRecipe?.authorId === user.id ? handleCreateCategory : undefined} />
-          </div>
         )}
 
 
@@ -2462,8 +2598,6 @@ function App() {
           </div>
         </div>
       </footer>
-
-      <ScrollToTop language={language} />
 
       {/* Confirm Dialog */}
       {confirmDialog && (

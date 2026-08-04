@@ -21,6 +21,9 @@ export default {
         fainter: '#cbc5ba',
         border: { DEFAULT: '#e8e4dc', dark: '#ddd9d0' },
         cream: { DEFAULT: '#faf9f7', dark: '#f5f3ef' },
+        // Card ground. Named so anything that has to *end* at a card's background —
+        // a fade-out, a mask — can point at the same value instead of copying it.
+        surface: '#ffffff',
       },
     },
   },

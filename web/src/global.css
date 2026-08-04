@@ -266,6 +266,38 @@ body {
   .fresh-dot { animation: none; }
 }
 
+/* Cook-history "show earlier" — the card grows into its new height and the days that just
+   arrived slide down with it, as one block. The 0fr→1fr grid row is the trick that makes
+   an auto height animatable without measuring anything in JS. */
+@keyframes day-in {
+  from { grid-template-rows: 0fr; opacity: 0; }
+  to   { grid-template-rows: 1fr; opacity: 1; }
+}
+.day-in {
+  display: grid;
+  grid-template-rows: 1fr;
+  animation: day-in 0.3s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+.day-in > * { overflow: hidden; }
+
+/* Collapsing runs the same motion backwards. The days stay mounted for the length of the
+   animation (App.jsx holds the count until it finishes) — otherwise React drops them on
+   the first frame and there's nothing left to animate. */
+@keyframes day-out {
+  from { grid-template-rows: 1fr; opacity: 1; }
+  to   { grid-template-rows: 0fr; opacity: 0; }
+}
+.day-out {
+  display: grid;
+  grid-template-rows: 0fr;
+  animation: day-out 0.3s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+.day-out > * { overflow: hidden; }
+
+@media (prefers-reduced-motion: reduce) {
+  .day-in, .day-out { animation: none; }
+}
+
 /* Confirm dialog pop-in */
 @keyframes confirm-pop {
   from { transform: scale(0.92); opacity: 0; }
