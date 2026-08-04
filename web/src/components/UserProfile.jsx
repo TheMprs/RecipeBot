@@ -30,7 +30,7 @@ export function UserProfile({
   recipeCategories = {},
   onCreateCategory,
   onDeleteCategory,
-  onToggleRecipeCategory,
+  onSetRecipeCategories,
   onRenameCategory,
   onRecolorCategory,
   onHandleChange,
@@ -610,7 +610,7 @@ export function UserProfile({
               likeCount={likeCounts[recipe.id]}
               userCategories={isOwnProfile ? userCategories : undefined}
               currentRecipeCategories={isOwnProfile ? (recipeCategories[recipe.id] || []) : undefined}
-              onToggleRecipeCategory={isOwnProfile ? onToggleRecipeCategory : undefined}
+              onSetRecipeCategories={isOwnProfile ? onSetRecipeCategories : undefined}
               onCreateCategory={isOwnProfile ? onCreateCategory : undefined}
             />
           ))}

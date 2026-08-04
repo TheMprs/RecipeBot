@@ -90,7 +90,7 @@ function teaserWords(ingredients) {
 
 const RANK_BG = { 1: 'bg-brand', 2: 'bg-[#a89a84]', 3: 'bg-[#c4b49a]' }
 
-export function RecipeCard({ recipe, language = 'en', apiBase = '/api', onSelect, showCategory = true, likeCount, authorUsername, authorId, authorAvatar, rank, feed = false, onSelectAuthor, userCategories, currentRecipeCategories, onToggleRecipeCategory, onCreateCategory }) {
+export function RecipeCard({ recipe, language = 'en', apiBase = '/api', onSelect, showCategory = true, likeCount, authorUsername, authorId, authorAvatar, rank, feed = false, onSelectAuthor, userCategories, currentRecipeCategories, onSetRecipeCategories, onCreateCategory }) {
   const isRtl = language === 'he'
   const [copied, setCopied] = useState(false)
   const [showQR, setShowQR] = useState(false)
@@ -144,7 +144,7 @@ export function RecipeCard({ recipe, language = 'en', apiBase = '/api', onSelect
 
         {/* Action button — faintly visible on touch, hover-only on desktop */}
         <div className={`flex items-center gap-1.5 opacity-70 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity flex-shrink-0 ${saveOpen ? 'sm:opacity-100' : ''}`}>
-          {onToggleRecipeCategory && (
+          {onSetRecipeCategories && (
             <SaveToMenu
               compact
               recipe={recipe}
@@ -152,7 +152,7 @@ export function RecipeCard({ recipe, language = 'en', apiBase = '/api', onSelect
               accent={color || undefined}
               userCategories={userCategories}
               currentRecipeCategories={currentRecipeCategories}
-              onToggleRecipeCategory={onToggleRecipeCategory}
+              onSetRecipeCategories={onSetRecipeCategories}
               onCreateCategory={onCreateCategory}
               onOpenChange={setSaveOpen}
             />

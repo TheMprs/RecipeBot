@@ -8,7 +8,7 @@ const BRAND = '#e67e22'
 // "Save to" category dropdown (checkbox list + inline create).
 // Dropdown is portalled with fixed positioning so it isn't clipped by overflow-hidden cards.
 // compact → icon-only trigger styled like the card share button; otherwise a labelled pill.
-export function SaveToMenu({ language, accent = BRAND, recipe, userCategories = [], currentRecipeCategories = [], onToggleRecipeCategory, onCreateCategory, compact = false, onOpenChange }) {
+export function SaveToMenu({ language, accent = BRAND, recipe, userCategories = [], currentRecipeCategories = [], onSetRecipeCategories, onCreateCategory, compact = false, onOpenChange }) {
   const [pos, setPos] = useState(null) // {x, y} of the dropdown's top-start corner, or null = closed
   const [selected, setSelected] = useState([]) // pending selection, committed on close
   const [newCategoryInput, setNewCategoryInput] = useState('')
@@ -20,13 +20,14 @@ export function SaveToMenu({ language, accent = BRAND, recipe, userCategories = 
 
   useEffect(() => { onOpenChange?.(!!pos) }, [pos])
 
-  // Commit the diff between what was saved when we opened and the pending selection.
+  // Commit the pending selection as one list. Working out what changed is the caller's
+  // job: sending N separate toggles meant N reads of the same pre-visit state, and the
+  // last one won.
   const close = () => {
     const orig = originalRef.current
     const next = selectedRef.current
-    for (const id of new Set([...orig, ...next])) {
-      if (orig.includes(id) !== next.includes(id)) onToggleRecipeCategory(recipe.id, id)
-    }
+    const changed = orig.length !== next.length || next.some(id => !orig.includes(id))
+    if (changed) onSetRecipeCategories(recipe.id, next)
     setPos(null)
   }
 

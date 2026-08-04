@@ -1052,37 +1052,52 @@ function App() {
     }
   }
 
-  const handleToggleRecipeCategory = async (recipeId, categoryId) => {
+  // The save-to menu hands over the whole list it wants rather than one toggle at a
+  // time. Two categories picked in a single visit used to be two calls that both read
+  // the same pre-visit state, so the second one's result overwrote the first's on the
+  // card — the rows both reached the database, but the card only showed one.
+  const handleSetRecipeCategories = async (recipeId, next) => {
     const current = recipeCategories[recipeId] || []
-    const isAdding = !current.includes(categoryId)
-    setRecipeCategories(prev => ({
-      ...prev,
-      [recipeId]: isAdding ? [...current, categoryId] : current.filter(id => id !== categoryId)
-    }))
+    const added = next.filter(id => !current.includes(id))
+    const removed = current.filter(id => !next.includes(id))
+    if (!added.length && !removed.length) return
+
+    // The card's pill is derived from the junction list, so it can move on the same
+    // frame as the checkmark. It used to wait for the round trip, which is the couple
+    // of seconds you could feel — the menu had already closed by then.
+    const paintCard = (list) => {
+      const first = list.length ? userCategories.find(c => c.id === list[0]) : null
+      const colors = list.map(id => userCategories.find(c => c.id === id)?.color).filter(Boolean)
+      setRecipes(prev => prev.map(r => r.id === recipeId
+        ? { ...r, category: first?.name || null, categoryColor: first?.color || null, categoryColors: colors }
+        : r))
+    }
+
+    setRecipeCategories(prev => ({ ...prev, [recipeId]: next }))
+    paintCard(next)
     try {
       const token = await getToken();
-      if (isAdding) {
+      const auth = { 'apikey': supabaseKey, 'Authorization': `Bearer ${token}` }
+      // One request per direction, not per category.
+      if (added.length) {
         const res = await fetch(`${supabaseUrl}/rest/v1/recipe_categories`, {
           method: 'POST',
-          headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
-          body: JSON.stringify({ recipe_id: recipeId, category_id: categoryId })
-        })
-        if (!res.ok) throw new Error(await res.text())
-      } else {
-        const res = await fetch(`${supabaseUrl}/rest/v1/recipe_categories?recipe_id=eq.${recipeId}&category_id=eq.${categoryId}`, {
-          method: 'DELETE',
-          headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${token}` }
+          headers: { ...auth, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+          body: JSON.stringify(added.map(category_id => ({ recipe_id: recipeId, category_id })))
         })
         if (!res.ok) throw new Error(await res.text())
       }
-      // Reflect the change on the recipe card immediately (junction is the source of truth).
-      const newList = isAdding ? [...current, categoryId] : current.filter(id => id !== categoryId)
-      const newCat = newList.length ? userCategories.find(c => c.id === newList[0]) : null
-      const newColors = newList.map(id => userCategories.find(c => c.id === id)?.color).filter(Boolean)
-      setRecipes(prev => prev.map(r => r.id === recipeId ? { ...r, category: newCat?.name || null, categoryColor: newCat?.color || null, categoryColors: newColors } : r))
+      if (removed.length) {
+        const res = await fetch(
+          `${supabaseUrl}/rest/v1/recipe_categories?recipe_id=eq.${recipeId}&category_id=in.(${removed.join(',')})`,
+          { method: 'DELETE', headers: auth }
+        )
+        if (!res.ok) throw new Error(await res.text())
+      }
     } catch (err) {
       setRecipeCategories(prev => ({ ...prev, [recipeId]: current }))
-      console.error('[Data] Toggle recipe category failed:', err.message)
+      paintCard(current)
+      console.error('[Data] Set recipe categories failed:', err.message)
       setSaveError({ message: language === 'en' ? 'Failed to update saved categories' : 'עדכון הקטגוריות השמורות נכשל' })
     }
   }
@@ -2341,7 +2356,7 @@ function App() {
             recipeCategories={recipeCategories}
             onCreateCategory={handleCreateCategory}
             onDeleteCategory={handleDeleteCategory}
-            onToggleRecipeCategory={handleToggleRecipeCategory}
+            onSetRecipeCategories={handleSetRecipeCategories}
             onRenameCategory={handleRenameCategory}
             onRecolorCategory={handleRecolorCategory}
             onHandleChange={setUserHandle}
@@ -2421,7 +2436,7 @@ function App() {
               onSelectAuthor={selectedRecipe?.authorId ? navigateToProfile : undefined}
               userCategories={userCategories}
               currentRecipeCategories={recipeCategories[selectedRecipe?.id] || []}
-              onToggleRecipeCategory={user && selectedRecipe?.authorId === user.id ? handleToggleRecipeCategory : undefined}
+              onSetRecipeCategories={user && selectedRecipe?.authorId === user.id ? handleSetRecipeCategories : undefined}
               onCreateCategory={user && selectedRecipe?.authorId === user.id ? handleCreateCategory : undefined} />
         )}
 

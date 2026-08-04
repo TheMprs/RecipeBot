@@ -422,7 +422,7 @@ function InstructionsCard({ recipe, language, isRtl, accent }) {
   )
 }
 
-export function RecipeDetail({ recipe, language = 'en', onBack, onEdit, onDelete, onMarkMade, cookCount = 0, cookDates = [], onAddPrepOn, onRemovePrep, likeCount = 0, isLiked = false, onToggleLike, onDuplicate, onSelectAuthor, userCategories = [], currentRecipeCategories = [], onToggleRecipeCategory, onCreateCategory }) {
+export function RecipeDetail({ recipe, language = 'en', onBack, onEdit, onDelete, onMarkMade, cookCount = 0, cookDates = [], onAddPrepOn, onRemovePrep, likeCount = 0, isLiked = false, onToggleLike, onDuplicate, onSelectAuthor, userCategories = [], currentRecipeCategories = [], onSetRecipeCategories, onCreateCategory }) {
   const isRtl = language === 'he'
   const [showQR, setShowQR] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -486,14 +486,14 @@ export function RecipeDetail({ recipe, language = 'en', onBack, onEdit, onDelete
             <Share2 className="w-4 h-4" />
             <span className="hidden sm:inline">Share</span>
           </button>
-          {onToggleRecipeCategory && (
+          {onSetRecipeCategories && (
             <SaveToMenu
               recipe={recipe}
               language={language}
               accent={accent}
               userCategories={userCategories}
               currentRecipeCategories={currentRecipeCategories}
-              onToggleRecipeCategory={onToggleRecipeCategory}
+              onSetRecipeCategories={onSetRecipeCategories}
               onCreateCategory={onCreateCategory}
             />
           )}
