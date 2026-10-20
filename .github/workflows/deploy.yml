@@ -3,7 +3,11 @@ name: Deploy Java Backend to Google Cloud
 on:
   push:
     branches:
-      - main 
+      - main
+    # Docs-only pushes have nothing to build — without this they restart the live bot.
+    paths-ignore:
+      - 'README.md'
+      - 'docs/**'
 
 jobs:
   # The web app deploys through Vercel, not from here, so this job gates nothing on its
