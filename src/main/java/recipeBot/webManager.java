@@ -103,7 +103,12 @@ public class webManager {
             return;
         }
 
-        db.linkTelegramUser(chatId, userId);
+        // The token is already consumed at this point, so a failure here means the user
+        // has to start the flow again from the bot — say so rather than claiming success.
+        if (!db.linkTelegramUser(chatId, userId)) {
+            ctx.status(500).result("Couldn't link the account, please try again from the bot");
+            return;
+        }
         ctx.result("Account linked successfully");
     }
 

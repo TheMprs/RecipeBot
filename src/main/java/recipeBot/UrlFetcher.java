@@ -216,7 +216,10 @@ public class UrlFetcher {
 
     // *** SSRF validation ***
 
-    private static void validateUrl(String rawUrl) throws Exception {
+    // Package-private so UrlFetcherTest can exercise the guard directly — it is the one
+    // piece here worth pinning down, and it is unreachable through fetchRecipe without
+    // making a network call.
+    static void validateUrl(String rawUrl) throws Exception {
         URI uri;
         try {
             uri = new URI(rawUrl.trim());
@@ -234,17 +237,33 @@ public class UrlFetcher {
             throw new Exception("Invalid URL: missing host");
         }
 
-        // Resolve hostname and check the actual IP
-        InetAddress address;
+        // Resolve the hostname and check EVERY address it answers with. getByName returns
+        // only the first, so a host publishing both a public and a private record would be
+        // judged on whichever the resolver happened to put first — and the connection could
+        // still go to the other one.
+        InetAddress[] addresses;
         try {
-            address = InetAddress.getByName(host);
+            addresses = InetAddress.getAllByName(host);
         } catch (Exception e) {
             throw new Exception("Could not resolve host: " + host);
         }
+        if (addresses == null || addresses.length == 0) {
+            throw new Exception("Could not resolve host: " + host);
+        }
 
-        if (isPrivateAddress(address)) {
+        if (anyPrivate(addresses)) {
             throw new Exception("Requests to internal/private addresses are not allowed");
         }
+    }
+
+    // True if ANY resolved address is internal. Its own method so a test can hand it a
+    // public-then-private list — the exact shape that slipped past the old getByName
+    // version, and the one a live DNS lookup can't be relied on to reproduce.
+    static boolean anyPrivate(InetAddress[] addresses) {
+        for (InetAddress address : addresses) {
+            if (isPrivateAddress(address)) return true;
+        }
+        return false;
     }
 
     private static boolean isPrivateAddress(InetAddress addr) {

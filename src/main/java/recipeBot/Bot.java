@@ -82,7 +82,24 @@ public class Bot extends TelegramLongPollingBot {
     public void onUpdateReceived(Update update) {
         Long chatId = extractChatId(update);
         if (chatId == null) return;
+        try {
+            handleUpdate(update, chatId);
+        } catch (Exception e) {
+            // Without this the exception unwinds into the library and the user is left with
+            // silence — the button simply appears to do nothing. Several handlers rethrow
+            // TelegramApiException as RuntimeException, and forged callback data can throw
+            // out of a split, so this is reachable in normal operation, not just in theory.
+            System.err.println("[Bot] update handling failed for chat " + chatId + ": " + e);
+            e.printStackTrace();
+            try {
+                sendText(chatId, "Something went wrong on my side. Please try again.");
+            } catch (Exception ignored) {
+                // If sending is what failed, there is nothing left to say.
+            }
+        }
+    }
 
+    private void handleUpdate(Update update, Long chatId) {
         // Block unlinked users — send them the linking flow
         String userId = db.getLinkedUserId(chatId);
         if (userId == null) {
@@ -146,6 +163,7 @@ public class Bot extends TelegramLongPollingBot {
 
         if (data.startsWith("EDITFIELD_")) {
             String[] parts = data.split("_", 3);
+            if (parts.length < 3) return;   // forged/truncated payload — ignore, don't throw
             String field = parts[1];
             String recipeid = parts[2];
             Recipe recipe = db.getRecipeById(recipeid);
@@ -214,6 +232,7 @@ public class Bot extends TelegramLongPollingBot {
 
         if (data.startsWith("SETVIS_")) {
             String[] parts = data.split("_", 3);
+            if (parts.length < 3) return;
             String vis = parts[1].toLowerCase();
             // Callback data is client-forgeable — only the two real values pass.
             if (!vis.equals("public") && !vis.equals("private")) return;
@@ -358,6 +377,7 @@ public class Bot extends TelegramLongPollingBot {
         // Multi-select category editing: toggle one link, then re-render the menu in place.
         if (data.startsWith("TOGGLECAT_")) {
             String[] parts = data.split("_", 3); // TOGGLECAT_<recipeId>_<categoryId>
+            if (parts.length < 3) return;
             String recipeId = parts[1], categoryId = parts[2];
             Recipe recipe = db.getRecipeById(recipeId);
             if (recipe == null || !recipe.isOwnedBy(userId) || !db.getUserCategories(userId).containsKey(categoryId)) {
@@ -398,6 +418,7 @@ public class Bot extends TelegramLongPollingBot {
         }
         if (data.startsWith("CATSETCOLOR_")) {
             String[] parts = data.split("_", 3); // CATSETCOLOR_<catId>_<hex|NONE>
+            if (parts.length < 3) return;
             String catId = parts[1], hex = parts[2];
             if (!db.getUserCategories(userId).containsKey(catId)) { replaceMessageWithText(id, cbMsgId, "Category not found."); return; }
             String color = hex.equals("NONE") ? null : "#" + hex;
@@ -407,8 +428,10 @@ public class Bot extends TelegramLongPollingBot {
         }
         if (data.startsWith("CATDELYES_")) {
             String catId = data.substring(10);
+            // deleteCategory checks ownership itself, so false covers both "not yours / gone"
+            // and a real failure — the reply has to fit either.
             boolean ok = db.deleteCategory(catId, userId);
-            replaceMessageWithText(id, cbMsgId, ok ? "Category deleted." : "Delete failed, please try again.");
+            replaceMessageWithText(id, cbMsgId, ok ? "Category deleted." : "Couldn't delete that category — it may already be gone. Please try again.");
             return;
         }
         if (data.startsWith("CATDEL_")) {

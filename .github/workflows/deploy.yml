@@ -6,6 +6,37 @@ on:
       - main 
 
 jobs:
+  # The web app deploys through Vercel, not from here, so this job gates nothing on its
+  # own — it exists so a broken build or a failing helper test is visible on the commit
+  # instead of only in whatever the browser does with it later.
+  web-checks:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@9f698171ed81b15d1823a05fc7211befd50c8ae0 # v6.0.3
+
+    - name: Set up Node
+      uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      with:
+        node-version: '22'
+        cache: 'npm'
+        cache-dependency-path: web/package-lock.json
+
+    - name: Install
+      run: npm ci
+
+    # Plain node, no test runner — these two files are the project's whole JS suite.
+    - name: Unit tests
+      run: |
+        node src/utils/cookStats.test.mjs
+        node src/utils/parseRecipeText.test.mjs
+
+    - name: Build
+      run: npm run build
+
   build-and-deploy:
     runs-on: ubuntu-latest
 
@@ -20,8 +51,11 @@ jobs:
         distribution: 'temurin'
         cache: 'maven'
 
-    - name: Build with Maven
-      run: mvn --batch-mode clean package -DskipTests -Djava.net.preferIPv4Stack=true
+    # Tests run here, before anything is copied to the VM: a failure stops the job and
+    # the running server is left untouched. They were skipped for a long time, which
+    # meant BotFormatTest and UrlFetcherTest existed without ever gating a deploy.
+    - name: Build and test with Maven
+      run: mvn --batch-mode clean package -Djava.net.preferIPv4Stack=true
 
     - name: Copy JAR to Google Cloud VM
       uses: appleboy/scp-action@ff85246acaad7bdce478db94a363cd2bf7c90345 # v1.0.0

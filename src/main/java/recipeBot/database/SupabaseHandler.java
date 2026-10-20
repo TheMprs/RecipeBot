@@ -243,8 +243,33 @@ public class SupabaseHandler {
         }
     }
 
+    // True only if this category exists AND belongs to this user. Fails closed: an error
+    // reading it must not read as "yes". The service key bypasses RLS, so ownership is
+    // ours to enforce.
+    public boolean ownsCategory(String categoryId, String userId) {
+        HttpRequest req = base("/categories?id=eq." + encode(categoryId)
+                + "&user_id=eq." + encode(userId) + "&select=id").GET().build();
+        try {
+            HttpResponse<String> res = client.send(req, HttpResponse.BodyHandlers.ofString());
+            if (res.statusCode() >= 400) return false;
+            JsonArray arr = gson.fromJson(res.body(), JsonArray.class);
+            return arr != null && arr.size() > 0;
+        } catch (Exception e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
+
     // Deletes a category (and its recipe links first, so no FK is left dangling).
     public boolean deleteCategory(String categoryId, String userId) {
+        // Ownership is checked HERE, not only at the call site: the junction delete below
+        // cannot be owner-filtered (PostgREST deletes don't join), so an unowned id would
+        // strip another user's recipe links even though the category row itself survives
+        // the filtered delete underneath. The category is the guard for both statements.
+        if (!ownsCategory(categoryId, userId)) {
+            System.err.println("[Supabase] deleteCategory refused: category not owned by caller");
+            return false;
+        }
         try {
             client.send(base("/recipe_categories?category_id=eq." + encode(categoryId)).DELETE().build(),
                     HttpResponse.BodyHandlers.ofString());
@@ -409,7 +434,9 @@ public class SupabaseHandler {
 
     // *** TELEGRAM AUTH ***
 
-    public void linkTelegramUser(long chatId, String userId) {
+    // True on success. The caller tells the user whether their account is linked, so a
+    // silent false here used to become a confident "Account linked successfully".
+    public boolean linkTelegramUser(long chatId, String userId) {
         JsonObject body = new JsonObject();
         body.addProperty("telegram_chat_id", chatId);
         body.addProperty("user_id", userId);
@@ -422,9 +449,12 @@ public class SupabaseHandler {
             HttpResponse<String> res = client.send(req, HttpResponse.BodyHandlers.ofString());
             if (res.statusCode() >= 400) {
                 System.err.println("[Supabase] linkTelegramUser failed: " + res.statusCode() + " " + res.body());
+                return false;
             }
+            return true;
         } catch (Exception e) {
             e.printStackTrace();
+            return false;
         }
     }
 

@@ -125,8 +125,14 @@ export function RecipeCard({ recipe, language = 'en', apiBase = '/api', onSelect
     // INNER does the visual lift and uses clip-path to keep the colored spine inside the
     // rounded corners while transformed (plain overflow+radius leaks the spine past the
     // corner during a transform in Chrome).
+    // Mouse: the whole card opens the recipe. Keyboard/screen reader: the title is the
+    // button (a click on it bubbles up to this onClick). The card itself can't take a
+    // button role — the share/save-to buttons inside would become nested interactive
+    // content and get flattened away by assistive tech. The focus ring still draws on the
+    // whole card, via :has().
     <div
-      className="group relative w-full h-full rounded-2xl shadow-sm hover:shadow-md transition-shadow duration-300 cursor-pointer flex flex-col"
+      className="group relative w-full h-full rounded-2xl shadow-sm hover:shadow-md transition-shadow duration-300 cursor-pointer flex flex-col
+        [&:has(.card-open:focus-visible)]:outline [&:has(.card-open:focus-visible)]:outline-2 [&:has(.card-open:focus-visible)]:outline-offset-2 [&:has(.card-open:focus-visible)]:outline-brand"
       onClick={() => onSelect(recipe)}
     >
       {/* will-change keeps this permanently on its own compositor layer: without it, Chrome
@@ -139,11 +145,13 @@ export function RecipeCard({ recipe, language = 'en', apiBase = '/api', onSelect
       {/* Header — color lives on the left spine (card border), so the header stays plain white. */}
       <div className="px-5 pt-5 pb-1 border-b border-border/30 flex items-center gap-3" style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
         <h3 className={`font-semibold text-ink text-lg group-hover:text-brand-dark transition-colors line-clamp-1 ${isRtl ? 'text-right' : 'text-left'} flex-1`}>
-          {recipe.title}
+          <button type="button" className="card-open block w-full line-clamp-1 [text-align:inherit] outline-none">{recipe.title}</button>
         </h3>
 
-        {/* Action button — faintly visible on touch, hover-only on desktop */}
-        <div className={`flex items-center gap-1.5 opacity-70 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity flex-shrink-0 ${saveOpen ? 'sm:opacity-100' : ''}`}>
+        {/* Action buttons — faintly visible on touch, hover-only on desktop. focus-within
+            matters now the card is keyboard-reachable: without it, tabbing into these lands
+            on a control that is invisible on desktop. */}
+        <div className={`flex items-center gap-1.5 opacity-70 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100 transition-opacity flex-shrink-0 ${saveOpen ? 'sm:opacity-100' : ''}`}>
           {onSetRecipeCategories && (
             <SaveToMenu
               compact

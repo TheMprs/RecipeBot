@@ -45,6 +45,15 @@ function collapseByRecipe(rows) {
   return out
 }
 
+// PostgREST reads `, ( ) *` as grammar inside a filter value, and encodeURIComponent
+// deliberately leaves `( ) * ' ! ~` alone — so those characters reach the server as
+// syntax rather than as something to search for. A stray `)` silently truncated the
+// or-group (dropping the display_name half and the trailing wildcard, returning wrong
+// results with a 200), and a crafted `,` could bolt an extra always-true condition on.
+// Strip them: nobody searches recipes for a bracket, and the wildcards should only ever
+// be the two this app adds itself.
+const searchTerm = (s) => s.replace(/[(),*"\\]/g, ' ').replace(/\s+/g, ' ').trim()
+
 // Days of cook history the "Recently" panel opens with, and the step it grows by.
 const HISTORY_DAYS = 4
 const HISTORY_STEP = 6
@@ -1088,8 +1097,12 @@ function App() {
         if (!res.ok) throw new Error(await res.text())
       }
       if (removed.length) {
+        // Encoded, like every other id this app puts in a URL: they are UUIDs today, so
+        // nothing here can change the meaning of the request — but that is a property of
+        // the current data, not of this line.
+        const ids = removed.map(encodeURIComponent).join(',')
         const res = await fetch(
-          `${supabaseUrl}/rest/v1/recipe_categories?recipe_id=eq.${recipeId}&category_id=in.(${removed.join(',')})`,
+          `${supabaseUrl}/rest/v1/recipe_categories?recipe_id=eq.${encodeURIComponent(recipeId)}&category_id=in.(${ids})`,
           { method: 'DELETE', headers: auth }
         )
         if (!res.ok) throw new Error(await res.text())
@@ -1291,9 +1304,12 @@ function App() {
 
   // Global search — debounced, queries users + public recipes
   useEffect(() => {
-    if (!globalQuery.trim()) { setGlobalResults({ users: [], recipes: [] }); return }
+    // Sanitise before the empty check, not after: a query of only stripped punctuation
+    // would otherwise reach the server as `**` and match every row.
+    const term = searchTerm(globalQuery)
+    if (!term) { setGlobalResults({ users: [], recipes: [] }); return }
     const timer = setTimeout(async () => {
-      const q = encodeURIComponent(`*${globalQuery.trim()}*`)
+      const q = encodeURIComponent(`*${term}*`)
       const headers = { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` }
       const [usersRes, recipesRes] = await Promise.all([
         fetch(`${supabaseUrl}/rest/v1/users?or=(username.ilike.${q},display_name.ilike.${q})&select=id,username,display_name,avatar_url&limit=4`, { headers }),
@@ -1775,9 +1791,11 @@ function App() {
                     className="flex items-center gap-2 text-muted hover:text-ink transition-colors p-2 -me-2">
                     <Menu className="w-5 h-5"/>
                   </button>
-                  {/* Desktop: plain anchored dropdown (same style as the recipe-form category menu) */}
+                  {/* Desktop: plain anchored dropdown (same style as the recipe-form category menu).
+                      The button is the last thing in the header, so the menu grows back toward
+                      the page, never past the window edge it sits against. */}
                   {navMenuOpen && (
-                    <div className={`hidden sm:block absolute ${isRtl ? 'right-0' : 'left-0'} mt-2 w-48 bg-white border border-border rounded-2xl shadow-lg overflow-hidden z-50`}
+                    <div className={`hidden sm:block absolute ${isRtl ? 'left-0' : 'right-0'} mt-2 w-48 bg-white border border-border rounded-2xl shadow-lg overflow-hidden z-50`}
                       style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
                       {navItems}
                     </div>
