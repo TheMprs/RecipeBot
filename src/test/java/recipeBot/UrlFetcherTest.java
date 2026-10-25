@@ -53,6 +53,14 @@ class UrlFetcherTest {
         allows("https://1.1.1.1/recipe");
     }
 
+    // Escaped JSON-LD ("פ…") reaches Gemini as plain Hebrew, ~4x shorter.
+    @Test
+    void readable_unescapes_json_ld_for_gemini() {
+        String escaped = "{\"name\":\"\\u05e4\\u05d0\\u05d9\",\"q\":\"say \\\"hi\\\"\"}";
+        assertEquals("{\"name\":\"פאי\",\"q\":\"say \\\"hi\\\"\"}", UrlFetcher.readable(escaped));
+        assertEquals("not json {", UrlFetcher.readable("not json {"), "unparseable passes through");
+    }
+
     // The reason getAllByName replaced getByName: a name resolving to several addresses
     // must be judged on all of them, not on whichever the resolver returned first.
     //

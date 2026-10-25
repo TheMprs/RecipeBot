@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { LinkIcon, ChevronDown, Check, Plus, ChefHat, Globe, Lock, Type, AlignLeft, Tag, Flame, List, ListOrdered, X, ClipboardList, Sparkles } from 'lucide-react'
 import { categoryColor } from '../utils/categoryColor'
 import { parseRecipeText, isLanded, landedDelay } from '../utils/parseRecipeText'
+import { defaultVisibility } from '../utils/visibility'
 
 const FieldLabel = ({ icon: Icon, children, hint, trailing }) => (
   <div className="mb-2">
@@ -20,7 +21,7 @@ const FieldLabel = ({ icon: Icon, children, hint, trailing }) => (
 // text still splits on line breaks so a copied list lands as separate items.
 const splitLines = (text) => text.split('\n').map(s => s.trim()).filter(Boolean)
 
-export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, language = 'en', userCategories = [], currentCategoryIds = [], onCreateCategory }) {
+export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, language = 'en', userCategories = [], currentCategoryIds = [], onCreateCategory, onDirtyChange }) {
   const isRtl = language === 'he'
 
   const [title, setTitle] = useState('')
@@ -35,7 +36,7 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
   const [editInst, setEditInst] = useState(null)
   const [selectedCatIds, setSelectedCatIds] = useState(currentCategoryIds)
   const [calories, setCalories] = useState('')
-  const [visibility, setVisibility] = useState(() => localStorage.getItem('defaultRecipeVisibility') || 'public')
+  const [visibility, setVisibility] = useState(defaultVisibility)
   const [errors, setErrors] = useState({})
   const [showPaste, setShowPaste] = useState(false)
   const [pasteText, setPasteText] = useState('')
@@ -67,6 +68,25 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
       if (editingRecipe.visibility) setVisibility(editingRecipe.visibility)
     }
   }, [editingRecipe])
+
+  // Unsaved-work check for the discard prompt. The baseline is what the form opened
+  // with: the stored recipe when editing, an empty form otherwise — so an imported or
+  // pasted recipe that was never saved counts as work too. Half-typed lines count.
+  const snapshot = (t, d, ing, ins, cats, cal, vis, drafts) =>
+    JSON.stringify([t || '', d || '', ing || [], ins || [], [...cats].sort(), cal, vis, drafts])
+  const [baseline] = useState(() => editingRecipe?.id
+    ? snapshot(editingRecipe.title, editingRecipe.description, editingRecipe.ingredients, editingRecipe.instructions,
+        currentCategoryIds, editingRecipe.caloriesPerServing != null ? String(editingRecipe.caloriesPerServing) : '',
+        editingRecipe.visibility || defaultVisibility(), '')
+    : snapshot('', '', [], [], currentCategoryIds, '', defaultVisibility(), ''))
+  const dirty = snapshot(title, description, ingredients, instructions, selectedCatIds, calories, visibility,
+    ingredientDraft.trim() + instructionDraft.trim()) !== baseline
+  // Keyed on the value only: onDirtyChange is a fresh arrow every App render, and each
+  // version just writes a ref, so re-running on its identity would do nothing new.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { onDirtyChange?.(dirty) }, [dirty])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => () => onDirtyChange?.(false), [])
 
   const selectedCats = userCategories.filter(c => selectedCatIds.includes(c.id))
   const toggleCat = (id) => setSelectedCatIds(ids => ids.includes(id) ? ids.filter(x => x !== id) : [...ids, id])
@@ -216,7 +236,8 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
           <div className="pointer-events-none absolute -top-16 -right-10 w-48 h-48 rounded-full bg-white/10 blur-2xl" />
           <div className="pointer-events-none absolute -bottom-20 -left-10 w-52 h-52 rounded-full bg-black/10 blur-2xl" />
           <div className="relative flex items-center justify-between">
-            <button onClick={onBack}
+            {/* type="button": inside the form, a bare <button> submits — closing would save */}
+            <button type="button" onClick={onBack}
               title={language === 'en' ? 'Close' : 'סגור'}
               className="flex items-center justify-center w-9 h-9 rounded-full text-white/85 hover:text-white hover:bg-white/15 transition-colors">
               <X className="w-5 h-5" />

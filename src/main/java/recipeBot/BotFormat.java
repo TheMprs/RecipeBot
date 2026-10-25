@@ -55,6 +55,24 @@ public final class BotFormat {
         return sb.toString();
     }
 
+    // Telegram rejects any message longer than this.
+    public static final int TELEGRAM_LIMIT = 4096;
+
+    // Joins whole lines into one message. If everything doesn't fit in `limit`, it keeps
+    // the lines that do and ends with `tail` (the "..." + website link) instead. Cutting
+    // only between lines means an HTML tag is never split. Length is measured on the HTML
+    // source, which is never shorter than the text Telegram counts — so this errs safe.
+    public static String fitMessage(java.util.List<String> lines, String tail, int limit) {
+        String full = String.join("", lines);
+        if (full.length() <= limit) return full;
+        StringBuilder sb = new StringBuilder();
+        for (String line : lines) {
+            if (sb.length() + line.length() + tail.length() > limit) break;
+            sb.append(line);
+        }
+        return sb.append(tail).toString();
+    }
+
     // One item per line: trims each line, drops blanks, never splits on punctuation
     // (so "1. Mix" and "approx." stay intact). Matches the web form's entry model.
     public static String[] splitLines(String text) {

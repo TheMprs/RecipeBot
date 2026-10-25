@@ -24,7 +24,9 @@ public class GeminiHandler {
     public Recipe extractRecipeFromText(String rawText) {
         // Key goes in the x-goog-api-key header, not the query string — a ?key= URL
         // leaks the secret into server/proxy/access logs.
-        String url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent";
+        // 2.5-flash-lite is closed to keys created after its retirement (404 "no longer available
+        // to new users"), so a rotated key broke every Gemini import until this moved to 3.5.
+        String url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent";
         String prompt = "Extract the recipe from the provided text. " +
             "CRITICAL: All values (name, description, ingredients, instructions) MUST be in the same language as the source text (e.g., if the source is Hebrew, output Hebrew). " +
             "Return ONLY a valid JSON object without markdown formatting. " +
@@ -48,10 +50,11 @@ public class GeminiHandler {
         JsonObject generationConfig = new JsonObject();
         generationConfig.addProperty("response_mime_type", "application/json");
 
-        // Plain extraction needs no reasoning — disabling thinking saves
-        // ~1000 tokens of latency per call
+        // Plain extraction needs no reasoning — minimal thinking keeps it fast. Gemini 3
+        // replaced thinkingBudget with thinkingLevel; the old {"thinkingBudget": 0} is a
+        // 400 INVALID_ARGUMENT on 3.5 (verified against the API on the VM, 2026-10-25).
         JsonObject thinkingConfig = new JsonObject();
-        thinkingConfig.addProperty("thinkingBudget", 0);
+        thinkingConfig.addProperty("thinkingLevel", "minimal");
         generationConfig.add("thinkingConfig", thinkingConfig);
 
         JsonObject requestBody = new JsonObject();

@@ -71,11 +71,26 @@ public class UrlFetcher {
         for (org.jsoup.nodes.Element script : doc.select("script[type=application/ld+json]")) {
             String json = script.html().trim();
             if (json.contains("\"Recipe\"")) {
-                return "JSON-LD structured recipe data:\n" + json;
+                return "JSON-LD structured recipe data:\n" + cap(readable(json));
             }
         }
-        String text = doc.text();
-        return text.length() > 20000 ? text.substring(0, 20000) : text;
+        return cap(doc.text());
+    }
+
+    private static String cap(String s) {
+        return s.length() > 20000 ? s.substring(0, 20000) : s;
+    }
+
+    // Many sites write JSON-LD with every non-ASCII letter escaped ("פא…"), so a
+    // Hebrew recipe reached Gemini as ~4x its size in codes it then had to decode. Parsing and
+    // re-serializing gives the same data as plain text (Gson only escapes quotes, backslashes
+    // and control characters). Unparseable blocks are passed through as they were.
+    static String readable(String json) {
+        try {
+            return JsonParser.parseString(json).toString();
+        } catch (Exception e) {
+            return json;
+        }
     }
 
     // *** JSON-LD parsing ***
@@ -171,6 +186,8 @@ public class UrlFetcher {
                 if (x.isJsonPrimitive()) {
                     String s = clean(x.getAsString());
                     if (!s.isEmpty()) out.add(s);
+                } else if (x.isJsonArray()) {
+                    out.addAll(stringList(x)); // some sites nest the list: [["a", "b"]]
                 }
             }
         } else if (e.isJsonPrimitive()) {

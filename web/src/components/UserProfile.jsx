@@ -10,6 +10,7 @@ import { formatRecipe } from '../utils/formatRecipe';
 import { useWheelScroll } from '../utils/useWheelScroll';
 import { useOutsideClick } from '../utils/useOutsideClick';
 import { CATEGORY_PALETTE, CHECKERBOARD } from '../utils/categoryColor';
+import { defaultVisibility as readDefaultVisibility } from '../utils/visibility';
 
 // Virtual category sentinel — recipes with no category assignments live here. ponytail: no DB row, pure client filter.
 const UNCATEGORIZED = '\0uncategorized';
@@ -106,7 +107,7 @@ export function UserProfile({
   useEffect(() => {
     if (openSettings) { setShowSettings(true); onSettingsOpened?.(); }
   }, [openSettings]);
-  const [defaultVisibility, setDefaultVisibility] = useState(() => localStorage.getItem('defaultRecipeVisibility') || 'private');
+  const [defaultVisibility, setDefaultVisibility] = useState(readDefaultVisibility);
   // {id, x, y} — popover is portaled to body (modal has backdrop-blur which clips fixed children).
   const [recolor, setRecolor] = useState(null);
   const [editingCategoryId, setEditingCategoryId] = useState(null);

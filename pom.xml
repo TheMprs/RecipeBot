@@ -9,8 +9,10 @@
     <version>1.0-SNAPSHOT</version>
 
     <properties>
-        <maven.compiler.source>23</maven.compiler.source>
-        <maven.compiler.target>23</maven.compiler.target>
+        <!-- Java 21 is a long-term-support line (23 is end-of-life, no security fixes). Bytecode for
+             21 runs on any newer JVM, so the jar keeps working on the VM while its own
+             runtime is moved to an LTS. -->
+        <maven.compiler.release>21</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
 

@@ -13,6 +13,7 @@ import { supabase, supabaseUrl, supabaseKey } from './supabaseClient'
 import { swr, invalidate, clearCache, peekCache, currentUserIdSync, purgeCacheVersions } from './utils/cache'
 import { getToken } from './utils/auth'
 import { formatRecipe } from './utils/formatRecipe'
+import { defaultVisibility } from './utils/visibility'
 import { useWheelScroll } from './utils/useWheelScroll'
 import { useOutsideClick } from './utils/useOutsideClick'
 import { deriveCookStats, historyMonths, historyStats, timelineDays, groupByDay, dayKey, HISTORY_MONTHS } from './utils/cookStats'
@@ -892,7 +893,7 @@ function App() {
           description: recipe.description,
           ingredients: recipe.ingredients,
           instructions: recipe.instructions,
-          visibility: recipe.visibility || localStorage.getItem('defaultRecipeVisibility') || 'public'
+          visibility: recipe.visibility || defaultVisibility()
         })
       })
       if (!res.ok) throw new Error(await res.text())
@@ -902,6 +903,7 @@ function App() {
       handleNavigate('profile')
     } catch (err) {
       console.error('[Data] Dupe failed:', err.message)
+      fetchRecipes(true) // the copy may exist even if its category link failed
       setSaveError({ message: language === 'en' ? 'Failed to duplicate recipe' : 'שכפול המתכון נכשל' })
     }
   }
@@ -1371,33 +1373,38 @@ function App() {
     window.history.pushState({}, '', `?r=${recipeObj.id}`);
   }
 
+  // Throws on a non-2xx so the caller's catch sees it. Both junction writers below
+  // used to ignore the response: a failed re-insert after the delete dropped every
+  // category off the recipe while the save still reported success.
+  const okOrThrow = async (res) => { if (!res.ok) throw new Error(`${res.status} ${await res.text()}`) }
+
   // Sync a recipe's junction rows to exactly `categoryIds` (delete all, re-insert).
   const syncRecipeCategories = async (recipeId, categoryIds, token) => {
-    await fetch(`${supabaseUrl}/rest/v1/recipe_categories?recipe_id=eq.${recipeId}`, {
+    await okOrThrow(await fetch(`${supabaseUrl}/rest/v1/recipe_categories?recipe_id=eq.${recipeId}`, {
       method: 'DELETE',
       headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${token}` }
-    })
+    }))
     if (!categoryIds?.length) return
-    await fetch(`${supabaseUrl}/rest/v1/recipe_categories`, {
+    await okOrThrow(await fetch(`${supabaseUrl}/rest/v1/recipe_categories`, {
       method: 'POST',
       headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
       body: JSON.stringify(categoryIds.map(id => ({ recipe_id: recipeId, category_id: id })))
-    })
+    }))
   }
 
   const manageRecipeCategory = async (recipeId, categoryName, token) => {
-    await fetch(`${supabaseUrl}/rest/v1/recipe_categories?recipe_id=eq.${recipeId}`, {
+    await okOrThrow(await fetch(`${supabaseUrl}/rest/v1/recipe_categories?recipe_id=eq.${recipeId}`, {
       method: 'DELETE',
       headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${token}` }
-    })
+    }))
     if (!categoryName) return
     const cat = userCategories.find(c => c.name === categoryName)
     if (!cat) return
-    await fetch(`${supabaseUrl}/rest/v1/recipe_categories`, {
+    await okOrThrow(await fetch(`${supabaseUrl}/rest/v1/recipe_categories`, {
       method: 'POST',
       headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ recipe_id: recipeId, category_id: cat.id })
-    })
+    }))
   }
 
   // 3. SAVE A NEW RECIPE
@@ -1441,6 +1448,9 @@ function App() {
 
   const performSave = async (newRecipe, editing, prevSelected) => {
     setSaveError(null);
+    // Set once the row exists. If a later step (the categories) fails, retrying must
+    // update this row, not insert the recipe a second time.
+    let insertedId = null;
 
     try {
       const token = await getToken();
@@ -1486,12 +1496,13 @@ function App() {
               ingredients: newRecipe.ingredients,
               instructions: newRecipe.instructions,
               calories_per_serving: newRecipe.caloriesPerServing,
-              visibility: newRecipe.visibility || localStorage.getItem('defaultRecipeVisibility') || 'public'
+              visibility: newRecipe.visibility || defaultVisibility()
             })
           }
         );
         if (!res.ok) throw new Error(`Insert failed: ${res.status} ${await res.text()}`);
         const [saved] = await res.json()
+        insertedId = saved?.id || null
         if (saved?.id) await syncRecipeCategories(saved.id, newRecipe.categoryIds, userToken)
       }
 
@@ -1501,7 +1512,8 @@ function App() {
       console.error('[Data] Error saving recipe:', err);
       // roll back the optimistic detail-view update
       if (editing?.id && prevSelected !== undefined) setSelectedRecipe(prevSelected);
-      setSaveError({ recipe: newRecipe, editingId: editing?.id || null });
+      if (insertedId) fetchRecipes(true); // the recipe did land — show it
+      setSaveError({ recipe: newRecipe, editingId: editing?.id || insertedId });
     }
   }
 
@@ -1542,6 +1554,20 @@ function App() {
     } else {
       window.history.replaceState({}, '', window.location.pathname)
     }
+  }
+
+  // Every way out of the recipe form (✕, Cancel, a click on the backdrop) asks first
+  // when there is unsaved work. The form reports that through onDirtyChange.
+  const formDirtyRef = useRef(false)
+  const requestCloseForm = () => {
+    if (!formDirtyRef.current) return handleBack()
+    setConfirmDialog({
+      title: language === 'en' ? 'Leave without saving?' : 'לצאת בלי לשמור שינויים?',
+      message: language === 'en' ? "Your changes won't be saved." : 'השינויים שעשית לא יישמרו.',
+      confirmLabel: language === 'en' ? 'Discard changes' : 'צא בלי לשמור',
+      onConfirm: () => { setConfirmDialog(null); formDirtyRef.current = false; handleBack() },
+      onCancel: () => setConfirmDialog(null),
+    })
   }
 
   const handleBack = () => {
@@ -2464,14 +2490,15 @@ function App() {
       {/* Recipe Form Overlay */}
       {showRecipeForm && user && (
         <>
-          <div className="fixed inset-0 z-40 backdrop-blur-sm bg-black/30" onClick={handleBack} />
-          <div className="fixed inset-0 z-50 flex items-start justify-center p-4 overflow-y-auto" onClick={handleBack}>
+          <div className="fixed inset-0 z-40 backdrop-blur-sm bg-black/30" onClick={requestCloseForm} />
+          <div className="fixed inset-0 z-50 flex items-start justify-center p-4 overflow-y-auto" onClick={requestCloseForm}>
             <div className="w-full max-w-2xl my-8" onClick={e => e.stopPropagation()}>
               <RecipeForm
                 key={editingRecipe?.id || 'new'}
                 editingRecipe={editingRecipe}
                 language={language}
-                onBack={handleBack}
+                onBack={requestCloseForm}
+                onDirtyChange={(d) => { formDirtyRef.current = d }}
                 onSave={handleAddRecipe}
                 onOpenUrlModal={() => setShowUrlModal(true)}
                 userCategories={userCategories}

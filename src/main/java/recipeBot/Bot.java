@@ -283,9 +283,7 @@ public class Bot extends TelegramLongPollingBot {
 
         // handle cancel button press
         if (data.equals("CANCEL")) {
-            userState.remove(id);
-            tempRecipes.remove(id);
-            pendingCategoryId.remove(id);
+            resetFlow(id);
             replaceMessageWithText(id, callbackQuery.getMessage().getMessageId(), "Recipe addition cancelled.");
             return;
         }
@@ -327,6 +325,7 @@ public class Bot extends TelegramLongPollingBot {
         }
 
         if (data.equals("MANUAL")) {
+            resetFlow(id); // an old add's category pick must not carry into this recipe
             userState.put(id, State.WAITING_FOR_NAME); // start progress on new recipe addition
             tempRecipes.put(id, new Recipe());
             sendTextWithCancel(id, "Insert recipe name:");
@@ -514,7 +513,7 @@ public class Bot extends TelegramLongPollingBot {
     }
 
     public void handleCommand(Long chatId, Message message, String userId) {
-        userState.remove(chatId); // reset progress on new command
+        resetFlow(chatId); // a new command abandons whatever was in progress
         String text = message.getText();
         if (text.equals("/help")) {
             sendText(chatId, "🍽️ <b>Recipe Book Bot</b>\n\n" +
@@ -542,7 +541,9 @@ public class Bot extends TelegramLongPollingBot {
                         + "\">View on the website</a>");
             } else {
                 // welcome message
-                sendText(chatId, "Hello I am Recipe Book Bot! 🍽️");
+                sendText(chatId, "Hello I am Recipe Book Bot! 🍽️\n\n"
+                        + "Due to Telegram's restrictions, recipes with over 4096 characters "
+                        + "can only be viewed in full on the website.");
             }
             return;
         }
@@ -834,6 +835,16 @@ public class Bot extends TelegramLongPollingBot {
         return BotFormat.splitLines(text);
     }
 
+    // Drops every piece of per-chat flow state together. They used to be cleared one
+    // map at a time, and pendingCategoryId was missed on commands — so a category picked
+    // in an abandoned add was silently attached to the next recipe added.
+    private void resetFlow(Long id) {
+        userState.remove(id);
+        tempRecipes.remove(id);
+        pendingCategoryId.remove(id);
+        renamingCategoryId.remove(id);
+    }
+
     // Ends an edit flow: clears the state (so the next message isn't swallowed as
     // another edit) and reports the real outcome instead of assuming success.
     private void finishEdit(Long id, boolean ok, String successMsg) {
@@ -878,7 +889,12 @@ public class Bot extends TelegramLongPollingBot {
         try {
             String rawWebUrl = "https://babrecipebook.vercel.app/?r=" + recipeId;
             String encodedWebUrl = java.net.URLEncoder.encode(rawWebUrl, java.nio.charset.StandardCharsets.UTF_8.name());
-            String textToShare = java.net.URLEncoder.encode(recipe.toString(), java.nio.charset.StandardCharsets.UTF_8.name()).replace("+", "%20");
+            // Capped: the whole recipe URL-encoded (Hebrew is 6 bytes a letter) makes a button
+            // URL long enough for Telegram to reject — and with it the whole preview message.
+            // The web link above always carries the full recipe.
+            String shareBody = recipe.toString();
+            if (shareBody.length() > 1000) shareBody = shareBody.substring(0, 1000) + "...";
+            String textToShare = java.net.URLEncoder.encode(shareBody, java.nio.charset.StandardCharsets.UTF_8.name()).replace("+", "%20");
             shareBtn.setUrl("https://t.me/share/url?url=" + encodedWebUrl + "&text=" + textToShare);
         } catch (Exception e) {
             shareBtn.setCallbackData("SHARE_" + recipeId);
@@ -912,23 +928,26 @@ public class Bot extends TelegramLongPollingBot {
     }
 
     private void sendRecipePreview(Long id, Recipe recipe, boolean ownerButtons) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("<b><u>" + esc(recipe.getName()) + "</u></b>\n");
-        if (recipe.getCategory() != null) sb.append(esc(recipe.getCategory()) + "\n");
-        sb.append("\n");
-        sb.append("<u>Description: </u>\n" + esc(recipe.getDescription()) + "\n");
-        sb.append("🛒 <u>Ingredients: </u>\n");
+        // One entry per line, so a too-long recipe can be cut between lines (see fitMessage).
+        List<String> lines = new ArrayList<>();
+        lines.add("<b><u>" + esc(recipe.getName()) + "</u></b>\n");
+        if (recipe.getCategory() != null) lines.add(esc(recipe.getCategory()) + "\n");
+        lines.add("\n");
+        lines.add("<u>Description: </u>\n" + esc(recipe.getDescription()) + "\n");
+        lines.add("🛒 <u>Ingredients: </u>\n");
         for (String ingredient : recipe.getIngredients()) {
-            sb.append("• " + esc(ingredient) + "\n");
+            lines.add("• " + esc(ingredient) + "\n");
         }
-        sb.append("\n📝 <u>Instructions: </u>\n");
+        lines.add("\n📝 <u>Instructions: </u>\n");
         for (int i = 0; i < recipe.getInstructions().length; i++) {
-            sb.append(i + 1 + ". " + esc(recipe.getInstructions()[i]) + "\n");
+            lines.add(i + 1 + ". " + esc(recipe.getInstructions()[i]) + "\n");
         }
+        String tail = "...\n\n🔗 <a href=\"https://babrecipebook.vercel.app/?r=" + recipe.getId()
+                + "\">See the full recipe on the website</a>";
 
         SendMessage msg = new SendMessage();
         msg.setChatId(id.toString());
-        msg.setText(sb.toString());
+        msg.setText(BotFormat.fitMessage(lines, tail, BotFormat.TELEGRAM_LIMIT));
         msg.setParseMode("HTML");
         msg.setReplyMarkup(buildPreviewMarkup(recipe, ownerButtons, db.getLinkedUserId(id)));
 

@@ -66,6 +66,29 @@ class BotFormatTest {
                 BotFormat.splitLines("  a  \n\n   \n b "));
     }
 
+    // Seam 4: fitMessage — Telegram's 4096-character cap on the recipe preview.
+    @Test
+    void fitMessage_leaves_a_short_message_alone() {
+        assertEquals("a\nb\n", BotFormat.fitMessage(java.util.List.of("a\n", "b\n"), "TAIL", 100));
+    }
+
+    @Test
+    void fitMessage_cuts_between_whole_lines_and_appends_the_tail() {
+        java.util.List<String> lines = java.util.List.of("<b>title</b>\n", "line two\n", "line three\n");
+        String out = BotFormat.fitMessage(lines, "...LINK", 30);
+        assertEquals("<b>title</b>\nline two\n...LINK", out);
+        assertTrue(out.length() <= 30);
+    }
+
+    @Test
+    void fitMessage_never_exceeds_the_limit_on_a_long_recipe() {
+        java.util.List<String> lines = new java.util.ArrayList<>();
+        for (int i = 0; i < 500; i++) lines.add(i + ". מערבבים את כל המצרכים בקערה גדולה\n");
+        String out = BotFormat.fitMessage(lines, "...\n<a href=\"x\">site</a>", BotFormat.TELEGRAM_LIMIT);
+        assertTrue(out.length() <= BotFormat.TELEGRAM_LIMIT);
+        assertTrue(out.endsWith("<a href=\"x\">site</a>"));
+    }
+
     @Test
     void splitLines_handles_empty_and_null() {
         assertArrayEquals(new String[]{}, BotFormat.splitLines(""));

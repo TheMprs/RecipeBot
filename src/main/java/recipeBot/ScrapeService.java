@@ -26,7 +26,7 @@ public class ScrapeService {
     private static final int PER_MIN = 10;            // per-user burst guard
     private static final long MIN_WINDOW_MS = 60_000;
     private static final int USER_PER_DAY = 15;       // per-user fairness cap
-    private static final int GLOBAL_PER_DAY = 800;    // hard ceiling under the ~1000/day free tier
+    private static final int GLOBAL_PER_DAY = 400;    // under gemini-3.5-flash-lite's 500/day free tier; retries count there too
     private final java.util.Map<String, long[]> minHits = new java.util.HashMap<>(); // userId -> {windowStart, count}
     private final java.util.Map<String, long[]> dayHits = new java.util.HashMap<>(); // userId -> {dayIdx, count}
     private final long[] globalDay = {0, 0};                                         // {dayIdx, count}
