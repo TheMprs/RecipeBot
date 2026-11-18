@@ -4,6 +4,7 @@ import { LinkIcon, ChevronDown, Check, Plus, ChefHat, Globe, Lock, Type, AlignLe
 import { categoryColor } from '../utils/categoryColor'
 import { parseRecipeText, isLanded, landedDelay } from '../utils/parseRecipeText'
 import { defaultVisibility } from '../utils/visibility'
+import { isGroupHeading, countItems, stepNumbers } from '../utils/recipeLines'
 
 const FieldLabel = ({ icon: Icon, children, hint, trailing }) => (
   <div className="mb-2">
@@ -28,6 +29,7 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
   const [description, setDescription] = useState('')
   const [ingredients, setIngredients] = useState([])
   const [instructions, setInstructions] = useState([])
+  const stepNums = stepNumbers(instructions) // null for group titles
   const [ingredientDraft, setIngredientDraft] = useState('')
   const [instructionDraft, setInstructionDraft] = useState('')
   // In-place edit of an existing list item: {i, text} or null. Commit on blur/Enter;
@@ -463,7 +465,7 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
           <div>
             <FieldLabel icon={List} trailing={ingredients.length > 0 && (
               <span className="text-xs font-medium text-faint">
-                {ingredients.length} {language === 'en' ? (ingredients.length === 1 ? 'item' : 'items') : 'פריטים'}
+                {countItems(ingredients)} {language === 'en' ? (countItems(ingredients) === 1 ? 'item' : 'items') : 'פריטים'}
               </span>
             )}>
               {language === 'en' ? 'Ingredients' : 'רכיבים'}</FieldLabel>
@@ -473,7 +475,8 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
                   <li key={i} style={landedDelay(i, ingredients.length, landed.ing)}
                     className={`flex items-center gap-2 px-4 py-2 bg-cream border border-border rounded-2xl
                       ${isLanded(i, ingredients.length, landed.ing) ? 'item-landed' : ''}`}>
-                    <span className="w-1.5 h-1.5 rounded-full bg-brand flex-shrink-0" />
+                    {/* A group title ("לרוטב:") gets no bullet and reads in brand colour, as on the recipe page */}
+                    <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isGroupHeading(item) ? 'bg-transparent' : 'bg-brand'}`} />
                     {editIng?.i === i ? (
                       <input
                         autoFocus
@@ -490,7 +493,7 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
                       />
                     ) : (
                       <button type="button" onClick={() => setEditIng({ i, text: item })}
-                        className="flex-1 min-w-0 text-start text-sm text-ink break-words hover:text-brand-dark transition-colors">
+                        className={`flex-1 min-w-0 text-start text-sm break-words hover:text-brand-dark transition-colors ${isGroupHeading(item) ? 'font-bold text-brand-deep' : 'text-ink'}`}>
                         {item}
                       </button>
                     )}
@@ -537,7 +540,7 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
           <div>
             <FieldLabel icon={ListOrdered} trailing={instructions.length > 0 && (
               <span className="text-xs font-medium text-faint">
-                {instructions.length} {language === 'en' ? (instructions.length === 1 ? 'step' : 'steps') : 'שלבים'}
+                {countItems(instructions)} {language === 'en' ? (countItems(instructions) === 1 ? 'step' : 'steps') : 'שלבים'}
               </span>
             )}>
               {language === 'en' ? 'Instructions' : 'הוראות'}</FieldLabel>
@@ -557,7 +560,8 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
                         <path d="M5 6h14M5 12h14M5 18h14" />
                       </svg>
                     </button>
-                    <span className="flex-shrink-0 w-6 h-6 rounded-full bg-brand/10 text-brand-dark text-xs font-semibold flex items-center justify-center">{i + 1}</span>
+                    {/* Titles take no number; steps number on across them, as on the recipe page */}
+                    <span className={`flex-shrink-0 w-6 h-6 rounded-full text-xs font-semibold flex items-center justify-center ${stepNums[i] === null ? '' : 'bg-brand/10 text-brand-dark'}`}>{stepNums[i]}</span>
                     {editInst?.i === i ? (
                       <input
                         autoFocus
@@ -574,7 +578,7 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
                       />
                     ) : (
                       <button type="button" onClick={() => setEditInst({ i, text: item })}
-                        className="flex-1 min-w-0 text-start text-sm text-ink break-words hover:text-brand-dark transition-colors">
+                        className={`flex-1 min-w-0 text-start text-sm break-words hover:text-brand-dark transition-colors ${stepNums[i] === null ? 'font-bold text-brand-deep' : 'text-ink'}`}>
                         {item}
                       </button>
                     )}

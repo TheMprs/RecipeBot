@@ -59,13 +59,17 @@ public class Recipe {
         result += description + "\n\n";
 
         result += "🛒 *Ingredients:*\n";
-        for (String ingredient : ingredients) {
-            result += "• " + ingredient + "\n";
+        // Group titles stand on their own line — no bullet, no step number.
+        for (int i = 0; i < ingredients.length; i++) {
+            if (BotFormat.isGroupHeading(ingredients[i])) result += (i > 0 ? "\n" : "") + ingredients[i].trim() + "\n";
+            else result += "• " + ingredients[i] + "\n";
         }
 
         result += "\n📝 *Instructions:*\n";
+        int[] nums = BotFormat.stepNumbers(instructions);
         for (int i = 0 ; i < instructions.length; i++) {
-            result += i + 1 + ". " + instructions[i] + "\n";
+            if (nums[i] == 0) result += (i > 0 ? "\n" : "") + instructions[i].trim() + "\n";
+            else result += nums[i] + ". " + instructions[i] + "\n";
         }
 
         return result;

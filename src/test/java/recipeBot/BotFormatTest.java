@@ -94,4 +94,32 @@ class BotFormatTest {
         assertArrayEquals(new String[]{}, BotFormat.splitLines(""));
         assertArrayEquals(new String[]{}, BotFormat.splitLines(null));
     }
+
+    @Test
+    void group_titles_are_short_lines_ending_in_a_colon() {
+        assertTrue(BotFormat.isGroupHeading("לרוטב:"));
+        assertTrue(BotFormat.isGroupHeading("  For the sauce:  "));
+        assertTrue(BotFormat.isGroupHeading("לזיגוג："));
+        assertFalse(BotFormat.isGroupHeading("מלח: לפי הטעם"), "colon in the middle");
+        assertFalse(BotFormat.isGroupHeading(":"));
+        assertFalse(BotFormat.isGroupHeading(null));
+        assertFalse(BotFormat.isGroupHeading("Mix everything in a large bowl and then prepare the following:"));
+    }
+
+    @Test
+    void step_numbers_skip_titles_and_run_on() {
+        assertArrayEquals(new int[]{0, 1, 2, 0, 3},
+                BotFormat.stepNumbers(new String[]{"מכינים את העוף:", "a", "b", "מסיימים את המנה:", "c"}));
+        assertArrayEquals(new int[]{}, BotFormat.stepNumbers(null));
+    }
+
+    @Test
+    void share_text_prints_titles_without_bullets_or_numbers() {
+        Recipe r = new Recipe("Chicken", null, "", new String[]{"For the sauce:", "soy"},
+                new String[]{"Prep:", "Cut.", "Finish:", "Fry."});
+        String t = r.toString();
+        assertTrue(t.contains("For the sauce:\n• soy"), t);
+        assertTrue(t.contains("Prep:\n1. Cut.\n\nFinish:\n2. Fry."), t);
+        assertFalse(t.contains("• For the sauce"));
+    }
 }

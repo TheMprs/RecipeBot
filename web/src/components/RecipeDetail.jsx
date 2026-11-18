@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, Users, ChefHat, Check, Pencil, Trash2, RotateCcw, UtensilsCrossed, Share2, Heart, Copy, Bookmark, Plus, Flame, Lock, Globe, CalendarDays } from 'lucide-react'
 import { buildShareText } from '../utils/shareRecipe'
+import { isGroupHeading, headingText, countItems, stepNumbers } from '../utils/recipeLines'
 import { MarbleSpine } from './MarbleSpine'
 import { playSizzle } from '../utils/sizzle'
 import { ShareQR } from './ShareQR'
@@ -58,6 +59,20 @@ function IconChip({ icon: Icon, accent, size = 8 }) {
     <span className={`${px} rounded-full flex items-center justify-center flex-shrink-0`} style={{ backgroundColor: `${accent}1a` }}>
       <Icon className="w-4 h-4" style={{ color: accent }} />
     </span>
+  )
+}
+
+// A group title inside the ingredient or step list ("לרוטב", "מסיימים את המנה").
+// The text is the accent pulled toward ink, so a pale category colour (the yellow) still
+// reads at this size; the rule beside it uses the plain accent.
+function GroupHeading({ text, accent, dot = false, className = '' }) {
+  return (
+    <div className={`flex items-center gap-2.5 font-bold ${className}`}
+      style={{ color: `color-mix(in srgb, ${accent} 72%, #3d3429)` }}>
+      {dot && <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: accent }} />}
+      <span>{headingText(text)}</span>
+      <span className="flex-1 h-px" style={{ backgroundColor: `${accent}33` }} />
+    </div>
   )
 }
 
@@ -366,6 +381,10 @@ function IngredientsCard({ recipe, language, accent, checked, toggle, clearAll }
         </div>
         <div className="space-y-3">
           {recipe.ingredients.map((ingredient, index) => {
+            // Titles carry no checkbox — there's nothing to tick off.
+            if (isGroupHeading(ingredient)) {
+              return <GroupHeading key={index} text={ingredient} accent={accent} className={`text-[13px] ${index > 0 ? 'pt-2' : ''}`} />
+            }
             const isChecked = checked.has(ingredient)
             return (
               <div key={index} className="flex items-start gap-2">
@@ -391,6 +410,7 @@ function IngredientsCard({ recipe, language, accent, checked, toggle, clearAll }
 }
 
 function InstructionsCard({ recipe, language, isRtl, accent }) {
+  const numbers = stepNumbers(recipe.instructions)
   return (
     <div className="lg:col-span-3">
       <div className="bg-white rounded-3xl border border-border/60 shadow-sm p-6">
@@ -401,14 +421,19 @@ function InstructionsCard({ recipe, language, isRtl, accent }) {
           </span>
         </h2>
         <ol className="w-full list-none p-0 m-0">
-          {recipe.instructions.map((instruction, index) => (
+          {recipe.instructions.map((instruction, index) => numbers[index] === null ? (
+            // A section title takes no step number; numbering runs on across sections.
+            <li key={index} className="pb-4">
+              <GroupHeading text={instruction} accent={accent} dot className="text-[15px]" />
+            </li>
+          ) : (
             <li key={index} className={`relative pb-8 last:pb-0 ${isRtl ? 'pr-16' : 'pl-16'}`}>
               {/* Big ghost step number, tinted by the accent */}
               <span
                 className={`absolute top-[-0.15em] text-5xl font-bold leading-none z-0 ${isRtl ? 'right-0' : 'left-0'}`}
                 style={{ color: `${accent}33` }}
               >
-                {String(index + 1).padStart(2, '0')}
+                {String(numbers[index]).padStart(2, '0')}
               </span>
               {/* The instruction content */}
               <p className="relative z-10 text-ink/85 leading-relaxed pt-1 m-0">
@@ -606,7 +631,7 @@ export function RecipeDetail({ recipe, language = 'en', onBack, onEdit, onDelete
 
           <div className={`flex flex-wrap items-center gap-4 sm:gap-6 text-sm text-muted ${isRtl ? 'text-right' : 'text-left'}`}>
             <Stat icon={Users} accent={accent}>{language === 'en' ? '4 servings' : '4 מנות'}</Stat>
-            <Stat icon={ChefHat} accent={accent}>{language === 'en' ? `${recipe.ingredients.length} ingredients` : `${recipe.ingredients.length} מצרכים`}</Stat>
+            <Stat icon={ChefHat} accent={accent}>{language === 'en' ? `${countItems(recipe.ingredients)} ingredients` : `${countItems(recipe.ingredients)} מצרכים`}</Stat>
             {/* calories_per_serving — shows once the field is populated; null/absent until calc lands */}
             {calories != null && (
               <Stat icon={Flame} accent={accent}>≈ {calories} {language === 'en' ? 'kcal / serving' : 'קלוריות / מנה'}</Stat>

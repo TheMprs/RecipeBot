@@ -32,11 +32,12 @@ jobs:
     - name: Install
       run: npm ci
 
-    # Plain node, no test runner — these two files are the project's whole JS suite.
+    # Plain node, no test runner — these files are the project's whole JS suite.
     - name: Unit tests
       run: |
         node src/utils/cookStats.test.mjs
         node src/utils/parseRecipeText.test.mjs
+        node src/utils/recipeLines.test.mjs
 
     - name: Build
       run: npm run build

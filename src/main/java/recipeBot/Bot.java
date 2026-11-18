@@ -935,12 +935,18 @@ public class Bot extends TelegramLongPollingBot {
         lines.add("\n");
         lines.add("<u>Description: </u>\n" + esc(recipe.getDescription()) + "\n");
         lines.add("🛒 <u>Ingredients: </u>\n");
-        for (String ingredient : recipe.getIngredients()) {
-            lines.add("• " + esc(ingredient) + "\n");
+        // Group titles ("לרוטב:") print bold on their own line, with no bullet or number.
+        String[] ing = recipe.getIngredients();
+        for (int i = 0; i < ing.length; i++) {
+            if (BotFormat.isGroupHeading(ing[i])) lines.add((i > 0 ? "\n" : "") + "<b>" + esc(ing[i].trim()) + "</b>\n");
+            else lines.add("• " + esc(ing[i]) + "\n");
         }
         lines.add("\n📝 <u>Instructions: </u>\n");
-        for (int i = 0; i < recipe.getInstructions().length; i++) {
-            lines.add(i + 1 + ". " + esc(recipe.getInstructions()[i]) + "\n");
+        String[] steps = recipe.getInstructions();
+        int[] nums = BotFormat.stepNumbers(steps);
+        for (int i = 0; i < steps.length; i++) {
+            if (nums[i] == 0) lines.add((i > 0 ? "\n" : "") + "<b>" + esc(steps[i].trim()) + "</b>\n");
+            else lines.add(nums[i] + ". " + esc(steps[i]) + "\n");
         }
         String tail = "...\n\n🔗 <a href=\"https://babrecipebook.vercel.app/?r=" + recipe.getId()
                 + "\">See the full recipe on the website</a>";

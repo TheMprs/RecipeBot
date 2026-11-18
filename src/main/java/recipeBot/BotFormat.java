@@ -73,6 +73,24 @@ public final class BotFormat {
         return sb.append(tail).toString();
     }
 
+    // Group titles inside a recipe's lists ("לרוטב:", "For the sauce:"): a short line ending in
+    // a colon. Same rule as the web's utils/recipeLines.js — keep the two in step.
+    private static final int HEADING_MAX = 40;
+
+    public static boolean isGroupHeading(String line) {
+        if (line == null) return false;
+        String s = line.trim();
+        return s.length() > 1 && s.length() <= HEADING_MAX && (s.endsWith(":") || s.endsWith("："));
+    }
+
+    // Step number for each line, 0 for titles. Numbering runs on across groups, like the web.
+    public static int[] stepNumbers(String[] lines) {
+        int[] out = new int[lines == null ? 0 : lines.length];
+        int n = 0;
+        for (int i = 0; i < out.length; i++) out[i] = isGroupHeading(lines[i]) ? 0 : ++n;
+        return out;
+    }
+
     // One item per line: trims each line, drops blanks, never splits on punctuation
     // (so "1. Mix" and "approx." stay intact). Matches the web form's entry model.
     public static String[] splitLines(String text) {

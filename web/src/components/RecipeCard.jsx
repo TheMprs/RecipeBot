@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Share2, Heart, Carrot } from 'lucide-react'
 import { buildShareText } from '../utils/shareRecipe'
+import { isGroupHeading, countItems } from '../utils/recipeLines'
 import { MarbleSpine } from './MarbleSpine'
 import { ShareQR } from './ShareQR'
 import { SaveToMenu } from './SaveToMenu'
@@ -73,6 +74,7 @@ const TEASER_STOP = new Set([
 function teaserWords(ingredients) {
   const out = []
   for (const line of ingredients) {
+    if (isGroupHeading(line)) continue // "לרוטב:" names a group, it isn't an ingredient
     const clean = String(line)
       .replace(/<[^>]*>/g, ' ')       // scraped lines can carry HTML tags
       .replace(/&[a-z]+;/gi, '"')     // …and entities (&rdquo; inside מ"ל etc.)
@@ -97,6 +99,7 @@ export function RecipeCard({ recipe, language = 'en', apiBase = '/api', onSelect
   const [saveOpen, setSaveOpen] = useState(false)
 
   const teaser = feed ? teaserWords(recipe.ingredients || []) : []
+  const ingredientCount = countItems(recipe.ingredients)
   const isNew = feed && recipe.created_at && (Date.now() - new Date(recipe.created_at)) < 7 * 86400000
 
   const handleShare = async (e) => {
@@ -187,8 +190,8 @@ export function RecipeCard({ recipe, language = 'en', apiBase = '/api', onSelect
               {teaser.map(w => (
                 <span key={w} className="px-2 py-0.5 rounded-full bg-[#f3efe7] text-[10px] font-semibold text-[#8a7a62] whitespace-nowrap flex-shrink-0">{w}</span>
               ))}
-              {recipe.ingredients.length > teaser.length && (
-                <span dir="ltr" className="text-[10px] font-semibold text-[#b3a891] flex-shrink-0">+{recipe.ingredients.length - teaser.length}</span>
+              {ingredientCount > teaser.length && (
+                <span dir="ltr" className="text-[10px] font-semibold text-[#b3a891] flex-shrink-0">+{ingredientCount - teaser.length}</span>
               )}
             </div>
           )}
@@ -203,7 +206,7 @@ export function RecipeCard({ recipe, language = 'en', apiBase = '/api', onSelect
                 )}
                 <span className="flex items-center gap-1 text-xs text-muted flex-shrink-0" title={language === 'en' ? 'ingredients' : 'מצרכים'}>
                   <Carrot className="w-3.5 h-3.5" />
-                  {recipe.ingredients.length}
+                  {ingredientCount}
                 </span>
                 {isNew && (
                   <span className="flex items-center gap-1 text-[10px] font-bold text-[#7f9a5e] flex-shrink-0">
