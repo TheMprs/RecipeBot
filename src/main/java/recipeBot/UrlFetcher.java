@@ -168,7 +168,7 @@ public class UrlFetcher {
         String title = pageTitle(doc);
         if (!title.isEmpty()) ai.append("Page title: ").append(title).append("\n\n");
         if (hints.length() > 0) ai.append(cap(hints.toString(), AI_HINT_MAX)).append("\n\n");
-        String body = blockText(contentRoot(doc));
+        String body = recipeWindow(blockText(contentRoot(doc)));
         if (!body.isEmpty()) ai.append("Page text:\n").append(body);
         // A title alone is not something to spend a Gemini call on.
         String aiText = (hints.length() == 0 && body.isEmpty()) ? "" : cap(ai.toString().trim(), AI_TEXT_MAX);
@@ -589,6 +589,86 @@ public class UrlFetcher {
             prev = l;
         }
         return out.toString().trim();
+    }
+
+    // *** Recipe window: the part of the page text that is the recipe ***
+
+    // Same header words the web paste parser trusts (parseRecipeText.js), plus a few site
+    // variants seen live ("המרכיבים" on mako).
+    private static final Set<String> ING_HEADERS = Set.of(
+            "ingredients", "ingredient", "you will need", "what you need", "shopping list",
+            "מצרכים", "המצרכים", "רכיבים", "הרכיבים", "מרכיבים", "המרכיבים", "חומרים", "החומרים", "רשימת מצרכים");
+    private static final Set<String> INS_HEADERS = Set.of(
+            "instructions", "directions", "method", "preparation", "steps", "how to make",
+            "הוראות", "הוראות הכנה", "אופן ההכנה", "אופן הכנה", "הכנה", "ההכנה", "אופן העבודה", "שלבי ההכנה");
+
+    // Lines where a recipe page's recipe is over: comment counts, "more recipes", typo reports.
+    private static final java.util.regex.Pattern TAIL = java.util.regex.Pattern.compile(
+            "^(?:\\d+\\s*תגובות|תגובות$|לעוד מתכונים|עוד מתכונים|מתכונים נוספים|מתכונים דומים|אולי יעניין|"
+            + "הכנתם\\?|מצאתם טעות|\\d+\\s+comments?$|comments$|leave a (?:comment|reply)|"
+            + "(?:related|more|similar) recipes|you (?:may|might) also like)",
+            java.util.regex.Pattern.CASE_INSENSITIVE);
+
+    // Photo captions end with the photographer's credit; they describe a picture, not a step.
+    private static final java.util.regex.Pattern PHOTO_CREDIT =
+            java.util.regex.Pattern.compile("(?i)(צילום|photo(?:graph)?(?: credit)?|credit)\\s*:");
+
+    private static final java.util.regex.Pattern CALORIE_LINE =
+            java.util.regex.Pattern.compile("(?i)(קלוריות|calories|kcal|קק\"ל|קק״ל)");
+
+    // How many lines above the ingredients header to keep — the recipe's own title and its
+    // "serves 4, 30 minutes" line sit there.
+    private static final int LINES_BEFORE = 3;
+
+    // Blog-style pages wrap the recipe in a long story, photo captions, a comments section
+    // and links to other recipes (thekitchencoach: about half the text). When the page has
+    // an ingredients header followed by a method header, keep only from just above the one
+    // to the first tail line after the other. Anything less certain leaves the text whole —
+    // too much text costs tokens, too little loses the recipe.
+    static String recipeWindow(String text) {
+        String[] lines = text.split("\n");
+        int insAt = -1;
+        for (int i = 0; i < lines.length && insAt == -1; i++) {
+            if (INS_HEADERS.contains(headerWord(lines[i]))) insAt = i;
+        }
+        int ingAt = -1;
+        // The ingredients header nearest above the method: foody repeats "מרכיבים" as a count
+        // label in its stats box well before the real list.
+        for (int i = (insAt == -1 ? lines.length : insAt) - 1; i >= 0 && ingAt == -1; i--) {
+            if (ING_HEADERS.contains(headerWord(lines[i]))) ingAt = i;
+        }
+        if (ingAt == -1) return text;
+
+        int start = Math.max(0, ingAt - LINES_BEFORE);
+        int end = lines.length;
+        for (int i = Math.max(ingAt, insAt) + 1; i < lines.length; i++) {
+            if (lines[i].length() <= 80 && TAIL.matcher(lines[i]).find()) { end = i; break; }
+        }
+
+        StringBuilder out = new StringBuilder();
+        // Per-serving calories often sit in a stats box above the recipe ("קלוריות" / "457").
+        int kept = 0;
+        for (int i = 0; i < start && kept < 2; i++) {
+            if (lines[i].length() <= 60 && CALORIE_LINE.matcher(lines[i]).find()) {
+                out.append(lines[i]);
+                if (i + 1 < start && lines[i + 1].length() <= 20) out.append(' ').append(lines[i + 1]);
+                out.append('\n');
+                kept++;
+            }
+        }
+        for (int i = start; i < end; i++) {
+            if (lines[i].length() <= 120 && PHOTO_CREDIT.matcher(lines[i]).find()) continue;
+            out.append(lines[i]).append('\n');
+        }
+        String window = out.toString().trim();
+        return window.length() < MIN_CONTENT_CHARS ? text : window;
+    }
+
+    // "Ingredients:" / "**אופן ההכנה**" / "• מצרכים" -> the bare word, for header lookup.
+    private static String headerWord(String line) {
+        if (line.length() > 30) return "";
+        return line.replaceAll("[*_#~`•·►▪◦]", " ").replaceAll("[-–—:：]+", " ")
+                .replaceAll("\\s+", " ").trim().toLowerCase(Locale.ROOT);
     }
 
     // *** SSRF validation ***

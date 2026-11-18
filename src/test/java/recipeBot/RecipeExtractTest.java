@@ -234,4 +234,47 @@ class RecipeExtractTest {
         assertEquals(1, ex.aiText().split("Structured recipe data", -1).length - 1);
         assertEquals("חלה מתוקה", ex.partial().getName());
     }
+
+    // --- Recipe window: trimming a blog page down to its recipe ---
+
+    private static final String STORY = "A long story about the dish and where it comes from, with tips. ".repeat(4);
+
+    @Test
+    void coach_shape_story_comments_and_more_recipes_are_cut() {
+        String text = String.join("\n",
+                STORY, "Who was General Tso?", STORY, "Frying until golden. צילום: אסף אמברם",
+                "General Tso's chicken", "Serves 2-4, 30 minutes",
+                "מצרכים:", "לרוטב:", "1 כף רסק עגבניות", "2 כפיות רוטב סויה",
+                "אופן הכנה:", "Mix the sauce in a small bowl until the paste dissolves.",
+                "Fry the chicken in batches of five or six pieces for about three minutes.",
+                "Toss the chicken in the bubbling sauce and serve right away.",
+                "הכנתם? איך יצא? ספרו בתגובות 🙂", "לעוד מתכונים אסיאתיים:", "Lemon chicken", "36 תגובות", "Great!!!");
+        String w = UrlFetcher.recipeWindow(text);
+        assertTrue(w.startsWith("General Tso's chicken"), "title kept, story and caption dropped: " + w);
+        assertTrue(w.contains("1 כף רסק עגבניות") && w.contains("serve right away."));
+        assertFalse(w.contains("long story"));
+        assertFalse(w.contains("צילום"));
+        assertFalse(w.contains("Lemon chicken"), "more-recipes links cut");
+        assertFalse(w.contains("Great!!!"), "comments cut");
+    }
+
+    @Test
+    void foody_shape_count_label_above_is_skipped_and_calories_are_kept() {
+        String text = String.join("\n",
+                "Shakshuka", STORY, "מרכיבים", "16", "קלוריות", "457", "רמת קושי", STORY, STORY,
+                "כמות מנות", "4", "מצרכים", "7 ביצים", "2 קופסאות עגבניות",
+                "אופן הכנה", "מטגנים פלפלים.", "שוברים ביצים.");
+        String w = UrlFetcher.recipeWindow(text);
+        assertTrue(w.startsWith("קלוריות 457"), "per-serving calories from the stats box carried along: " + w);
+        assertTrue(w.contains("7 ביצים") && w.contains("שוברים ביצים."));
+        assertFalse(w.contains("16"), "the count label's '16' is outside the window");
+    }
+
+    @Test
+    void without_both_headers_or_with_too_little_left_the_text_stays_whole() {
+        String noHeaders = STORY + "\n2 eggs\nMix and bake.";
+        assertEquals(noHeaders, UrlFetcher.recipeWindow(noHeaders));
+        String tiny = STORY + "\nIngredients\negg\nMethod\nboil";
+        assertEquals(tiny, UrlFetcher.recipeWindow(tiny), "a 20-char window is more likely wrong than right");
+    }
 }
