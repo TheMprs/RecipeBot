@@ -45,10 +45,10 @@ public class GeminiHandler {
         "Rules:",
         "- is_recipe: true only if the page contains a real recipe with ingredients and preparation steps. Otherwise false, with the other fields empty.",
         "- Write every value in the same language as the recipe on the page (a Hebrew recipe stays in Hebrew).",
-        "- name: the recipe's name, short. description: one or two sentences about the dish taken from the page, or empty.",
+        "- name: the recipe's name, short. description: one or two sentences about the dish copied from the page's own words; if the page has none, leave it empty. Never write your own.",
         "- ingredients: one item per ingredient, with its amount, as written on the page.",
         "- instructions: one item per step, in order. Keep every detail: temperatures, times, amounts.",
-        "- If the recipe is split into groups (for example 'For the sauce'), put the group title as its own item ending with a colon, before that group's items.",
+        "- If the ingredients or steps are split into groups (for example 'For the sauce'), put the group title as its own item before that group's items, and always end that item with a colon ':' even if the page writes it without one.",
         "- calories_per_serving: a whole number only if the page states calories per serving; otherwise null.",
         "- Ignore comments, ads, navigation, other recipes linked from the page and anything else that is not this recipe.");
 
