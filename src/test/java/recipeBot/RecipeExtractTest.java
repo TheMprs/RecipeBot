@@ -210,4 +210,28 @@ class RecipeExtractTest {
         assertFalse(UrlFetcher.isPageType("application/pdf"));
         assertFalse(UrlFetcher.isPageType("video/mp4"));
     }
+
+    @Test
+    void kobiedri_shape_line_fragments_are_joined_into_steps() {
+        // Every line break published as its own HowToStep.
+        String[] raw = {"מחממים סיר סוטאז׳ רחב ,", "חורצים כרעיים וצורבים על הצד של העור.",
+                "אחרי כמה דקות מוסיפים מלח", "ומוסיפים מעט שמן זית,", "צורבים היטב עד השחמה מלאה",
+                "לאותו הסיר מוסיפים תפוחי אדמה.", "For the glaze:", "and the honey.", "Mix the flour", "Bake."};
+        assertEquals(java.util.List.of(
+                "מחממים סיר סוטאז׳ רחב, חורצים כרעיים וצורבים על הצד של העור.",
+                "אחרי כמה דקות מוסיפים מלח ומוסיפים מעט שמן זית, צורבים היטב עד השחמה מלאה",
+                "לאותו הסיר מוסיפים תפוחי אדמה.",
+                "For the glaze:", "and the honey.", "Mix the flour", "Bake."),
+                UrlFetcher.mergeFragments(java.util.List.of(raw)),
+                "commas and ו-openers join; full stops, section titles and plain new steps don't");
+    }
+
+    @Test
+    void mako_shape_duplicate_block_is_sent_once_and_the_label_is_dropped() {
+        String block = ld("{\"@type\":\"Recipe\",\"name\":\"מתכון: חלה מתוקה\",\"recipeIngredient\":[\"תבנית קפיצית בקוטר 28 ס\\\"מ\"],"
+                + "\"recipeInstructions\":[\"לשים את הבצק\"]}");
+        UrlFetcher.Extracted ex = UrlFetcher.extract(page(block + block, "<article><p>" + "1 ק\"ג קמח לבן. ".repeat(20) + "</p></article>"));
+        assertEquals(1, ex.aiText().split("Structured recipe data", -1).length - 1);
+        assertEquals("חלה מתוקה", ex.partial().getName());
+    }
 }

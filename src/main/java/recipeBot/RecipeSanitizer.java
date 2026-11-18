@@ -43,7 +43,7 @@ final class RecipeSanitizer {
     static Recipe clean(Recipe r) {
         if (r == null) return null;
         Recipe out = new Recipe(
-                cap(text(r.getName()), NAME_MAX),
+                cap(name(r.getName()), NAME_MAX),
                 cap(text(r.getCategory()), NAME_MAX),
                 cap(text(r.getDescription()), DESC_MAX),
                 list(r.getIngredients(), INGREDIENT_MAX),
@@ -67,6 +67,18 @@ final class RecipeSanitizer {
         return r != null && notEmpty(r.getName())
                 && r.getIngredients() != null && r.getIngredients().length >= 1
                 && r.getInstructions() != null && r.getInstructions().length >= 1;
+    }
+
+    // "מתכון: חלה מתוקה" (mako) / "Recipe: Banana bread" — the label is the site's, not
+    // part of the dish's name. Kept if nothing would be left without it.
+    private static final java.util.regex.Pattern NAME_LABEL =
+            java.util.regex.Pattern.compile("^(?:מתכון|recipe)\\s*[:\\-–—|]\\s*", java.util.regex.Pattern.CASE_INSENSITIVE);
+
+    static String name(String s) {
+        String t = text(s);
+        if (t == null) return null;
+        String stripped = NAME_LABEL.matcher(t).replaceFirst("");
+        return stripped.isEmpty() ? t : stripped;
     }
 
     static Integer calories(Integer c) {

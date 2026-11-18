@@ -177,6 +177,8 @@ public class UrlFetcher {
 
     private static void appendHint(StringBuilder sb, String label, String json) {
         if (sb.length() >= AI_HINT_MAX) return;
+        // mako ships the same JSON-LD block twice; once is enough for Gemini.
+        if (sb.indexOf(readable(json)) >= 0) return;
         sb.append(label).append('\n').append(readable(json)).append("\n\n");
     }
 
@@ -294,7 +296,7 @@ public class UrlFetcher {
     private static Recipe toRecipe(JsonObject o) {
         String[] ing = stringList(o.get("recipeIngredient")).toArray(new String[0]);
         if (ing.length == 0) ing = stringList(o.get("ingredients")).toArray(new String[0]); // pre-2017 schema name
-        String[] instr = instructionList(o.get("recipeInstructions")).toArray(new String[0]);
+        String[] instr = mergeFragments(instructionList(o.get("recipeInstructions"))).toArray(new String[0]);
         Recipe r = new Recipe(str(o, "name"), firstString(o.get("recipeCategory")), str(o, "description"), ing, instr);
         r.setCaloriesPerServing(caloriesFrom(o.get("nutrition")));
         return r;
@@ -411,6 +413,36 @@ public class UrlFetcher {
         if (text != null && !text.isEmpty()) out.add(text);
     }
 
+    // Some sites publish every line break of the method as its own step (kobiedri.co.il:
+    // "Heat a wide pan ," / "score the legs…"). A step that ends mid-sentence is joined
+    // with the next one when the break is unmistakable: it ends in a comma, or it has no
+    // closing punctuation and the next step opens with a joining word — Hebrew ו ("and…"),
+    // or English and/then/until/or.
+    static List<String> mergeFragments(List<String> steps) {
+        List<String> out = new ArrayList<>();
+        for (String s : steps) {
+            if (!out.isEmpty() && continues(out.get(out.size() - 1), s)) {
+                String prev = out.remove(out.size() - 1).replaceAll("\\s+([,،])$", "$1");
+                out.add(prev + " " + s);
+            } else {
+                out.add(s);
+            }
+        }
+        return out;
+    }
+
+    private static final java.util.regex.Pattern JOINING_START =
+            java.util.regex.Pattern.compile("^(ו[\\u05D0-\\u05EA]|(?:and|then|until|or)\\b)");
+
+    private static boolean continues(String prev, String next) {
+        String p = prev.trim(), n = next.trim();
+        if (p.isEmpty() || n.isEmpty()) return false;
+        char last = p.charAt(p.length() - 1);
+        if (last == ',' || last == '،') return true;
+        if (".!?:：…;".indexOf(last) >= 0) return false; // a finished sentence or a section title
+        return JOINING_START.matcher(n).find();
+    }
+
     private static String sectionTitle(String s) {
         return (s.endsWith(":") || s.endsWith("：")) ? s : s + ":";
     }
@@ -434,7 +466,7 @@ public class UrlFetcher {
         if (ing.isEmpty()) for (Element e : props(scope, "ingredients")) ing.add(propValue(e));
         List<String> steps = new ArrayList<>();
         for (Element e : props(scope, "recipeInstructions")) steps.addAll(stepsIn(e));
-        Recipe r = new Recipe(name, cat, desc, ing.toArray(new String[0]), steps.toArray(new String[0]));
+        Recipe r = new Recipe(name, cat, desc, ing.toArray(new String[0]), mergeFragments(steps).toArray(new String[0]));
         Element cal = scope.selectFirst("[itemprop=calories]");
         if (cal != null) r.setCaloriesPerServing(parseCalories(propValue(cal)));
         return r;
