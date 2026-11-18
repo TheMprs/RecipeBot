@@ -35,6 +35,9 @@ public class Bot extends TelegramLongPollingBot {
 
     private Map<Long, State> userState = new HashMap<>();
     private Map<Long, Recipe> tempRecipes = new HashMap<>();
+    // A URL import waiting for the user's Save / Discard, per chat. In memory: a restart drops
+    // it and the Save button answers "import it again". A new import replaces it.
+    private final Map<Long, Recipe> pendingImports = new java.util.concurrent.ConcurrentHashMap<>();
     private Map<Long, Integer> lastSentMsg = new HashMap<>();
     private Map<Long, String> pendingCategoryId = new HashMap<>(); // category picked during manual add, linked after insert
     private Map<Long, String> renamingCategoryId = new HashMap<>(); // category being renamed via /editcategories
@@ -345,6 +348,37 @@ public class Bot extends TelegramLongPollingBot {
             return;
         }
 
+        // Save / Discard on an imported recipe's review message.
+        if (data.equals("IMPORT_SAVE") || data.equals("IMPORT_DISCARD")) {
+            Integer msgId = callbackQuery.getMessage().getMessageId();
+            Recipe pending = pendingImports.remove(id);
+            if (pending == null) {
+                // Already handled, replaced by a newer import, or lost in a restart.
+                replaceMessageWithText(id, msgId, "This import is no longer waiting. Send the link again to re-import it.");
+                return;
+            }
+            if (data.equals("IMPORT_DISCARD")) {
+                replaceMessageWithText(id, msgId, "Import discarded. Nothing was saved.");
+                return;
+            }
+            if (db.countByUser("recipes", userId) >= MAX_RECIPES) {
+                pendingImports.put(id, pending);
+                sendText(id, "You've reached the maximum of " + MAX_RECIPES + " recipes. Delete some, then tap Save again.");
+                return;
+            }
+            pending.setVisibility("private"); // imports default to private; user can flip below
+            if (!db.addRecipe(pending, userId)) {
+                pendingImports.put(id, pending); // keep it, so Save can be tapped again
+                sendText(id, "Couldn't save the imported recipe. Tap Save to try again.");
+                return;
+            }
+            // The review message becomes the saved recipe's card: Share / Like / Edit / Delete.
+            refreshPreviewMarkup(id, msgId, pending, true, userId);
+            sendImportVisibilityPrompt(id, pending.getId()); // "Saved as 🔒 private. Make it public?"
+            sendPostAddOptions(id, pending.getId());
+            return;
+        }
+
         // handles category selection during recipe addition/editing (user-defined categories)
         if (data.startsWith("PICKCAT_")) {
             String categoryId = data.substring(8);
@@ -639,24 +673,15 @@ public class Bot extends TelegramLongPollingBot {
                     result = "You've reached the maximum of " + MAX_RECIPES + " recipes. Delete some to add more.";
                 } else {
                     importedRecipe = scrapeService.scrape(userId, url);
-                    importedRecipe.setVisibility("private"); // imports default to private; user can flip below
-                    if (db.addRecipe(importedRecipe, userId)) {
-                        result = "Recipe imported successfully!";
-                    } else {
-                        importedRecipe = null;
-                        result = "Couldn't save the imported recipe — please try again.";
-                    }
+                    // Nothing is saved yet: the user checks the import first, as on the web.
+                    pendingImports.put(id, importedRecipe);
+                    result = "Here's what I found. Check it, then save or discard:";
                 }
             } catch (ScrapeService.ScrapeException e) {
                 result = e.getMessage();
             }
             replaceMessageWithText(id, processingMsgId, result);
-            System.out.println("[Import] result message updated");
-            if (importedRecipe != null) {
-                sendRecipePreview(id, importedRecipe, true);
-                sendImportVisibilityPrompt(id, importedRecipe.getId());
-                sendPostAddOptions(id, importedRecipe.getId());
-            }
+            if (importedRecipe != null) sendImportReview(id, importedRecipe);
 
             userState.remove(id);
             tempRecipes.remove(id);
@@ -927,8 +952,9 @@ public class Bot extends TelegramLongPollingBot {
         try { execute(edit); } catch (TelegramApiException e) { /* stale/identical markup — ignore */ }
     }
 
-    private void sendRecipePreview(Long id, Recipe recipe, boolean ownerButtons) {
-        // One entry per line, so a too-long recipe can be cut between lines (see fitMessage).
+    // The recipe as message lines: one entry per line, so a too-long recipe can be cut
+    // between lines (see BotFormat.fitMessage).
+    private List<String> previewLines(Recipe recipe) {
         List<String> lines = new ArrayList<>();
         lines.add("<b><u>" + esc(recipe.getName()) + "</u></b>\n");
         if (recipe.getCategory() != null) lines.add(esc(recipe.getCategory()) + "\n");
@@ -948,6 +974,33 @@ public class Bot extends TelegramLongPollingBot {
             if (nums[i] == 0) lines.add((i > 0 ? "\n" : "") + "<b>" + esc(steps[i].trim()) + "</b>\n");
             else lines.add(nums[i] + ". " + esc(steps[i]) + "\n");
         }
+        return lines;
+    }
+
+    // An imported recipe, before it is saved, with Save / Discard under it. Not tracked in
+    // lastSentMsg: the next message the user sends must not strip these buttons.
+    private void sendImportReview(Long id, Recipe recipe) {
+        SendMessage msg = new SendMessage();
+        msg.setChatId(id.toString());
+        msg.setText(BotFormat.fitMessage(previewLines(recipe), "...\n", BotFormat.TELEGRAM_LIMIT));
+        msg.setParseMode("HTML");
+        InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
+        List<InlineKeyboardButton> row = new LinkedList<>();
+        row.add(createButton("✅ Save", "IMPORT_SAVE"));
+        row.add(createButton("🗑 Discard", "IMPORT_DISCARD"));
+        markup.setKeyboard(List.of(row));
+        msg.setReplyMarkup(markup);
+        try {
+            execute(msg);
+        } catch (TelegramApiException e) {
+            e.printStackTrace();
+            pendingImports.remove(id);
+            sendText(id, "Couldn't show the imported recipe. Please send the link again.");
+        }
+    }
+
+    private void sendRecipePreview(Long id, Recipe recipe, boolean ownerButtons) {
+        List<String> lines = previewLines(recipe);
         String tail = "...\n\n🔗 <a href=\"https://babrecipebook.vercel.app/?r=" + recipe.getId()
                 + "\">See the full recipe on the website</a>";
 

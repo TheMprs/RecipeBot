@@ -10,12 +10,37 @@ import recipeBot.database.SupabaseHandler;
  */
 public class ScrapeService {
 
-    /** Thrown when a scrape is refused. {@link #status} mirrors the HTTP code the web returns. */
+    /**
+     * Why an import was refused. The web turns {@code name()} into its own English/Hebrew
+     * message (web/src/utils/importErrors.js) and decides from it whether to offer "Paste text
+     * instead"; the bot shows {@link #message}. Keep the names in step with the web's table.
+     */
+    public enum Reason {
+        NOT_ALLOWED(403, "URL import isn't enabled for your account yet."),
+        RATE_MINUTE(429, "Too many imports in a row. Wait a minute and try again."),
+        RATE_DAY(429, "You've used today's imports. Try again tomorrow."),
+        RATE_GLOBAL(429, "Imports are paused for today. Try again tomorrow."),
+        NO_LINK(400, "That doesn't look like a link. Send the recipe page's address."),
+        TOO_LONG(400, "That link is too long."),
+        SITE_BLOCKED(400, "That site didn't let us read the page. Copy the recipe text from it instead."),
+        NOT_A_PAGE(400, "That link is a file, not a recipe page."),
+        NO_RECIPE(422, "We couldn't find a recipe on that page."),
+        AI_BUSY(503, "Recipe reading is busy right now. Try again in a few minutes."),
+        FAILED(400, "Couldn't read a recipe from that link.");
+
+        public final int status;
+        public final String message;
+        Reason(int status, String message) { this.status = status; this.message = message; }
+    }
+
+    /** Thrown when a scrape is refused. {@link #status} is the HTTP code the web returns. */
     public static class ScrapeException extends Exception {
-        public final int status; // 403 not permitted, 429 rate-limited, 400 bad url/site, 422 no recipe, 503 AI busy
-        public ScrapeException(int status, String message) {
-            super(message);
-            this.status = status;
+        public final int status;
+        public final Reason reason;
+        public ScrapeException(Reason reason) {
+            super(reason.message);
+            this.status = reason.status;
+            this.reason = reason;
         }
     }
 
@@ -46,42 +71,38 @@ public class ScrapeService {
      */
     public Recipe scrape(String userId, String url) throws ScrapeException {
         if (!db.canScrape(userId)) {
-            throw new ScrapeException(403, "URL import isn't enabled for your account yet.");
+            throw new ScrapeException(Reason.NOT_ALLOWED);
         }
-        String limited = checkLimit(userId);
-        if (limited != null) throw new ScrapeException(429, limited);
-
-        if (url == null || url.trim().isEmpty()) {
-            throw new ScrapeException(400, "URL is required");
-        }
-        if (url.length() > MAX_URL_LENGTH) {
-            throw new ScrapeException(400, "That link is too long.");
-        }
+        // Checked before the rate limit: a paste with no link in it fetches nothing, so it
+        // shouldn't use up one of the day's imports.
+        if (url == null || url.trim().isEmpty()) throw new ScrapeException(Reason.NO_LINK);
+        if (url.length() > MAX_URL_LENGTH) throw new ScrapeException(Reason.TOO_LONG);
         String link = findLink(url);
-        if (link == null) {
-            throw new ScrapeException(400, "That doesn't look like a link. Paste the recipe page's address.");
-        }
+        if (link == null) throw new ScrapeException(Reason.NO_LINK);
+
+        Reason limited = checkLimit(userId);
+        if (limited != null) throw new ScrapeException(limited);
 
         Recipe recipe;
         try {
             recipe = UrlFetcher.fetchRecipe(link, gemini);
         } catch (UrlFetcher.SiteRefusedException e) {
             log(userId, e);
-            throw new ScrapeException(400, "That site didn't let us read the page. Copy the recipe text from it instead.");
+            throw new ScrapeException(Reason.SITE_BLOCKED);
         } catch (UrlFetcher.NotAPageException e) {
             log(userId, e);
-            throw new ScrapeException(400, "That link is a file, not a recipe page.");
+            throw new ScrapeException(Reason.NOT_A_PAGE);
         } catch (GeminiHandler.AiException e) {
             log(userId, e);
             switch (e.kind) {
-                case NOT_RECIPE -> throw new ScrapeException(422, "We couldn't find a recipe on that page.");
-                case UNAVAILABLE -> throw new ScrapeException(503, "Recipe reading is busy right now. Try again in a few minutes.");
-                default -> throw new ScrapeException(400, "Couldn't read a recipe from that URL.");
+                case NOT_RECIPE -> throw new ScrapeException(Reason.NO_RECIPE);
+                case UNAVAILABLE -> throw new ScrapeException(Reason.AI_BUSY);
+                default -> throw new ScrapeException(Reason.FAILED);
             }
         } catch (Exception e) {
             // Log the detail server-side; don't leak internal error/host info to the client.
             log(userId, e);
-            throw new ScrapeException(400, "Couldn't read a recipe from that URL.");
+            throw new ScrapeException(Reason.FAILED);
         }
         // Every path sanitizes already; this is the last gate before the user sees it, so it
         // runs again rather than trusting that a future source remembered to.
@@ -89,7 +110,7 @@ public class ScrapeService {
         // Null or empty arrays would break the bot's preview, so an incomplete recipe
         // counts as a failed extraction.
         if (!RecipeSanitizer.isUsable(recipe)) {
-            throw new ScrapeException(422, "We couldn't find a recipe on that page.");
+            throw new ScrapeException(Reason.NO_RECIPE);
         }
         return recipe;
     }
@@ -112,9 +133,9 @@ public class ScrapeService {
         System.err.println("[Scrape] failed for user " + userId + ": " + e);
     }
 
-    // Returns a refusal message if the user is over any limit, else null and commits the hit.
+    // Returns the limit the user is over, else null and commits the hit.
     // One lock — scraping is low-frequency. Counters commit only when the call is allowed.
-    private synchronized String checkLimit(String userId) {
+    private synchronized Reason checkLimit(String userId) {
         long now = System.currentTimeMillis();
         long day = now / 86_400_000L;
 
@@ -126,14 +147,14 @@ public class ScrapeService {
 
         long[] m = minHits.get(userId);
         boolean sameMin = m != null && now - m[0] < MIN_WINDOW_MS;
-        if (sameMin && m[1] >= PER_MIN) return "Too many imports, slow down and try again in a minute.";
+        if (sameMin && m[1] >= PER_MIN) return Reason.RATE_MINUTE;
 
         long[] d = dayHits.get(userId);
         boolean sameDay = d != null && d[0] == day;
-        if (sameDay && d[1] >= USER_PER_DAY) return "Daily import limit reached, try again tomorrow.";
+        if (sameDay && d[1] >= USER_PER_DAY) return Reason.RATE_DAY;
 
         boolean globalSameDay = globalDay[0] == day;
-        if (globalSameDay && globalDay[1] >= GLOBAL_PER_DAY) return "Imports are temporarily unavailable, try again later.";
+        if (globalSameDay && globalDay[1] >= GLOBAL_PER_DAY) return Reason.RATE_GLOBAL;
 
         // all clear — commit
         if (sameMin) m[1]++; else minHits.put(userId, new long[]{now, 1});

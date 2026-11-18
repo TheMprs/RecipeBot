@@ -22,7 +22,7 @@ const FieldLabel = ({ icon: Icon, children, hint, trailing }) => (
 // text still splits on line breaks so a copied list lands as separate items.
 const splitLines = (text) => text.split('\n').map(s => s.trim()).filter(Boolean)
 
-export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, language = 'en', userCategories = [], currentCategoryIds = [], onCreateCategory, onDirtyChange }) {
+export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, pasteRequest, onPasteHandled, language = 'en', userCategories = [], currentCategoryIds = [], onCreateCategory, onDirtyChange }) {
   const isRtl = language === 'he'
 
   const [title, setTitle] = useState('')
@@ -107,6 +107,16 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
     setShowPaste(false)
     setPasteText('')
   }
+
+  // A failed URL import's "Paste text instead" opens the sheet, pre-filled when the user had
+  // put the recipe itself into the link box. The request is handed back as done, so a form
+  // opened later doesn't pop the sheet open again.
+  useEffect(() => {
+    if (!pasteRequest) return
+    setPasteText(pasteRequest.text || '')
+    setShowPaste(true)
+    onPasteHandled?.()
+  }, [pasteRequest, onPasteHandled])
 
   // The textarea takes focus on open, so Escape is the reflex for backing out of it.
   useEffect(() => {
@@ -683,7 +693,9 @@ export function RecipeForm({ onBack, onSave, editingRecipe, onOpenUrlModal, lang
               </div>
 
               <div className="space-y-4">
+                {/* dir=auto: an English recipe pasted in the Hebrew UI reads left-to-right */}
                 <textarea
+                  dir="auto"
                   autoFocus
                   value={pasteText}
                   onChange={e => setPasteText(e.target.value)}

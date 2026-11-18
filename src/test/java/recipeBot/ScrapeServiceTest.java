@@ -28,4 +28,56 @@ class ScrapeServiceTest {
         assertNull(ScrapeService.findLink("javascript:alert(1)"));
         assertNull(ScrapeService.findLink("ftp://site.com/file"));
     }
+
+    // --- Refusal reasons (no network: the fake database only answers canScrape) ---
+
+    private static ScrapeService service(boolean allowed) {
+        recipeBot.database.SupabaseHandler db = new recipeBot.database.SupabaseHandler("http://unused", "unused") {
+            @Override public boolean canScrape(String userId) { return allowed; }
+        };
+        return new ScrapeService(db, "unused");
+    }
+
+    private static ScrapeService.Reason refusal(ScrapeService s, String input) {
+        try {
+            s.scrape("user-1", input);
+            return null;
+        } catch (ScrapeService.ScrapeException e) {
+            return e.reason;
+        }
+    }
+
+    @Test
+    void no_permission_is_refused_first() {
+        assertEquals(ScrapeService.Reason.NOT_ALLOWED, refusal(service(false), "https://site.com/r"));
+    }
+
+    @Test
+    void input_without_a_link_never_uses_up_the_daily_imports() {
+        ScrapeService s = service(true);
+        // Far past the 15-a-day cap: a paste with no link fetches nothing, so it isn't counted.
+        for (int i = 0; i < 30; i++) {
+            assertEquals(ScrapeService.Reason.NO_LINK, refusal(s, "2 eggs\n1 cup flour\nWhisk and fry."));
+        }
+        assertEquals(ScrapeService.Reason.NO_LINK, refusal(s, "   "));
+        assertEquals(ScrapeService.Reason.TOO_LONG, refusal(s, "https://site.com/" + "a".repeat(3000)));
+    }
+
+    @Test
+    void each_reason_carries_its_http_status() {
+        assertEquals(403, ScrapeService.Reason.NOT_ALLOWED.status);
+        assertEquals(429, ScrapeService.Reason.RATE_DAY.status);
+        assertEquals(422, ScrapeService.Reason.NO_RECIPE.status);
+        assertEquals(503, ScrapeService.Reason.AI_BUSY.status);
+    }
+
+    // The web shows its own English/Hebrew text per reason. A reason added here without a line
+    // there would reach users as the generic "couldn't import" — this keeps the two in step.
+    @Test
+    void every_reason_has_a_message_on_the_web() throws Exception {
+        String web = java.nio.file.Files.readString(java.nio.file.Path.of("web/src/utils/importErrors.js"));
+        for (ScrapeService.Reason r : ScrapeService.Reason.values()) {
+            assertTrue(web.contains("  " + r.name() + ": {"), r.name() + " is missing from web/src/utils/importErrors.js");
+        }
+    }
 }

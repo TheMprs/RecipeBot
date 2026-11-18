@@ -130,12 +130,16 @@ public class webManager {
             try {
                 ctx.json(scrapeService.scrape(userId, ctx.body()));
             } catch (ScrapeService.ScrapeException e) {
-                ctx.status(e.status).result(e.getMessage());
+                // {code, message}: the web shows its own wording for the code, in the user's language.
+                JsonObject err = new JsonObject();
+                err.addProperty("code", e.reason.name());
+                err.addProperty("message", e.getMessage());
+                ctx.status(e.status).contentType("application/json").result(gson.toJson(err));
             }
         } catch (Exception e) {
             // Log the detail server-side; never echo internal exception text to the client.
             e.printStackTrace();
-            ctx.status(500).result("Internal error");
+            ctx.status(500).contentType("application/json").result("{\"code\":\"FAILED\",\"message\":\"Internal error\"}");
         }
     }
 

@@ -1,6 +1,6 @@
-﻿import { useState, useEffect, useRef, useMemo } from 'react'
+﻿import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { createPortal, flushSync } from 'react-dom'
-import { BookOpen, Plus, Search, Filter, X, Link as LinkIcon, User as UserIcon, ChevronLeft, ChevronRight, Heart, RotateCcw, Pencil, Menu, Settings, LogOut, Check, Trash2, Sparkles, AtSign, ChefHat, ChevronDown, ChevronUp } from 'lucide-react'
+import { BookOpen, Plus, Search, Filter, X, Link as LinkIcon, User as UserIcon, ChevronLeft, ChevronRight, Heart, RotateCcw, Pencil, Menu, Settings, LogOut, Check, Trash2, Sparkles, AtSign, ChefHat, ChevronDown, ChevronUp, ClipboardList } from 'lucide-react'
 import { RecipeCard, RecipeCardSkeleton } from './components/RecipeCard'
 import { CATEGORY_PALETTE } from './utils/categoryColor'
 import { RecipeDetail } from './components/RecipeDetail'
@@ -14,6 +14,8 @@ import { swr, invalidate, clearCache, peekCache, currentUserIdSync, purgeCacheVe
 import { getToken } from './utils/auth'
 import { formatRecipe } from './utils/formatRecipe'
 import { defaultVisibility } from './utils/visibility'
+import { importError, errorCodeFrom } from './utils/importErrors'
+import { UrlImportModal } from './components/UrlImportModal'
 import { useWheelScroll } from './utils/useWheelScroll'
 import { useOutsideClick } from './utils/useOutsideClick'
 import { deriveCookStats, historyMonths, historyStats, timelineDays, groupByDay, dayKey, HISTORY_MONTHS } from './utils/cookStats'
@@ -150,6 +152,10 @@ function App() {
   const [showUrlModal, setShowUrlModal] = useState(false)
   const [urlInput, setUrlInput] = useState('')
   const [isScrapingLoading, setIsScrapingLoading] = useState(false)
+  // Why the last URL import failed, shown inside the import box: { code, text, paste, pasteText }.
+  const [importErr, setImportErr] = useState(null)
+  // Asks the recipe form to open its paste-text sheet ({ n, text }; n makes each ask new).
+  const [pasteRequest, setPasteRequest] = useState(null)
   const [viewingProfile, setViewingProfile] = useState(null)
   const likedRecipesCarouselRef = useRef(null)
   const [hoveringCarousel, setHoveringCarousel] = useState(false)
@@ -1675,10 +1681,11 @@ function App() {
   // 5. SCRAPE RECIPE FROM URL
   const handleScrapeFromUrl = async () => {
     if (!urlInput.trim()) {
-      alert('Please enter a URL');
+      setImportErr(importError('NO_LINK', language));
       return;
     }
 
+    setImportErr(null);
     setIsScrapingLoading(true);
     try {
       const token = await getToken();
@@ -1703,17 +1710,29 @@ function App() {
         setShowRecipeForm(true);
         setShowUrlModal(false);
         setUrlInput('');
-      } else if (res.status === 429) {
-        setSaveError({ message: language === 'en' ? "You've hit your import limit, try again later" : 'הגעת למגבלת השימוש, נסה שוב מאוחר יותר' });
       } else {
-        setSaveError({ message: language === 'en' ? 'Failed to import recipe from that URL' : 'יבוא המתכון מהקישור נכשל' });
+        // The specific reason, in the user's language, inside the import box — with a way
+        // forward (paste the text) whenever pasting can actually get the recipe in.
+        setImportErr(importError(await errorCodeFrom(res), language, urlInput));
       }
     } catch (error) {
       console.error('Error scraping URL:', error);
-      setSaveError({ message: language === 'en' ? 'Failed to import recipe from that URL' : 'יבוא המתכון מהקישור נכשל' });
+      setImportErr(importError('FAILED', language));
     } finally {
       setIsScrapingLoading(false);
     }
+  }
+
+  const clearPasteRequest = useCallback(() => setPasteRequest(null), [])
+
+  // "Paste text instead": close the import box and open the form's paste sheet — on the form
+  // that's already open, or a fresh one. A recipe typed into the link box comes along.
+  const pasteInstead = () => {
+    const text = importErr?.pasteText || ''
+    setShowUrlModal(false)
+    setImportErr(null)
+    if (!showRecipeForm) { setEditingRecipe(null); setShowRecipeForm(true) }
+    setPasteRequest({ n: Date.now(), text })
   }
 
   // Shared nav-menu items (desktop dropdown + mobile panel)
@@ -2502,7 +2521,9 @@ function App() {
                 onBack={requestCloseForm}
                 onDirtyChange={(d) => { formDirtyRef.current = d }}
                 onSave={handleAddRecipe}
-                onOpenUrlModal={() => setShowUrlModal(true)}
+                onOpenUrlModal={() => { setImportErr(null); setShowUrlModal(true) }}
+                pasteRequest={pasteRequest}
+                onPasteHandled={clearPasteRequest}
                 userCategories={userCategories}
                 currentCategoryIds={recipeCategories[editingRecipe?.id] || []}
                 onCreateCategory={handleCreateCategory}
@@ -2524,101 +2545,17 @@ function App() {
 
       {/* URL Import Modal - Rendered at App level for full-screen overlay */}
       {showUrlModal && (
-        <>
-          <div className="fixed inset-0 z-[60] backdrop-blur-sm bg-black/30" onClick={() => setShowUrlModal(false)}></div>
-          <div className="fixed inset-0 flex items-start justify-center z-[70] px-4 py-12 overflow-y-auto" onClick={() => setShowUrlModal(false)}>
-            <div onClick={(e) => e.stopPropagation()} className="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-lg overflow-hidden" style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
-              {/* Branded header band — orange: importing is a cooking action */}
-              <div className="relative -mx-6 -mt-6 sm:-mx-8 sm:-mt-8 px-6 sm:px-8 pt-7 pb-7 mb-6 band-brand">
-                <button onClick={() => setShowUrlModal(false)} className="absolute top-4 end-4 text-white/85 hover:text-white transition-colors">
-                  <X className="w-5 h-5" />
-                </button>
-                <div className="flex flex-col items-center gap-3">
-                  <div className="w-14 h-14 band-badge">
-                    <LinkIcon className="w-7 h-7 text-white" />
-                  </div>
-                  <div>
-                    <h2 className="text-center text-2xl font-bold tracking-tight text-white">
-                      {language === 'en' ? 'Import from a link' : 'ייבוא מקישור'}
-                    </h2>
-                    <p className="text-center text-sm text-white/85 mt-1">
-                      {language === 'en' ? "Paste a recipe page — we'll pull out the details" : 'הדבק קישור למתכון ואנחנו נשלוף את הפרטים'}
-                    </p>
-                  </div>
-                </div>
-              </div>
-              
-              {!canScrape ? (
-                <div className="space-y-4">
-                  <p className="text-sm text-muted text-center py-4">
-                    {language === 'en'
-                      ? "You're not verified to import recipes from URLs."
-                      : 'החשבון שלך אינו מאומת לייבוא מתכונים מ-URL.'}
-                  </p>
-                  <button
-                    onClick={() => setShowUrlModal(false)}
-                    className="w-full btn-modal btn-ghost"
-                  >
-                    {language === 'en' ? 'Close' : 'סגור'}
-                  </button>
-                </div>
-              ) : (
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-ink mb-2">
-                    {language === 'en' ? 'Recipe URL' : 'לינק למתכון'}
-                  </label>
-                  <div className="relative">
-                    <LinkIcon className="w-4 h-4 text-muted absolute top-1/2 -translate-y-1/2 left-4 pointer-events-none" />
-                    <input
-                      type="url"
-                      dir="ltr"
-                      value={urlInput}
-                      onChange={(e) => setUrlInput(e.target.value)}
-                      placeholder='https://example.com/recipe'
-                      className="w-full pl-11 pr-4 py-3 bg-cream text-left border border-border rounded-2xl text-ink placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-brand-dark/20 focus:border-brand-dark transition-all"
-                    />
-                  </div>
-                  <p className="flex items-start gap-1.5 text-xs text-muted mt-2 text-start">
-                    <Sparkles className="w-3.5 h-3.5 text-brand-dark flex-shrink-0 mt-0.5" />
-                    <span>
-                      {language === 'en'
-                        ? 'Works with most recipe sites, Hebrew or English.'
-                        : 'עובד עם רוב אתרי המתכונים, בעברית או באנגלית.'}
-                    </span>
-                  </p>
-                </div>
-
-                <div className="flex gap-3 pt-4">
-                  <button
-                    onClick={() => setShowUrlModal(false)}
-                    className="flex-1 btn-modal btn-ghost"
-                  >
-                    {language === 'en' ? 'Cancel' : 'בטל'}
-                  </button>
-                  <button
-                    onClick={handleScrapeFromUrl}
-                    disabled={isScrapingLoading}
-                    className="flex-1 btn-modal btn-brand disabled:bg-brand/50 flex items-center justify-center gap-2"
-                  >
-                    {isScrapingLoading ? (
-                      <>
-                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                        <span>{language === 'en' ? 'Importing...' : 'מייבא...'}</span>
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles className="w-4 h-4" />
-                        <span>{language === 'en' ? 'Import' : 'ייבא'}</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
-              )}
-            </div>
-          </div>
-        </>
+        <UrlImportModal
+          language={language}
+          canScrape={canScrape}
+          url={urlInput}
+          onUrlChange={(v) => { setUrlInput(v); if (importErr) setImportErr(null) }}
+          error={importErr}
+          loading={isScrapingLoading}
+          onImport={handleScrapeFromUrl}
+          onClose={() => setShowUrlModal(false)}
+          onPasteInstead={pasteInstead}
+        />
       )}
 
       {/* Footer — brand line, Telegram chip, legal links, language toggle */}
