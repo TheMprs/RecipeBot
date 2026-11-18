@@ -47,10 +47,30 @@ final class RecipeSanitizer {
                 cap(text(r.getCategory()), NAME_MAX),
                 cap(text(r.getDescription()), DESC_MAX),
                 list(r.getIngredients(), INGREDIENT_MAX),
-                list(r.getInstructions(), STEP_MAX));
+                steps(list(r.getInstructions(), STEP_MAX)));
         if (out.getDescription() == null) out.setDescription("");
         out.setCaloriesPerServing(calories(r.getCaloriesPerServing()));
         return out;
+    }
+
+    // The site's own step numbers ("1.Preheat", "Step 2: Mix") duplicate the ones the app
+    // draws, and a line that is only a number ("3", "Step 4") is no step at all. Only the
+    // method is touched — "2 eggs" in the ingredients keeps its 2. "2-3 minutes…" and
+    // "1.5 kg…" are text, not numbering. (Cases from RecipeSage's cleanRecipeFields.)
+    private static final java.util.regex.Pattern STEP_NUMBER = java.util.regex.Pattern.compile(
+            "^(?:(?:step|שלב)\\s*)?\\d{1,2}\\s*[.):](?!\\d)\\s*", java.util.regex.Pattern.CASE_INSENSITIVE);
+    private static final java.util.regex.Pattern ONLY_NUMBER = java.util.regex.Pattern.compile(
+            "^(?:(?:step|שלב)\\s*)?\\d{1,2}\\s*[.):]?$", java.util.regex.Pattern.CASE_INSENSITIVE);
+
+    static String[] steps(String[] in) {
+        if (in == null) return null;
+        List<String> out = new ArrayList<>();
+        for (String s : in) {
+            if (ONLY_NUMBER.matcher(s).matches()) continue;
+            String t = STEP_NUMBER.matcher(s).replaceFirst("").trim();
+            if (!t.isEmpty()) out.add(t);
+        }
+        return out.toArray(new String[0]);
     }
 
     // Good enough to skip Gemini: real recipes have a name, several ingredients and a step.
@@ -59,7 +79,36 @@ final class RecipeSanitizer {
         return r != null && notEmpty(r.getName())
                 && r.getIngredients() != null && r.getIngredients().length >= 2
                 && r.getInstructions() != null && r.getInstructions().length >= 1
-                && !(r.getInstructions().length == 1 && r.getInstructions()[0].length() > ONE_STEP_MAX);
+                && !(r.getInstructions().length == 1 && r.getInstructions()[0].length() > ONE_STEP_MAX)
+                && hasAmounts(r.getIngredients())
+                && plausibleSteps(r.getIngredients().length, r.getInstructions().length);
+    }
+
+    // The method is the part sites most often leave out of their structured data: rutgerbakt
+    // puts the marketing blurb there as its only "step", tine.no the word "Oppskrift",
+    // dagelijksekost 2 of its 32 steps. One step for four or more ingredients, or far fewer
+    // steps than ingredients, means the real method is on the page — Gemini reads it there.
+    static boolean plausibleSteps(int ingredients, int steps) {
+        if (steps == 1 && ingredients >= 4) return false;
+        return steps * 8 >= ingredients;
+    }
+
+    // Some sites' structured data lists bare names ("popping corn", "flour") and keeps the
+    // amounts only in the visible page (kikkoman, recipeland, aldi-suisse). A list where
+    // hardly any line carries a number or a measure is that, not a real ingredient list —
+    // Gemini reads the page instead. Short lists are let through: "salt, pepper" is real.
+    private static final java.util.regex.Pattern AMOUNT = java.util.regex.Pattern.compile(
+            "[0-9¼½¾⅓⅔⅕⅖⅗⅘⅙⅚⅛⅜⅝⅞]|(?i)\\b(cups?|tbsp|tsp|tablespoons?|teaspoons?|pinch|handful|cloves?|g|kg|ml|l|oz|lb)\\b"
+            + "|כוס|כף|כפית|חצי|רבע|קורט|חופן|שן|ק\"ג|גרם|מ\"ל|ליטר");
+
+    static boolean hasAmounts(String[] ingredients) {
+        int items = 0, withAmount = 0;
+        for (String s : ingredients) {
+            if (s == null || s.isBlank() || s.trim().endsWith(":")) continue;
+            items++;
+            if (AMOUNT.matcher(s).find()) withAmount++;
+        }
+        return items < 4 || withAmount * 4 >= items; // at least a quarter carry an amount
     }
 
     // Good enough to hand to the user at all: something in every required field.

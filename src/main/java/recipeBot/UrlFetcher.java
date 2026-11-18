@@ -64,7 +64,17 @@ public class UrlFetcher {
             throw new GeminiHandler.AiException(GeminiHandler.AiException.Kind.NOT_RECIPE, "empty page");
         }
         try {
-            return gemini.extractRecipeFromText(ex.aiText());
+            Recipe r = gemini.extractRecipeFromText(ex.aiText());
+            // The answer must come from the page. An invented recipe — or one a page talked
+            // the model into — has lines that appear nowhere in what we sent (RecipeSage's
+            // grounding gate). Partial structured data, if any, beats an invention.
+            if (!RecipeGrounding.isGrounded(r, ex.aiText())) {
+                System.err.println("[Scrape] Gemini answer not grounded in the page (score "
+                        + RecipeGrounding.score(r, ex.aiText()) + ")");
+                if (ex.partial() != null) return ex.partial();
+                throw new GeminiHandler.AiException(GeminiHandler.AiException.Kind.NOT_RECIPE, "answer not grounded in the page");
+            }
+            return r;
         } catch (GeminiHandler.AiException e) {
             // Gemini down or out of quota: a partial recipe the user can fix beats a dead end.
             if (e.kind == GeminiHandler.AiException.Kind.UNAVAILABLE && ex.partial() != null) {
@@ -112,7 +122,17 @@ public class UrlFetcher {
             throw new SiteRefusedException("HTTP " + res.statusCode());
         }
         if (!isPageType(res.contentType())) throw new NotAPageException(res.contentType());
-        return res.parse();
+        Document doc = res.parse();
+        // Cloudflare and friends sometimes answer 200 with a "checking your browser" page.
+        // It has no recipe, so it must not cost a Gemini call (RecipeSage's isBotChallengePage).
+        if (isBotChallenge(doc.title())) throw new SiteRefusedException("bot challenge: " + doc.title());
+        return doc;
+    }
+
+    static boolean isBotChallenge(String title) {
+        String t = title == null ? "" : title.trim().toLowerCase(Locale.ROOT);
+        return t.equals("just a moment...") || t.equals("just a moment…") || t.equals("attention required!")
+                || t.equals("access denied") || t.equals("client challenge") || t.startsWith("attention required! | cloudflare");
     }
 
     // HTML, XHTML or plain text. A missing header gets the benefit of the doubt; a stated
@@ -131,7 +151,7 @@ public class UrlFetcher {
 
         // 1. JSON-LD
         for (JsonElement root : jsonBlocks(doc, "script[type=application/ld+json]")) {
-            JsonObject node = findTyped(root, "Recipe", 0);
+            JsonObject node = bestRecipe(root);
             if (node == null) continue;
             Recipe r = RecipeSanitizer.clean(toRecipe(node));
             if (RecipeSanitizer.isComplete(r)) return new Extracted(r, null, "");
@@ -149,8 +169,14 @@ public class UrlFetcher {
 
         // 3. Framework data blobs (Next.js __NEXT_DATA__ and friends). Sites that build the page
         // in the browser leave almost no text in the HTML — the recipe lives only here.
-        for (JsonElement root : jsonBlocks(doc, "script[type=application/json]")) {
-            JsonObject node = findTyped(root, "Recipe", 0);
+        List<JsonElement> blobs = jsonBlocks(doc, "script[type=application/json]");
+        // Inertia.js (Laravel) keeps the page's whole data as JSON in a data-page attribute.
+        for (Element el : doc.select("[data-page]")) {
+            JsonElement j = parseLoose(el.attr("data-page"));
+            if (j != null) blobs.add(j);
+        }
+        for (JsonElement root : blobs) {
+            JsonObject node = bestRecipe(root);
             if (node != null) {
                 Recipe r = RecipeSanitizer.clean(toRecipe(node));
                 if (RecipeSanitizer.isComplete(r)) return new Extracted(r, null, "");
@@ -239,6 +265,33 @@ public class UrlFetcher {
     // Framework blobs can be large and deeply nested; this bounds the walk.
     private static final int MAX_DEPTH = 40;
 
+    // Every Recipe node in the block, best first: a complete one, then a usable one, then any.
+    // A page can carry an empty SEO stub at the root with the real recipe in its @graph
+    // (cooklang-import's test case) — taking the first found returned the stub.
+    static JsonObject bestRecipe(JsonElement root) {
+        List<JsonObject> all = new ArrayList<>();
+        collectTyped(root, "Recipe", 0, all);
+        JsonObject usable = null;
+        for (JsonObject o : all) {
+            Recipe r = RecipeSanitizer.clean(toRecipe(o));
+            if (RecipeSanitizer.isComplete(r)) return o;
+            if (usable == null && RecipeSanitizer.isUsable(r)) usable = o;
+        }
+        return usable != null ? usable : (all.isEmpty() ? null : all.get(0));
+    }
+
+    private static void collectTyped(JsonElement el, String type, int depth, List<JsonObject> out) {
+        if (el == null || depth > MAX_DEPTH || out.size() >= 20) return;
+        if (el.isJsonArray()) {
+            for (JsonElement e : el.getAsJsonArray()) collectTyped(e, type, depth + 1, out);
+            return;
+        }
+        if (!el.isJsonObject()) return;
+        JsonObject o = el.getAsJsonObject();
+        if (hasType(o, type)) out.add(o);
+        for (var entry : o.entrySet()) collectTyped(entry.getValue(), type, depth + 1, out);
+    }
+
     // A node of the given @type anywhere in the tree: inside arrays, @graph wrappers,
     // mainEntity, or a framework blob's props.
     static JsonObject findTyped(JsonElement el, String type, int depth) {
@@ -316,7 +369,9 @@ public class UrlFetcher {
         String[] ing = stringList(o.get("recipeIngredient")).toArray(new String[0]);
         if (ing.length == 0) ing = stringList(o.get("ingredients")).toArray(new String[0]); // pre-2017 schema name
         String[] instr = mergeFragments(instructionList(o.get("recipeInstructions"))).toArray(new String[0]);
-        Recipe r = new Recipe(str(o, "name"), firstString(o.get("recipeCategory")), str(o, "description"), ing, instr);
+        String name = str(o, "name");
+        if (name == null || name.isEmpty()) name = str(o, "headline"); // article-style markup
+        Recipe r = new Recipe(name, firstString(o.get("recipeCategory")), str(o, "description"), ing, instr);
         r.setCaloriesPerServing(caloriesFrom(o.get("nutrition")));
         return r;
     }
@@ -379,6 +434,14 @@ public class UrlFetcher {
                     addLines(x.getAsString(), out);
                 } else if (x.isJsonArray()) {
                     out.addAll(stringList(x)); // some sites nest the list: [["a", "b"]]
+                } else if (x.isJsonObject()) {
+                    // {"@type":"HowToIngredient","amount":"600g","name":"cream cheese"} — an
+                    // empty amount with a name ending in ":" is a group title, kept as one.
+                    JsonObject io = x.getAsJsonObject();
+                    String amount = str(io, "amount"), n = str(io, "name");
+                    if (n == null) n = str(io, "text");
+                    String line = ((amount == null ? "" : amount) + " " + (n == null ? "" : n)).trim();
+                    if (!line.isEmpty()) out.add(line);
                 }
             }
         } else if (e.isJsonPrimitive()) {
@@ -428,6 +491,12 @@ public class UrlFetcher {
             } else {
                 collectInstruction(items, out);
             }
+            return;
+        }
+        // einfachkochen writes a step's text as a list of strings; each is kept as a line.
+        JsonElement t = o.get("text");
+        if (t != null && t.isJsonArray()) {
+            for (String line : stringList(t)) out.add(line);
             return;
         }
         String text = str(o, "text");
@@ -526,8 +595,18 @@ public class UrlFetcher {
     private static List<String> stepsIn(Element e) {
         List<String> out = new ArrayList<>();
         if (e.hasAttr("content")) { out.add(e.attr("content")); return out; }
-        Element text = e.hasAttr("itemscope") ? e.selectFirst("[itemprop=text]") : null;
-        if (text != null) { out.add(text.text()); return out; }
+        if (e.hasAttr("itemscope")) {
+            // A HowToStep holds one text; a HowToSection holds a name and many steps (Bimby).
+            var texts = e.select("[itemprop=text]");
+            if (!texts.isEmpty()) {
+                Element name = e.selectFirst("> [itemprop=name], [itemprop=name]");
+                if (texts.size() > 1 && name != null && ownerScope(name) == e && !name.text().isBlank()) {
+                    out.add(sectionTitle(name.text().trim()));
+                }
+                for (Element t : texts) out.add(t.text());
+                return out;
+            }
+        }
         var items = e.select("li");
         if (items.isEmpty()) items = e.select("p");
         if (items.isEmpty()) out.add(e.text());
@@ -539,13 +618,19 @@ public class UrlFetcher {
 
     // Containers that hold a recipe and little else, best first. Recipe-card plugins
     // (WPRM, Tasty, Mediavine) are the tightest; article/main are the fallback.
+    // Recipe-card plugins: a match is the recipe, nothing else in it.
+    private static final String[] PLUGIN_SELECTORS = {
+            ".wprm-recipe-container", ".wprm-recipe", ".tasty-recipes", ".mv-create-card"
+    };
+    // Generic containers: only trusted when they actually hold an ingredients header —
+    // the first <article> on aldi/keukenliefde, and bongeats' "recipe-cards-section" (a strip
+    // of other recipes), passed the old length-only test and hid the real recipe.
     private static final String[] CONTENT_SELECTORS = {
-            ".wprm-recipe-container", ".wprm-recipe", ".tasty-recipes", ".mv-create-card",
             "[class*=recipe-card]", "article", "main", "[role=main]"
     };
 
     private static final String ALWAYS_NOISE =
-            "script, style, noscript, template, svg, iframe, form, nav, footer, aside, button, select, "
+            "script, style, noscript, template, svg, iframe, nav, footer, aside, button, select, "
             + "[role=navigation], [role=banner], [role=contentinfo], [aria-hidden=true], [hidden], "
             // Text a reader can't see isn't recipe content — and is where a page would hide
             // instructions aimed at the model.
@@ -565,16 +650,28 @@ public class UrlFetcher {
         Element micro = microdataRecipe(doc);
         Element root = null;
         if (micro != null && micro.text().length() >= MIN_CONTENT_CHARS) root = micro;
-        for (int i = 0; root == null && i < CONTENT_SELECTORS.length; i++) {
-            for (Element c : doc.select(CONTENT_SELECTORS[i])) {
+        for (int i = 0; root == null && i < PLUGIN_SELECTORS.length; i++) {
+            for (Element c : doc.select(PLUGIN_SELECTORS[i])) {
                 if (c.text().length() >= MIN_CONTENT_CHARS) { root = c; break; }
             }
         }
+        for (int i = 0; root == null && i < CONTENT_SELECTORS.length; i++) {
+            for (Element c : doc.select(CONTENT_SELECTORS[i])) {
+                if (c.text().length() >= MIN_CONTENT_CHARS && hasIngredientsHeader(c)) { root = c; break; }
+            }
+        }
+        // No container proves it holds the recipe: take the whole page. recipeWindow then
+        // cuts it down to the ingredients-to-method stretch, which is the better judge.
         if (root == null) root = doc.body();
         if (root == null) return doc;
 
         root.select(ALWAYS_NOISE).remove();
         int total = Math.max(1, root.text().length());
+        // Forms: newsletter and comment boxes go. A form of checkboxes is an ingredient
+        // checklist (streetkitchen builds its list that way) and stays.
+        for (Element f : root.select("form")) {
+            if (f != root && f.selectFirst("input[type=checkbox]") == null) f.remove();
+        }
         for (Element e : root.select("[class], [id]")) {
             if (e == root || e.parent() == null || !isNoise(e)) continue;
             // A wrapper named e.g. "content-with-sidebar" can hold the recipe itself. Only
@@ -582,6 +679,13 @@ public class UrlFetcher {
             if (e.text().length() * 10 < total * 4) e.remove();
         }
         return root;
+    }
+
+    private static boolean hasIngredientsHeader(Element e) {
+        for (String line : blockText(e).split("\n")) {
+            if (ING_HEADERS.contains(headerWord(line))) return true;
+        }
+        return false;
     }
 
     private static boolean isNoise(Element e) {

@@ -312,4 +312,69 @@ class RecipeExtractTest {
         assertFalse(text.contains("HACKED"), text);
         assertTrue(text.contains("2 eggs"));
     }
+
+    // --- Found by running recipe-scrapers' 1,145 saved pages through the extractor ---
+
+    @Test
+    void the_container_holding_the_ingredients_wins_over_the_first_article() {
+        // aldi / keukenliefde: the first <article> is a teaser; bongeats: "recipe-cards-section"
+        // is a strip of other recipes. Both passed the old length-only test.
+        String teaser = "<article class=\"recipe-cards-section\"><p>" + "Try our other great dinners this week. ".repeat(8) + "</p></article>";
+        String real = "<article><h1>Soup</h1><h3>Ingredients</h3><ul><li>1 kg bottle gourd</li><li>100 g prawns</li></ul>"
+                + "<h3>Method</h3><p>" + "Fry the prawns, add the gourd and cook covered until soft. ".repeat(4) + "</p></article>";
+        String text = UrlFetcher.extract(page("", teaser + real)).aiText();
+        assertTrue(text.contains("100 g prawns"), text);
+    }
+
+    @Test
+    void an_ingredient_list_built_as_a_form_is_kept() {
+        String list = "<form><label><input type=checkbox>2 rúd fahéj</label><label><input type=checkbox>1 csipet só</label></form>";
+        String text = UrlFetcher.extract(page("", "<article><h1>Tejberizs</h1><h3>Ingredients</h3>" + list
+                + "<h3>Method</h3><p>" + "Cook the rice slowly in the milk, stirring often. ".repeat(5) + "</p></article>")).aiText();
+        assertTrue(text.contains("fahéj"), text);
+    }
+
+    @Test
+    void inertia_data_page_attribute_is_read() {
+        String json = "{&quot;props&quot;:{&quot;recipe&quot;:{&quot;title&quot;:&quot;Kyllingetærte&quot;,"
+                + "&quot;ingredients&quot;:[&quot;2 stilke bladselleri&quot;],&quot;steps&quot;:[&quot;Bag tærten.&quot;]}}}";
+        assertTrue(UrlFetcher.extract(page("", "<div id=\"app\" data-page=\"" + json + "\"></div>")).aiText().contains("bladselleri"));
+    }
+
+    @Test
+    void how_to_step_text_given_as_a_list() {
+        Document d = page(ld("{\"@type\":\"Recipe\",\"name\":\"Filettopf\",\"recipeIngredient\":[\"500 g Filet\",\"200 g Pilze\"],"
+                + "\"recipeInstructions\":[{\"@type\":\"HowToStep\",\"text\":[\"Filets abwaschen\",\"trocken tupfen.\"]},"
+                + "{\"@type\":\"HowToStep\",\"text\":\"Anbraten.\"}]}"), "");
+        assertArrayEquals(new String[]{"Filets abwaschen", "trocken tupfen.", "Anbraten."}, UrlFetcher.extract(d).complete().getInstructions());
+    }
+
+    @Test
+    void microdata_section_yields_all_its_steps() {
+        Document d = page("", "<div itemscope itemtype=\"https://schema.org/Recipe\"><h1 itemprop=\"name\">Arroz</h1>"
+                + "<span itemprop=\"recipeIngredient\">1 polvo</span><span itemprop=\"recipeIngredient\">240 g cebola</span>"
+                + "<div itemprop=\"recipeInstructions\" itemscope itemtype=\"https://schema.org/HowToSection\">"
+                + "<div itemprop=\"itemListElement\" itemscope itemtype=\"https://schema.org/HowToStep\"><p itemprop=\"text\">Coloque o polvo.</p></div>"
+                + "<div itemprop=\"itemListElement\" itemscope itemtype=\"https://schema.org/HowToStep\"><p itemprop=\"text\">Sirva.</p></div>"
+                + "</div></div>");
+        assertArrayEquals(new String[]{"Coloque o polvo.", "Sirva."}, UrlFetcher.extract(d).complete().getInstructions());
+    }
+
+    @Test
+    void ingredients_without_any_amounts_go_to_gemini() {
+        // kikkoman / recipeland: names only in the structured data, amounts only on the page.
+        Document d = page(ld("{\"@type\":\"Recipe\",\"name\":\"Popcorn\",\"recipeIngredient\":[\"popping corn\",\"oil\",\"butter\",\"soy sauce\"],"
+                + "\"recipeInstructions\":[\"Pop the corn.\",\"Glaze it.\"]}"), "");
+        assertNull(UrlFetcher.extract(d).complete());
+        assertTrue(RecipeSanitizer.hasAmounts(new String[]{"salt", "pepper"}), "a short list may have no amounts");
+        assertTrue(RecipeSanitizer.hasAmounts(new String[]{"כף מלח גס", "כפית פלפל", "שמן", "סילאן"}), "Hebrew measures count");
+    }
+
+    @Test
+    void a_method_far_shorter_than_the_ingredient_list_goes_to_gemini() {
+        assertFalse(RecipeSanitizer.plausibleSteps(6, 1), "rutgerbakt: the blurb as the only step");
+        assertFalse(RecipeSanitizer.plausibleSteps(33, 2), "dagelijksekost: 2 of 32 steps");
+        assertTrue(RecipeSanitizer.plausibleSteps(3, 1), "a short recipe may have one step");
+        assertTrue(RecipeSanitizer.plausibleSteps(11, 6));
+    }
 }
