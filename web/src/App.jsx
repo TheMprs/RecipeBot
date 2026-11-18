@@ -1697,6 +1697,8 @@ function App() {
           description: scrapedRecipe.description,
           ingredients: scrapedRecipe.ingredients || [],
           instructions: scrapedRecipe.instructions || [],
+          // Only set when the page states it; the form leaves the field empty otherwise.
+          caloriesPerServing: scrapedRecipe.caloriesPerServing ?? null,
         });
         setShowRecipeForm(true);
         setShowUrlModal(false);

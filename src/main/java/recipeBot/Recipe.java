@@ -9,6 +9,8 @@ public class Recipe {
     private String description;
     private String[] ingredients;
     private String[] instructions;
+    // Only filled by URL import (page nutrition data or Gemini); null means "not stated".
+    private Integer caloriesPerServing = null;
 
     public Recipe(String name, String category, String description, String[] ingredients, String[] instructions) {
         this.name = name;
@@ -44,6 +46,8 @@ public class Recipe {
     public void setUserId(String userId) { this.userId = userId; }
     public String getVisibility() { return this.visibility; }
     public void setVisibility(String visibility) { this.visibility = visibility; }
+    public Integer getCaloriesPerServing() { return this.caloriesPerServing; }
+    public void setCaloriesPerServing(Integer calories) { this.caloriesPerServing = calories; }
 
     public boolean isOwnedBy(String userId) {
         return this.userId != null && this.userId.equals(userId);

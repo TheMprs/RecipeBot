@@ -569,6 +569,10 @@ public class SupabaseHandler {
         body.add("instructions", toJsonArray(recipe.getInstructions()));
         body.addProperty("visibility", recipe.getVisibility() != null ? recipe.getVisibility() : "public");
         body.addProperty("user_id", userId);
+        // Only imports carry calories; leaving the key out keeps the column's default (null).
+        if (recipe.getCaloriesPerServing() != null) {
+            body.addProperty("calories_per_serving", recipe.getCaloriesPerServing());
+        }
         return body;
     }
 
