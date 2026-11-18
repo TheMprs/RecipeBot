@@ -185,13 +185,26 @@ public class UrlFetcher {
     private static List<JsonElement> jsonBlocks(Document doc, String selector) {
         List<JsonElement> out = new ArrayList<>();
         for (Element script : doc.select(selector)) {
-            try {
-                out.add(JsonParser.parseString(script.html()));
-            } catch (Exception e) {
-                // malformed block — skip it
-            }
+            JsonElement el = parseLoose(script.html());
+            if (el != null) out.add(el);
         }
         return out;
+    }
+
+    // Hand-written theme JSON-LD often has a trailing comma ("[...,]" / "{...,}"), which
+    // made the whole block unreadable. One retry with those commas removed; still broken
+    // means skip it. The retry can't touch a comma inside a string value that precedes a
+    // bracket only in pathological text, and a wrong guess just leaves the block skipped.
+    static JsonElement parseLoose(String json) {
+        try {
+            return JsonParser.parseString(json);
+        } catch (Exception e) {
+            try {
+                return JsonParser.parseString(json.replaceAll(",(\\s*[\\]}])", "$1"));
+            } catch (Exception again) {
+                return null;
+            }
+        }
     }
 
     private static String pageTitle(Document doc) {
@@ -286,11 +299,17 @@ public class UrlFetcher {
         JsonElement t = o.get("@type");
         if (t.isJsonArray()) {
             for (JsonElement e : t.getAsJsonArray()) {
-                if (e.isJsonPrimitive() && type.equals(e.getAsString())) return true;
+                if (e.isJsonPrimitive() && sameType(e.getAsString(), type)) return true;
             }
             return false;
         }
-        return t.isJsonPrimitive() && type.equals(t.getAsString());
+        return t.isJsonPrimitive() && sameType(t.getAsString(), type);
+    }
+
+    // "Recipe", "recipe", "https://schema.org/Recipe", "schema:Recipe" all name the same type.
+    private static boolean sameType(String declared, String type) {
+        String d = declared.trim().replaceFirst("(?i)^(https?://)?(www\\.)?schema\\.org/|^schema:", "");
+        return d.equalsIgnoreCase(type);
     }
 
     private static Recipe toRecipe(JsonObject o) {
@@ -317,7 +336,10 @@ public class UrlFetcher {
 
     static Integer parseCalories(String s) {
         if (s == null) return null;
-        java.util.regex.Matcher m = java.util.regex.Pattern.compile("(\\d{1,5}(?:[.,]\\d+)?)").matcher(s);
+        // "1,200 kcal" is twelve hundred, not 1.2: a separator followed by exactly three digits
+        // is a thousands mark. Anything else after it ("312.6", "312,6") is a decimal.
+        String t = s.replaceAll("(\\d)[.,](\\d{3})(?!\\d)", "$1$2");
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("(\\d{1,5}(?:[.,]\\d+)?)").matcher(t);
         if (!m.find()) return null;
         try {
             return RecipeSanitizer.calories((int) Math.round(Double.parseDouble(m.group(1).replace(',', '.'))));
@@ -524,7 +546,10 @@ public class UrlFetcher {
 
     private static final String ALWAYS_NOISE =
             "script, style, noscript, template, svg, iframe, form, nav, footer, aside, button, select, "
-            + "[role=navigation], [role=banner], [role=contentinfo], [aria-hidden=true], [hidden]";
+            + "[role=navigation], [role=banner], [role=contentinfo], [aria-hidden=true], [hidden], "
+            // Text a reader can't see isn't recipe content — and is where a page would hide
+            // instructions aimed at the model.
+            + "[style~=(?i)display\\s*:\\s*none], [style~=(?i)visibility\\s*:\\s*hidden]";
 
     // class/id words that mark a block as page furniture, matched on whole words of the
     // class name so "recipe-share" goes but "shared-kitchen-recipe" isn't misread.
@@ -685,7 +710,7 @@ public class UrlFetcher {
         }
 
         String scheme = uri.getScheme();
-        if (scheme == null || (!scheme.equals("http") && !scheme.equals("https"))) {
+        if (scheme == null || (!scheme.equalsIgnoreCase("http") && !scheme.equalsIgnoreCase("https"))) {
             throw new Exception("Only http and https URLs are allowed");
         }
 
@@ -734,6 +759,7 @@ public class UrlFetcher {
         if (raw.length == 4) {
             int b0 = raw[0] & 0xFF, b1 = raw[1] & 0xFF;
             if (b0 == 169 && b1 == 254) return true;   // belt-and-suspenders: GCP/AWS metadata
+            if (b0 == 100 && (b1 & 0xC0) == 64) return true; // 100.64.0.0/10 carrier-grade NAT, internal on some clouds
         } else if (raw.length == 16) {
             int b0 = raw[0] & 0xFF;
             if ((b0 & 0xFE) == 0xFC) return true;      // fc00::/7 IPv6 unique-local (isSiteLocalAddress misses this)

@@ -76,10 +76,13 @@ public final class BotFormat {
     // Group titles inside a recipe's lists ("לרוטב:", "For the sauce:"): a short line ending in
     // a colon. Same rule as the web's utils/recipeLines.js — keep the two in step.
     private static final int HEADING_MAX = 40;
+    private static final String AMOUNT_START = "0123456789¼½¾⅓⅔⅕⅖⅗⅘⅙⅚⅛⅜⅝⅞";
 
     public static boolean isGroupHeading(String line) {
         if (line == null) return false;
         String s = line.trim();
+        // "2 cups flour, divided:" opens with an amount — an ingredient, whatever its ending.
+        if (s.isEmpty() || AMOUNT_START.indexOf(s.charAt(0)) >= 0) return false;
         return s.length() > 1 && s.length() <= HEADING_MAX && (s.endsWith(":") || s.endsWith("："));
     }
 

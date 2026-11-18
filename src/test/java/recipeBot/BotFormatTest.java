@@ -122,4 +122,11 @@ class BotFormatTest {
         assertTrue(t.contains("Prep:\n1. Cut.\n\nFinish:\n2. Fry."), t);
         assertFalse(t.contains("• For the sauce"));
     }
+
+    @Test
+    void a_line_opening_with_an_amount_is_never_a_title() {
+        assertFalse(BotFormat.isGroupHeading("2 cups flour, divided:"));
+        assertFalse(BotFormat.isGroupHeading("½ כוס סוכר:"));
+        assertTrue(BotFormat.isGroupHeading("Step 1:"), "a number later in the line is fine");
+    }
 }

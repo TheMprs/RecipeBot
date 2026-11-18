@@ -7,10 +7,12 @@
 // long step that happens to end in ":" ("Prepare the following:") is past the length cap.
 // Same rule as BotFormat.isGroupHeading on the bot side — keep the two in step.
 const HEADING_MAX = 40
+// "2 cups flour, divided:" opens with an amount — an ingredient, whatever its ending.
+const AMOUNT_START = /^[\d¼½¾⅓⅔⅕⅖⅗⅘⅙⅚⅛⅜⅝⅞]/
 
 export function isGroupHeading(line) {
   const s = String(line ?? '').trim()
-  return s.length > 1 && s.length <= HEADING_MAX && /[:：]$/.test(s)
+  return s.length > 1 && s.length <= HEADING_MAX && /[:：]$/.test(s) && !AMOUNT_START.test(s)
 }
 
 // The title as shown: the trailing colon is how it's stored, not how it reads.

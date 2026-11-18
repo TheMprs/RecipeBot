@@ -83,4 +83,11 @@ class UrlFetcherTest {
         assertFalse(UrlFetcher.anyPrivate(new java.net.InetAddress[]{ pub }),
                 "an all-public list must still be allowed");
     }
+
+    @Test
+    void scheme_case_does_not_matter_and_cgnat_is_internal() {
+        allows("HTTPS://1.1.1.1/recipe");
+        assertTrue(rejects("http://100.64.0.1/"), "carrier-grade NAT range");
+        assertTrue(rejects("HTTP://127.0.0.1/"), "upper-case scheme still goes through the address check");
+    }
 }

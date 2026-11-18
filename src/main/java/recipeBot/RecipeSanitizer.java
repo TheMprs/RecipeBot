@@ -98,7 +98,9 @@ final class RecipeSanitizer {
         } else if (t.indexOf('&') >= 0) {
             t = org.jsoup.parser.Parser.unescapeEntities(t, false);
         }
-        t = t.replaceAll(BIDI_CONTROLS, "")
+        // Zero-width space, word joiner and BOM are invisible junk; ZWJ (U+200D) is kept — it
+        // holds emoji like 👨‍🍳 together.
+        t = t.replaceAll(BIDI_CONTROLS, "").replaceAll("[\\u200B\\u2060\\uFEFF]", "")
              .replaceAll("[\\p{Cc}\\u00A0\\u2028\\u2029]", " ")
              .replaceAll("\\s+", " ")
              .trim();

@@ -16,6 +16,10 @@ assert.equal(isGroupHeading(null), false)
 assert.equal(isGroupHeading('Mix everything in a large bowl and then prepare the following:'), false,
   'a long step ending in a colon is still a step')
 
+assert.equal(isGroupHeading('2 cups flour, divided:'), false, 'opens with an amount: an ingredient')
+assert.equal(isGroupHeading('½ כוס סוכר:'), false)
+assert.equal(isGroupHeading('שלב 1:'), true, 'a number later in the line is fine')
+
 // --- display text -------------------------------------------------------------
 assert.equal(headingText('לרוטב:'), 'לרוטב')
 assert.equal(headingText('For the sauce :'), 'For the sauce')

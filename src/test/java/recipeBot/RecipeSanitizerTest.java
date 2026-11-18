@@ -82,4 +82,10 @@ class RecipeSanitizerTest {
         assertEquals("Mix.", RecipeSanitizer.text("Mix. [gallery ids=\"1,2\"]"));
         assertEquals("1 tsp chili [optional]", RecipeSanitizer.text("1 tsp chili [optional]"));
     }
+
+    @Test
+    void zero_width_junk_goes_but_emoji_joiners_stay() {
+        assertEquals("Cake", RecipeSanitizer.text("Ca\u200Bke\uFEFF"));
+        assertEquals("👨\u200D🍳 Chef", RecipeSanitizer.text("👨\u200D🍳 Chef"));
+    }
 }

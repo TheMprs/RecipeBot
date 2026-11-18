@@ -57,10 +57,14 @@ public class ScrapeService {
         if (url.length() > MAX_URL_LENGTH) {
             throw new ScrapeException(400, "That link is too long.");
         }
+        String link = findLink(url);
+        if (link == null) {
+            throw new ScrapeException(400, "That doesn't look like a link. Paste the recipe page's address.");
+        }
 
         Recipe recipe;
         try {
-            recipe = UrlFetcher.fetchRecipe(url.trim(), gemini);
+            recipe = UrlFetcher.fetchRecipe(link, gemini);
         } catch (UrlFetcher.SiteRefusedException e) {
             log(userId, e);
             throw new ScrapeException(400, "That site didn't let us read the page. Copy the recipe text from it instead.");
@@ -91,6 +95,18 @@ public class ScrapeService {
     }
 
     private static final int MAX_URL_LENGTH = 2048;
+
+    // A phone's share sheet sends "Shakshuka 😋 https://site/recipe" — the title around the
+    // link made the whole message an invalid URL. Take the first http(s) link in the text,
+    // and lower-case its scheme: keyboards capitalise the first letter ("Https://…").
+    static String findLink(String text) {
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("(?i)\\bhttps?://[^\\s<>\"']+").matcher(text);
+        if (!m.find()) return null;
+        String link = m.group().replaceAll("[).,!?;:'\"»”]+$", ""); // sentence punctuation after the link
+        int colon = link.indexOf(':');
+        return link.substring(0, colon).toLowerCase(java.util.Locale.ROOT) + link.substring(colon);
+    }
 
     private static void log(String userId, Exception e) {
         System.err.println("[Scrape] failed for user " + userId + ": " + e);
